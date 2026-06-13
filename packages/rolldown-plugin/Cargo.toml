@@ -1,0 +1,12 @@
+[package]
+name = "oxc-react-docgen-rolldown"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+oxc-react-docgen-core = { path = "../../crates/core" }
+dashmap.workspace      = true
+camino.workspace       = true

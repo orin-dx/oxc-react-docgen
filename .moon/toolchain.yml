@@ -1,0 +1,15 @@
+# https://moonrepo.dev/docs/config/toolchain
+$schema: "https://moonrepo.dev/schemas/toolchain.json"
+
+node:
+  version: "26"
+  packageManager: pnpm
+
+pnpm:
+  version: "10"
+
+rust:
+  version: "1.96.0"
+  components:
+    - clippy
+    - rustfmt

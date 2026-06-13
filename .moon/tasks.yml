@@ -1,0 +1,13 @@
+# https://moonrepo.dev/docs/config/tasks
+$schema: "https://moonrepo.dev/schemas/tasks.json"
+
+fileGroups:
+  sources:
+    - "src/**/*"
+  tests:
+    - "tests/**/*"
+    - "**/*.test.*"
+    - "**/*.spec.*"
+  configs:
+    - "*.config.*"
+    - "*.json"

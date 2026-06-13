@@ -1,0 +1,38 @@
+[package]
+name = "oxc-react-docgen-core"
+description = "Fast React prop extraction via OXC — core library"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+oxc_allocator.workspace    = true
+oxc_parser.workspace       = true
+oxc_ast.workspace          = true
+oxc_ast_visit.workspace    = true
+oxc_span.workspace         = true
+oxc_module_lexer.workspace = true
+oxc_resolver.workspace     = true
+compact_str.workspace      = true
+rustc-hash.workspace       = true
+dashmap.workspace          = true
+arc-swap.workspace         = true
+camino.workspace           = true
+indexmap.workspace         = true
+dirs.workspace             = true
+serde.workspace            = true
+serde_json.workspace       = true
+rmp-serde.workspace        = true
+thiserror.workspace        = true
+miette.workspace           = true
+rayon.workspace            = true
+tokio.workspace            = true
+ignore.workspace           = true
+
+[dev-dependencies]
+divan.workspace            = true
+insta.workspace            = true
+pretty_assertions.workspace = true
+
+[[bench]]
+name = "extraction"
+harness = false

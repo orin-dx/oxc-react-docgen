@@ -1,0 +1,28 @@
+[package]
+name = "oxc-react-docgen"
+description = "Fast React prop extraction — CLI"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "oxc-react-docgen"
+path = "src/main.rs"
+
+[dependencies]
+oxc-react-docgen-core = { path = "../core" }
+clap.workspace            = true
+clap_complete.workspace   = true
+clap_mangen.workspace     = true
+miette                    = { workspace = true, features = ["fancy"] }
+anyhow.workspace          = true
+indicatif.workspace       = true
+tracing-indicatif.workspace = true
+tracing.workspace         = true
+tracing-subscriber.workspace = true
+owo-colors.workspace      = true
+watchexec.workspace       = true
+serde_json.workspace      = true
+camino.workspace          = true
+
+[dev-dependencies]
+insta.workspace           = true

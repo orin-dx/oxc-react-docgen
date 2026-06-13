@@ -1,0 +1,18 @@
+[package]
+name = "oxc-react-docgen-napi"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+oxc-react-docgen-core = { path = "../core" }
+napi.workspace         = true
+napi-derive.workspace  = true
+serde_json.workspace   = true
+dashmap.workspace      = true
+camino.workspace       = true
+
+[build-dependencies]
+napi-build = "2"

@@ -33,6 +33,7 @@ ignore.workspace           = true
 divan.workspace            = true
 insta.workspace            = true
 pretty_assertions.workspace = true
+tempfile.workspace          = true
 
 [[bench]]
 name = "extraction"

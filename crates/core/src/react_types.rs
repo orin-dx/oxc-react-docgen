@@ -97,7 +97,71 @@ pub fn is_react_builtin(
         )
 }
 
+/// Returns the curated list of notable HTML attribute prop names for a given element.
+///
+/// Used to populate `ComponentEntry.notable_inherited` — the subset of inherited
+/// HTML props that are most relevant for documentation and prop tables.
+pub fn notable_html_attrs(element: &str) -> &'static [&'static str] {
+    match element {
+        "button" => &[
+            "onClick",
+            "onKeyDown",
+            "onKeyUp",
+            "onFocus",
+            "onBlur",
+            "disabled",
+            "type",
+            "form",
+            "name",
+            "value",
+            "tabIndex",
+            "aria-label",
+            "aria-describedby",
+            "aria-expanded",
+            "aria-pressed",
+            "aria-haspopup",
+        ],
+        "input" => &[
+            "onChange",
+            "onInput",
+            "onFocus",
+            "onBlur",
+            "value",
+            "defaultValue",
+            "placeholder",
+            "type",
+            "disabled",
+            "readOnly",
+            "required",
+            "name",
+            "min",
+            "max",
+            "pattern",
+            "autoComplete",
+            "checked",
+            "defaultChecked",
+        ],
+        "a" => &["href", "target", "rel", "download", "onClick"],
+        "textarea" => &[
+            "onChange",
+            "value",
+            "defaultValue",
+            "placeholder",
+            "disabled",
+            "readOnly",
+            "required",
+            "rows",
+            "maxLength",
+        ],
+        "select" => &["onChange", "value", "defaultValue", "disabled", "multiple", "required"],
+        "form" => &["onSubmit", "onReset", "action", "method", "encType", "noValidate"],
+        "img" => &["src", "alt", "width", "height", "loading", "onLoad", "onError"],
+        _ => &["onClick", "onFocus", "onBlur", "className", "style", "id", "tabIndex", "aria-label"],
+    }
+}
+
 /// React 18 vs 19 behavioral differences for component detection.
+#[derive(Debug, Clone)]
 pub struct ReactVersion {
     /// React 18: FC implicitly includes `children` prop.
     /// React 19: FC does NOT implicitly include children.

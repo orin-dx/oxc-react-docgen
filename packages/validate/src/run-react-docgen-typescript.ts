@@ -3,7 +3,7 @@ import { withCustomConfig } from 'react-docgen-typescript'
 import { discoverFixtures, FIXTURES_ROOT } from './fixtures.ts'
 import type { ToolResult, NormalizedOutput } from './types.ts'
 
-const tsconfigPath = path.resolve(FIXTURES_ROOT, '../tsconfig.json')
+const tsconfigPath = path.resolve(FIXTURES_ROOT, '..', 'tsconfig.json')
 
 // Create parser — falls back gracefully if tsconfig not found
 function makeParser() {
@@ -14,8 +14,7 @@ function makeParser() {
       propFilter: { skipPropsWithoutDoc: false },
     })
   } catch {
-    const { withDefaultConfig } = require('react-docgen-typescript')
-    return withDefaultConfig({ shouldExtractLiteralValuesFromEnum: true })
+    return withCustomConfig(tsconfigPath, { shouldExtractLiteralValuesFromEnum: true })
   }
 }
 

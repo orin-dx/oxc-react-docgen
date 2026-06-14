@@ -11,5 +11,11 @@
     "build": "moon run :build",
     "test": "moon run :test",
     "lint": "moon run :lint"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "class-variance-authority": "^0.7.0",
+    "react": "^19.0.0",
+    "@radix-ui/react-slot": "^1.0.0"
   }
 }

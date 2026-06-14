@@ -1,14 +1,24 @@
-import { execSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 mkdirSync('./baselines', { recursive: true })
 
+function runScript(script: string): string {
+  const result = spawnSync('tsx', [resolve(import.meta.dirname, script)], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'], // stdout captured, stderr forwarded
+  })
+  if (result.status !== 0) throw new Error(`${script} failed`)
+  return result.stdout
+}
+
 console.log('Running react-docgen baseline...')
-const rdg = execSync('pnpm run:rdg', { encoding: 'utf8' })
-writeFileSync('./baselines/react-docgen.json', rdg)
+writeFileSync('./baselines/react-docgen.json', runScript('run-react-docgen.ts'))
+console.log('✅ react-docgen baseline saved')
 
 console.log('Running react-docgen-typescript baseline...')
-const rdt = execSync('pnpm run:rdt', { encoding: 'utf8' })
-writeFileSync('./baselines/react-docgen-typescript.json', rdt)
+writeFileSync('./baselines/react-docgen-typescript.json', runScript('run-react-docgen-typescript.ts'))
+console.log('✅ react-docgen-typescript baseline saved')
 
-console.log('✅ Baselines saved to ./baselines/')
+console.log('\nBaselines saved to ./baselines/')

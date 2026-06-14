@@ -13,6 +13,8 @@ napi-derive.workspace  = true
 serde_json.workspace   = true
 dashmap.workspace      = true
 camino.workspace       = true
+compact_str.workspace  = true
+rustc-hash.workspace   = true
 
 [build-dependencies]
 napi-build = "2"

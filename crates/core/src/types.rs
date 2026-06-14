@@ -23,7 +23,7 @@ pub type TypeName = CompactString;
 /// A structured representation of a TypeScript type as collected from the AST.
 /// This is the extractor's output — NOT yet resolved to a semantic PropType.
 /// The resolver pattern-matches on this to produce PropType.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum CollectedType {
     // ── Primitives
     String,
@@ -166,10 +166,275 @@ impl CollectedType {
             CollectedType::Raw(s) => s.clone(),
         }
     }
+
+    fn to_json_value(&self) -> serde_json::Value {
+        match self {
+            // Primitives: serialize as short string tags
+            CollectedType::String    => serde_json::json!("str"),
+            CollectedType::Number    => serde_json::json!("num"),
+            CollectedType::Boolean   => serde_json::json!("bool"),
+            CollectedType::Null      => serde_json::json!("null"),
+            CollectedType::Undefined => serde_json::json!("undef"),
+            CollectedType::Any       => serde_json::json!("any"),
+            CollectedType::Never     => serde_json::json!("never"),
+            CollectedType::Unknown   => serde_json::json!("unknown"),
+            CollectedType::Void      => serde_json::json!("void"),
+            CollectedType::BigInt    => serde_json::json!("bigint"),
+            CollectedType::Symbol    => serde_json::json!("symbol"),
+            // Literals
+            CollectedType::StringLiteral(s) => serde_json::json!({"sl": s.as_str()}),
+            CollectedType::NumberLiteral(n) => serde_json::json!({"nl": n}),
+            CollectedType::BoolLiteral(b)   => serde_json::json!({"bl": b}),
+            // Named: {"n": name, "a": [args...]}
+            CollectedType::Named { name, args } => serde_json::json!({
+                "n": name.as_str(),
+                "a": args.iter().map(|a| a.to_json_value()).collect::<Vec<_>>()
+            }),
+            // Union: {"u": [members...]}
+            CollectedType::Union(members) => serde_json::json!({
+                "u": members.iter().map(|m| m.to_json_value()).collect::<Vec<_>>()
+            }),
+            // Intersection: {"i": [members...]}
+            CollectedType::Intersection(members) => serde_json::json!({
+                "i": members.iter().map(|m| m.to_json_value()).collect::<Vec<_>>()
+            }),
+            // Array: {"arr": inner}
+            CollectedType::Array(inner) => serde_json::json!({"arr": inner.to_json_value()}),
+            // Tuple: {"tup": [members...]}
+            CollectedType::Tuple(members) => serde_json::json!({
+                "tup": members.iter().map(|m| m.to_json_value()).collect::<Vec<_>>()
+            }),
+            // Object: {"obj": [{name, t, req, desc}...]}
+            CollectedType::Object(fields) => serde_json::json!({
+                "obj": fields.iter().map(|f| serde_json::json!({
+                    "name": f.name,
+                    "t": f.collected_type.to_json_value(),
+                    "req": f.required,
+                    "desc": f.description,
+                })).collect::<Vec<_>>()
+            }),
+            // TypeOf: {"to": name}
+            CollectedType::TypeOf(name) => serde_json::json!({"to": name.as_str()}),
+            // IndexedAccess: {"ia": {o, k}}
+            CollectedType::IndexedAccess { obj, key } => serde_json::json!({
+                "ia": {"o": obj.to_json_value(), "k": key.to_json_value()}
+            }),
+            // TemplateLiteral: {"tl": [parts...]}
+            CollectedType::TemplateLiteral(parts) => serde_json::json!({
+                "tl": parts.iter().map(|p| p.to_json_value()).collect::<Vec<_>>()
+            }),
+            // Function: {"fn": {p: [params], r: return_type}}
+            CollectedType::Function { params, return_type } => serde_json::json!({
+                "fn": {
+                    "p": params.iter().map(|p| p.to_json_value()).collect::<Vec<_>>(),
+                    "r": return_type.to_json_value()
+                }
+            }),
+            // Conditional: {"cond": {c, e, t, f}}
+            CollectedType::Conditional { check, extends_type, true_type, false_type } => serde_json::json!({
+                "cond": {
+                    "c": check.to_json_value(),
+                    "e": extends_type.to_json_value(),
+                    "t": true_type.to_json_value(),
+                    "f": false_type.to_json_value(),
+                }
+            }),
+            // Mapped: {"mapped": {k, v}}
+            CollectedType::Mapped { key_type, value_type } => serde_json::json!({
+                "mapped": {"k": key_type.to_json_value(), "v": value_type.to_json_value()}
+            }),
+            // Raw fallback: {"raw": s}
+            CollectedType::Raw(s) => serde_json::json!({"raw": s}),
+        }
+    }
+
+    fn from_json_value(v: &serde_json::Value) -> Result<Self, String> {
+        match v {
+            serde_json::Value::String(s) => Ok(match s.as_str() {
+                "str"     => CollectedType::String,
+                "num"     => CollectedType::Number,
+                "bool"    => CollectedType::Boolean,
+                "null"    => CollectedType::Null,
+                "undef"   => CollectedType::Undefined,
+                "any"     => CollectedType::Any,
+                "never"   => CollectedType::Never,
+                "unknown" => CollectedType::Unknown,
+                "void"    => CollectedType::Void,
+                "bigint"  => CollectedType::BigInt,
+                "symbol"  => CollectedType::Symbol,
+                other     => CollectedType::Raw(other.to_string()),
+            }),
+            serde_json::Value::Object(map) => {
+                if let Some(s) = map.get("sl").and_then(|v| v.as_str()) {
+                    return Ok(CollectedType::StringLiteral(s.into()));
+                }
+                if let Some(n) = map.get("nl").and_then(|v| v.as_f64()) {
+                    return Ok(CollectedType::NumberLiteral(n));
+                }
+                if let Some(b) = map.get("bl").and_then(|v| v.as_bool()) {
+                    return Ok(CollectedType::BoolLiteral(b));
+                }
+                if let Some(name) = map.get("n").and_then(|v| v.as_str()) {
+                    let args = map.get("a")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>())
+                        .unwrap_or(Ok(vec![]))?;
+                    return Ok(CollectedType::Named { name: name.into(), args });
+                }
+                if let Some(arr) = map.get("u").and_then(|v| v.as_array()) {
+                    return Ok(CollectedType::Union(
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                    ));
+                }
+                if let Some(arr) = map.get("i").and_then(|v| v.as_array()) {
+                    return Ok(CollectedType::Intersection(
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                    ));
+                }
+                if let Some(inner) = map.get("arr") {
+                    return Ok(CollectedType::Array(Box::new(Self::from_json_value(inner)?)));
+                }
+                if let Some(arr) = map.get("tup").and_then(|v| v.as_array()) {
+                    return Ok(CollectedType::Tuple(
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                    ));
+                }
+                if let Some(arr) = map.get("obj").and_then(|v| v.as_array()) {
+                    let fields: Vec<CollectedObjectField> = arr.iter().map(|f| {
+                        let o = f.as_object().ok_or_else(|| "expected object for field".to_string())?;
+                        Ok(CollectedObjectField {
+                            name: o.get("name").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
+                            collected_type: Self::from_json_value(o.get("t").unwrap_or(&serde_json::Value::Null))?,
+                            required: o.get("req").and_then(|v| v.as_bool()).unwrap_or(false),
+                            description: o.get("desc").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
+                        })
+                    }).collect::<Result<_, String>>()?;
+                    return Ok(CollectedType::Object(fields));
+                }
+                if let Some(name) = map.get("to").and_then(|v| v.as_str()) {
+                    return Ok(CollectedType::TypeOf(name.into()));
+                }
+                if let Some(inner) = map.get("ia") {
+                    let obj = Self::from_json_value(inner.get("o").unwrap_or(&serde_json::Value::Null))?;
+                    let key = Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::IndexedAccess { obj: Box::new(obj), key: Box::new(key) });
+                }
+                if let Some(arr) = map.get("tl").and_then(|v| v.as_array()) {
+                    return Ok(CollectedType::TemplateLiteral(
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                    ));
+                }
+                if let Some(inner) = map.get("fn") {
+                    let params = inner.get("p").and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>())
+                        .unwrap_or(Ok(vec![]))?;
+                    let rt = Self::from_json_value(inner.get("r").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::Function { params, return_type: Box::new(rt) });
+                }
+                if let Some(inner) = map.get("cond") {
+                    let check = Self::from_json_value(inner.get("c").unwrap_or(&serde_json::Value::Null))?;
+                    let ext   = Self::from_json_value(inner.get("e").unwrap_or(&serde_json::Value::Null))?;
+                    let tt    = Self::from_json_value(inner.get("t").unwrap_or(&serde_json::Value::Null))?;
+                    let ft    = Self::from_json_value(inner.get("f").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::Conditional {
+                        check: Box::new(check),
+                        extends_type: Box::new(ext),
+                        true_type: Box::new(tt),
+                        false_type: Box::new(ft),
+                    });
+                }
+                if let Some(inner) = map.get("mapped") {
+                    let k = Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
+                    let vt = Self::from_json_value(inner.get("v").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::Mapped { key_type: Box::new(k), value_type: Box::new(vt) });
+                }
+                if let Some(s) = map.get("raw").and_then(|v| v.as_str()) {
+                    return Ok(CollectedType::Raw(s.to_owned()));
+                }
+                // Unknown shape — fall back to raw
+                Ok(CollectedType::Raw(v.to_string()))
+            }
+            _ => Ok(CollectedType::Raw(v.to_string())),
+        }
+    }
+}
+
+impl serde::Serialize for CollectedType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let v = self.to_json_value();
+        v.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for CollectedType {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        let v = serde_json::Value::deserialize(deserializer)?;
+        Self::from_json_value(&v).map_err(D::Error::custom)
+    }
+}
+
+impl serde::Serialize for CollectedObjectField {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("CollectedObjectField", 4)?;
+        s.serialize_field("name", &self.name)?;
+        s.serialize_field("collected_type", &self.collected_type)?;
+        s.serialize_field("required", &self.required)?;
+        s.serialize_field("description", &self.description)?;
+        s.end()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for CollectedObjectField {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        struct FieldVisitor;
+
+        impl<'de> Visitor<'de> for FieldVisitor {
+            type Value = CollectedObjectField;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct CollectedObjectField")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<CollectedObjectField, A::Error> {
+                let mut name: Option<String> = None;
+                let mut collected_type: Option<CollectedType> = None;
+                let mut required: Option<bool> = None;
+                let mut description: Option<String> = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "name" => { name = Some(map.next_value()?); }
+                        "collected_type" => { collected_type = Some(map.next_value()?); }
+                        "required" => { required = Some(map.next_value()?); }
+                        "description" => { description = Some(map.next_value()?); }
+                        _ => { let _ = map.next_value::<serde::de::IgnoredAny>()?; }
+                    }
+                }
+
+                Ok(CollectedObjectField {
+                    name: name.ok_or_else(|| de::Error::missing_field("name"))?,
+                    collected_type: collected_type.ok_or_else(|| de::Error::missing_field("collected_type"))?,
+                    required: required.ok_or_else(|| de::Error::missing_field("required"))?,
+                    description: description.ok_or_else(|| de::Error::missing_field("description"))?,
+                })
+            }
+        }
+
+        deserializer.deserialize_struct(
+            "CollectedObjectField",
+            &["name", "collected_type", "required", "description"],
+            FieldVisitor,
+        )
+    }
 }
 
 /// An object field as collected from the AST (not yet resolved).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CollectedObjectField {
     pub name: String,
     pub collected_type: CollectedType,
@@ -292,8 +557,7 @@ pub struct PropParent {
 
 /// Semantic type of a prop. Rich enough to produce any output format.
 /// Use match exhaustively — no `_` fallthrough in serializers.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PropType {
     // ── Primitives
     String,
@@ -435,6 +699,235 @@ impl PropType {
             }
             PropType::SxProps => "SxProps".into(),
             PropType::Opaque { raw, .. } => raw.clone(),
+        }
+    }
+}
+
+impl serde::Serialize for PropType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.to_tagged_value().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for PropType {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let v = serde_json::Value::deserialize(deserializer)?;
+        Self::from_tagged_value(&v).map_err(D::Error::custom)
+    }
+}
+
+impl PropType {
+    fn to_tagged_value(&self) -> serde_json::Value {
+        match self {
+            // Unit variants (primitives)
+            PropType::String    => serde_json::json!({"kind": "string"}),
+            PropType::Number    => serde_json::json!({"kind": "number"}),
+            PropType::Boolean   => serde_json::json!({"kind": "boolean"}),
+            PropType::Null      => serde_json::json!({"kind": "null"}),
+            PropType::Undefined => serde_json::json!({"kind": "undefined"}),
+            PropType::Any       => serde_json::json!({"kind": "any"}),
+            PropType::Never     => serde_json::json!({"kind": "never"}),
+            PropType::Unknown   => serde_json::json!({"kind": "unknown"}),
+            PropType::Void      => serde_json::json!({"kind": "void"}),
+            PropType::ReactNode    => serde_json::json!({"kind": "reactNode"}),
+            PropType::CssProperties => serde_json::json!({"kind": "cssProperties"}),
+            PropType::ElementType  => serde_json::json!({"kind": "elementType"}),
+            PropType::SxProps      => serde_json::json!({"kind": "sxProps"}),
+            // Newtype/tuple variants — inner is not a map, so wrap as "0"
+            PropType::StringLiteral(s) => serde_json::json!({"kind": "stringLiteral", "0": s}),
+            PropType::NumberLiteral(n) => serde_json::json!({"kind": "numberLiteral", "0": n}),
+            PropType::BoolLiteral(b)   => serde_json::json!({"kind": "boolLiteral", "0": b}),
+            PropType::Union(members) => serde_json::json!({
+                "kind": "union",
+                "0": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
+            }),
+            PropType::Intersection(members) => serde_json::json!({
+                "kind": "intersection",
+                "0": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
+            }),
+            PropType::Array(inner) => serde_json::json!({
+                "kind": "array",
+                "0": inner.to_tagged_value()
+            }),
+            PropType::Tuple(members) => serde_json::json!({
+                "kind": "tuple",
+                "0": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
+            }),
+            PropType::Object(fields) => serde_json::json!({
+                "kind": "object",
+                "0": fields.iter().map(|f| serde_json::json!({
+                    "name": f.name,
+                    "propType": f.prop_type.to_tagged_value(),
+                    "required": f.required,
+                    "description": f.description,
+                })).collect::<Vec<_>>()
+            }),
+            // Struct variants — fields merge directly with kind
+            PropType::Named { name, args } => serde_json::json!({
+                "kind": "named",
+                "name": name.as_str(),
+                "args": args.iter().map(|a| a.to_tagged_value()).collect::<Vec<_>>()
+            }),
+            PropType::EventHandler { event_type } => serde_json::json!({
+                "kind": "eventHandler",
+                "eventType": event_type
+            }),
+            PropType::Ref { element } => serde_json::json!({
+                "kind": "ref",
+                "element": element
+            }),
+            PropType::HtmlAttributes { element, omitted } => serde_json::json!({
+                "kind": "htmlAttributes",
+                "element": element,
+                "omitted": omitted
+            }),
+            PropType::LiteralUnion { members, has_default } => serde_json::json!({
+                "kind": "literalUnion",
+                "members": members,
+                "hasDefault": has_default
+            }),
+            PropType::Opaque { raw, reason } => {
+                let reason_val = match reason {
+                    OpaqueReason::ConditionalType => serde_json::json!({"type": "conditionalType"}),
+                    OpaqueReason::MappedType => serde_json::json!({"type": "mappedType"}),
+                    OpaqueReason::ModuleAugmentation => serde_json::json!({"type": "moduleAugmentation"}),
+                    OpaqueReason::RuntimeDependent { function_name } => serde_json::json!({"type": "runtimeDependent", "functionName": function_name}),
+                    OpaqueReason::UnresolvableImport { specifier } => serde_json::json!({"type": "unresolvableImport", "specifier": specifier}),
+                    OpaqueReason::PandaCodegenMissing => serde_json::json!({"type": "pandaCodegenMissing"}),
+                    OpaqueReason::DepthExceeded => serde_json::json!({"type": "depthExceeded"}),
+                    OpaqueReason::IndexedAccess { expression } => serde_json::json!({"type": "indexedAccess", "expression": expression}),
+                    OpaqueReason::TemplateLiteral { expression } => serde_json::json!({"type": "templateLiteral", "expression": expression}),
+                };
+                serde_json::json!({"kind": "opaque", "raw": raw, "reason": reason_val})
+            }
+        }
+    }
+
+    fn from_tagged_value(v: &serde_json::Value) -> Result<Self, String> {
+        let kind = v.get("kind").and_then(|k| k.as_str())
+            .ok_or_else(|| "missing 'kind' field in PropType JSON".to_string())?;
+        match kind {
+            "string"    => Ok(PropType::String),
+            "number"    => Ok(PropType::Number),
+            "boolean"   => Ok(PropType::Boolean),
+            "null"      => Ok(PropType::Null),
+            "undefined" => Ok(PropType::Undefined),
+            "any"       => Ok(PropType::Any),
+            "never"     => Ok(PropType::Never),
+            "unknown"   => Ok(PropType::Unknown),
+            "void"      => Ok(PropType::Void),
+            "reactNode" | "react_node" => Ok(PropType::ReactNode),
+            "cssProperties" | "css_properties" => Ok(PropType::CssProperties),
+            "elementType" | "element_type" => Ok(PropType::ElementType),
+            "sxProps" | "sx_props" => Ok(PropType::SxProps),
+            "stringLiteral" | "string_literal" => {
+                let s = v["0"].as_str().unwrap_or("").to_owned();
+                Ok(PropType::StringLiteral(s))
+            }
+            "numberLiteral" | "number_literal" => {
+                let n = v["0"].as_f64().unwrap_or(0.0);
+                Ok(PropType::NumberLiteral(n))
+            }
+            "boolLiteral" | "bool_literal" => {
+                let b = v["0"].as_bool().unwrap_or(false);
+                Ok(PropType::BoolLiteral(b))
+            }
+            "union" => {
+                let members = v["0"].as_array()
+                    .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
+                    .unwrap_or(Ok(vec![]))?;
+                Ok(PropType::Union(members))
+            }
+            "intersection" => {
+                let members = v["0"].as_array()
+                    .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
+                    .unwrap_or(Ok(vec![]))?;
+                Ok(PropType::Intersection(members))
+            }
+            "array" => {
+                let inner = Self::from_tagged_value(&v["0"])?;
+                Ok(PropType::Array(Box::new(inner)))
+            }
+            "tuple" => {
+                let members = v["0"].as_array()
+                    .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
+                    .unwrap_or(Ok(vec![]))?;
+                Ok(PropType::Tuple(members))
+            }
+            "object" => {
+                let fields = v["0"].as_array()
+                    .map(|a| a.iter().map(|f| {
+                        Ok(ObjectField {
+                            name: f["name"].as_str().unwrap_or("").to_owned(),
+                            prop_type: Self::from_tagged_value(&f["propType"])?,
+                            required: f["required"].as_bool().unwrap_or(false),
+                            description: f["description"].as_str().unwrap_or("").to_owned(),
+                        })
+                    }).collect::<Result<Vec<_>, String>>())
+                    .unwrap_or(Ok(vec![]))?;
+                Ok(PropType::Object(fields))
+            }
+            "named" => {
+                let name = v["name"].as_str().unwrap_or("").into();
+                let args = v["args"].as_array()
+                    .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
+                    .unwrap_or(Ok(vec![]))?;
+                Ok(PropType::Named { name, args })
+            }
+            "eventHandler" | "event_handler" => {
+                let event_type = v["eventType"].as_str()
+                    .or_else(|| v["event_type"].as_str())
+                    .unwrap_or("").to_owned();
+                Ok(PropType::EventHandler { event_type })
+            }
+            "ref" => {
+                let element = v["element"].as_str().map(|s| s.to_owned());
+                Ok(PropType::Ref { element })
+            }
+            "htmlAttributes" | "html_attributes" => {
+                let element = v["element"].as_str().unwrap_or("div").to_owned();
+                let omitted = v["omitted"].as_array()
+                    .map(|a| a.iter().filter_map(|v| v.as_str()).map(|s| s.to_owned()).collect())
+                    .unwrap_or_default();
+                Ok(PropType::HtmlAttributes { element, omitted })
+            }
+            "literalUnion" | "literal_union" => {
+                let members = v["members"].as_array()
+                    .map(|a| a.iter().filter_map(|v| v.as_str()).map(|s| s.to_owned()).collect())
+                    .unwrap_or_default();
+                let has_default = v["hasDefault"].as_bool()
+                    .or_else(|| v["has_default"].as_bool())
+                    .unwrap_or(false);
+                Ok(PropType::LiteralUnion { members, has_default })
+            }
+            "opaque" => {
+                let raw = v["raw"].as_str().unwrap_or("").to_owned();
+                let reason = match v["reason"]["type"].as_str().unwrap_or("depthExceeded") {
+                    "conditionalType" => OpaqueReason::ConditionalType,
+                    "mappedType" => OpaqueReason::MappedType,
+                    "moduleAugmentation" => OpaqueReason::ModuleAugmentation,
+                    "runtimeDependent" => OpaqueReason::RuntimeDependent {
+                        function_name: v["reason"]["functionName"].as_str().unwrap_or("").to_owned(),
+                    },
+                    "unresolvableImport" => OpaqueReason::UnresolvableImport {
+                        specifier: v["reason"]["specifier"].as_str().unwrap_or("").to_owned(),
+                    },
+                    "pandaCodegenMissing" => OpaqueReason::PandaCodegenMissing,
+                    "indexedAccess" => OpaqueReason::IndexedAccess {
+                        expression: v["reason"]["expression"].as_str().unwrap_or("").to_owned(),
+                    },
+                    "templateLiteral" => OpaqueReason::TemplateLiteral {
+                        expression: v["reason"]["expression"].as_str().unwrap_or("").to_owned(),
+                    },
+                    _ => OpaqueReason::DepthExceeded,
+                };
+                Ok(PropType::Opaque { raw, reason })
+            }
+            other => Ok(PropType::Opaque {
+                raw: format!("unknown PropType kind: {}", other),
+                reason: OpaqueReason::DepthExceeded,
+            }),
         }
     }
 }

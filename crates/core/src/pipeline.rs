@@ -95,6 +95,8 @@ impl Default for PipelineOptions {
 // ─── Incremental watch types ──────────────────────────────────────────────────
 
 /// Result of processing a single file change in watch mode.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IncrementalUpdate {
     pub updated_components: Vec<ComponentEntry>,
     pub affected_files: Vec<Utf8PathBuf>,
@@ -152,6 +154,22 @@ impl ReverseDeps {
 
         visited
     }
+}
+
+// ─── JSON serialization helpers ──────────────────────────────────────────────
+
+/// Serialize an [`ExtractionOutput`] to a JSON string.
+///
+/// Defined in core (not in the NAPI crate) so the serde monomorphization for
+/// `PropType` (which requires `#![recursion_limit = "2048"]`) happens once here,
+/// not in every downstream crate.
+pub fn extraction_output_to_json(output: &ExtractionOutput) -> Result<String, serde_json::Error> {
+    serde_json::to_string(output)
+}
+
+/// Serialize an [`IncrementalUpdate`] to a JSON string (same reason as above).
+pub fn incremental_update_to_json(update: &IncrementalUpdate) -> Result<String, serde_json::Error> {
+    serde_json::to_string(update)
 }
 
 // ─── Main cold extraction ─────────────────────────────────────────────────────

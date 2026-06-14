@@ -160,3 +160,22 @@ Phase 2a: parse inline function types and classify as `EventHandler`.
 - [ ] Diagnostic messages point to exact source location via miette (Phase 3a+)
 - [ ] `--react-version` auto-detection from `package.json` peerDependencies (Phase 4b)
 - [ ] Watch mode `oxc-react-docgen watch` (Phase 4b) ✅ specified
+
+---
+
+## Decisions Made
+
+The following questions were resolved during the Phase 3/4/5 architectural review.
+They are recorded here to prevent re-litigation.
+
+| Topic | Decision |
+|---|---|
+| **styled-components** | SKIP — deprecated, no longer relevant for new projects |
+| **emotion** | POST-v1 — high complexity, deferred |
+| **Cache default location** | `{project_root}/node_modules/.cache/oxc-react-docgen` — NOT the user home directory. CI-friendly: invalidated with `node_modules`, matches Node.js tooling convention. |
+| **Config file** | `docgen.config.ts` — discovered by walking up from the project root to the workspace root (stops at `pnpm-workspace.yaml`, `package.json` with `"workspaces"`, or `.git`). Single file at workspace root covers all packages. |
+| **Vite plugin return type** | `Plugin[]` (not `Plugin`) — allows splitting extraction plugin from virtual module plugin, required for Vite 8 / Rolldown architecture |
+| **Vite 8 migration** | Three breaking changes all spec'd: `hotUpdate` (not `handleHotUpdate`), `moduleType: 'js'` in transform return, `environment` API instead of `server` in hot update. See Phase 5a spec. |
+| **`CollectedType` vs raw string** | `CollectedType` structured enum replaces `raw_type: String` throughout. Done in `types.rs` update. Resolver pattern-matches on it directly — no string parsing in the resolver. |
+| **`InheritedLayer` + `notable_inherited`** | Added to `ComponentEntry` in `types.rs` update. `InheritedLayer` carries `file_name`, `html_element`, `omitted`, and `total_props`. `notable_inherited` is the curated subset for display in component docs. |
+| **typescript-go integration** | POST-v1, opt-in via `resolveComplexTypes: true` option. Handles `Conditional` and `Mapped` types that degrade to `Opaque` in the current resolver. No changes to the core resolver are needed now — the opt-in flag gates a separate resolution pass. |

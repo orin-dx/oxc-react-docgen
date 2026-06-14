@@ -34,8 +34,11 @@ pub fn resolve_known(
         // ── Variant systems ──────────────────────────────────────────────────
         // class-variance-authority: VariantProps<typeof buttonVariants>
         // PandaCSS: RecipeVariantProps<typeof buttonStyle>
+        // vanilla-extract: RecipeVariants<typeof buttonRecipe>
         // tailwind-variants: VariantProps<typeof tv(...)>
-        "VariantProps" | "RecipeVariantProps" => resolve_cva_variant_props(args, global),
+        "VariantProps" | "RecipeVariantProps" | "RecipeVariants" => {
+            resolve_cva_variant_props(args, global)
+        }
 
         // ── MUI styling ─────────────────────────────────────────────────────
         // SxProps is a massive conditional type — surface as opaque

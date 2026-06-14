@@ -655,6 +655,159 @@ fn resolve_import_specifier(
 }
 ```
 
+## 1. Use CollectedType, not raw string parsing
+
+The resolver receives `RawProp.collected_type: CollectedType` (a structured enum, not a string). Pattern-match on it directly. The `resolve_raw_type` function in the spec above becomes `resolve_collected_type(ct: &CollectedType, ...) -> PropType`.
+
+Key mapping:
+
+| CollectedType variant | PropType result |
+|---|---|
+| `Named { name, args }` | Look up in `known.rs` first, then resolve imports, then check interfaces/aliases |
+| `Union(members)` | Resolve each member → `PropType::Union` |
+| `Intersection(members)` | Resolve each, merge props for interface intersections → `PropType::Intersection` |
+| `Object(fields)` | `PropType::Object` with each field resolved |
+| `Array(inner)` | `PropType::Array(resolve_collected_type(inner))` |
+| `IndexedAccess { obj, key }` | Call `resolve_indexed_access(obj, key)`; degrade to `PropType::Opaque { reason: OpaqueReason::IndexedAccess { expression } }` |
+| `TemplateLiteral(parts)` | Call `expand_template_literal(parts)`; degrade to `PropType::Opaque { reason: OpaqueReason::TemplateLiteral { expression } }` |
+| `Conditional { .. }` \| `Mapped { .. }` | `PropType::Opaque { reason: OpaqueReason::ConditionalType }` — flag for typescript-go |
+| `Function { params, return_type }` | Detect render prop pattern: single named param → `PropType::RenderProp { state_type, value_type }`, else `PropType::EventHandler { event_type: raw_string }` |
+| `TypeOf(name)` | Look up in `global.enums` for `cva()` results |
+| Primitives | Map 1:1 to `PropType` primitives |
+| `Raw(s)` | Attempt to parse as `Named` type, degrade to `Opaque` |
+
+## 2. Indexed access resolution table
+
+Add `resolve_indexed_access` as a fallback lookup before degrading to `Opaque`:
+
+```rust
+fn resolve_indexed_access(obj: &CollectedType, key: &CollectedType) -> Option<PropType> {
+    let obj_name = match obj {
+        CollectedType::Named { name, .. } => name.as_str(),
+        _ => return None,
+    };
+    let key_str = match key {
+        CollectedType::StringLiteral(s) => s.as_str(),
+        _ => return None,
+    };
+    match (obj_name, key_str) {
+        ("CSSProperties" | "React.CSSProperties", "zIndex") => Some(PropType::Number),
+        ("CSSProperties" | "React.CSSProperties", _) => Some(PropType::String),
+        ("HTMLAttributes" | "React.HTMLAttributes", "className") => Some(PropType::String),
+        ("HTMLAttributes" | "React.HTMLAttributes", "tabIndex") => Some(PropType::Number),
+        ("HTMLAttributes" | "React.HTMLAttributes", "style") => Some(PropType::CssProperties),
+        ("HTMLAttributes" | "React.HTMLAttributes", "id") => Some(PropType::String),
+        _ => None,
+    }
+}
+```
+
+If `resolve_indexed_access` returns `None`, the caller degrades to:
+```rust
+PropType::Opaque { reason: OpaqueReason::IndexedAccess { expression } }
+```
+
+## 3. Template literal expansion
+
+```rust
+fn expand_template_literal(parts: &[CollectedType], ctx: &ResolutionContext) -> Option<PropType> {
+    // Try to expand: `compact-${MantineSize}` where MantineSize = "xs"|"sm"|...
+    // If any part is a Named type that resolves to a string literal union, expand it.
+    // Result: Union of all combinations (cartesian product of literal parts).
+    // If not fully expandable: return None (caller degrades to Opaque).
+}
+```
+
+Callers that receive `None` produce:
+```rust
+PropType::Opaque { reason: OpaqueReason::TemplateLiteral { expression } }
+```
+
+## 4. Discriminated union handling
+
+When resolving `CollectedTypeAlias::Union { members }` where all members are `Named` types that resolve to interfaces:
+
+1. Resolve all member interfaces.
+2. Find the discriminant: the prop whose type differs across all members as string literals.
+3. Merge all other props — earlier member props take precedence by order.
+4. Set `ComponentEntry.discriminant_prop = Some(discriminant_name)`.
+5. The discriminant prop's type becomes the union of all discriminant literal values.
+
+## 5. `(string & {})` normalization
+
+In `resolve_collected_type`, when handling `CollectedType::Intersection(members)`:
+
+- If one member is `CollectedType::String` and another is `CollectedType::Object([])` (empty object type — `{}`), return `PropType::String`.
+- This handles the `(string & {})` pattern from Mantine, which TypeScript uses to keep a string type open while preserving autocomplete for known literals.
+
+## 6. Inheritance chain building
+
+During `resolve_interface`, as we resolve `extends` clauses, build `InheritedLayer` entries:
+
+```rust
+fn resolve_extends_ref(...) -> (ResolvedChain, Option<InheritedLayer>) {
+    // Returns props chain + the layer metadata.
+    // InheritedLayer.file_name = the actual .d.ts file path (for RDT propFilter compat).
+    // InheritedLayer.html_element = from react_types::html_element_for().
+    // InheritedLayer.omitted = keys removed by Omit at this layer.
+    // InheritedLayer.total_props = props.len() after omissions.
+}
+```
+
+Push `InheritedLayer` entries to `ResolvedChain.inheritance: Vec<InheritedLayer>`.
+
+After full resolution, copy `chain.inheritance` to `ComponentEntry.inheritance`.
+
+## 7. Notable props population
+
+After resolving all inherited props, populate `ComponentEntry.notable_inherited`:
+
+- For HTML element layers: call `react_types::notable_html_attrs(element)` to get the curated list. Filter the resolved HTML props to only those in the notable list.
+- For non-HTML layers (`ButtonBaseProps`, `ThemingProps`, etc.): add all their own props to `notable_inherited` — they are typically small and intentional.
+
+## 8. Default value resolution
+
+In the resolver, when building `ParsedProp`:
+
+```rust
+// Code default takes precedence over JSDoc @default
+let code_default = mapping.param_defaults.get(&raw_prop.name);
+let jsdoc_default = raw_prop.tags.get("default").or_else(|| raw_prop.tags.get("defaultValue"));
+
+let default_value = match (code_default, jsdoc_default.map(|s| s.trim())) {
+    (Some(code), Some(jsdoc)) if code.value.trim_matches('"') != jsdoc => {
+        // Discrepancy: emit Info diagnostic, use code value
+        diagnostics.push(Diagnostic { severity: DiagnosticSeverity::Info, code: DiagnosticCode::JsDocDefaultMismatch, ... });
+        Some(DefaultValue { value: code.value.clone(), computed: code.computed })
+    }
+    (Some(code), _) => Some(DefaultValue { value: code.value.clone(), computed: code.computed }),
+    (None, Some(jsdoc)) => Some(DefaultValue { value: jsdoc.to_owned(), computed: false }),
+    (None, None) => None,
+};
+```
+
+## 9. tsconfig path aliases
+
+At `ResolutionContext::new()`, if `options.tsconfig_path` is set (or auto-detected), read it and configure `oxc_resolver` with `paths` and `baseUrl`:
+
+```rust
+let resolve_options = ResolveOptions {
+    alias: read_tsconfig_paths(options.tsconfig_path.as_deref()),
+    // ... existing options
+};
+```
+
+Add `read_tsconfig_paths(tsconfig: Option<&Utf8Path>) -> Vec<(String, Vec<PathBuf>)>` that reads `compilerOptions.paths` from the tsconfig JSON using `serde_json::from_str`. Handle `extends` in tsconfig (follow one level deep).
+
+## 10. `declare const X: ForwardRefExoticComponent<P>` component detection
+
+The extractor (Phase 2a follow-up) adds detection of the pattern:
+```ts
+declare const Button: React.ForwardRefExoticComponent<ButtonProps & React.RefAttributes<HTMLButtonElement>>
+```
+
+The resolver needs no changes for this — it just handles `ComponentMapping` entries that come from `.d.ts` files the same as any other mapping. This is purely an extractor change.
+
 ---
 
 # Agent: Pipeline (Phase 3b)

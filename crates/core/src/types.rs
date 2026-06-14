@@ -18,6 +18,165 @@ use std::collections::BTreeMap;
 /// Compact string used for names, type strings — avoids heap alloc under 24 bytes
 pub type TypeName = CompactString;
 
+// ─── CollectedType ───────────────────────────────────────────────────────────
+
+/// A structured representation of a TypeScript type as collected from the AST.
+/// This is the extractor's output — NOT yet resolved to a semantic PropType.
+/// The resolver pattern-matches on this to produce PropType.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CollectedType {
+    // ── Primitives
+    String,
+    Number,
+    Boolean,
+    Null,
+    Undefined,
+    Any,
+    Never,
+    Unknown,
+    Void,
+    BigInt,
+    Symbol,
+
+    // ── Literals
+    StringLiteral(CompactString),
+    NumberLiteral(f64),
+    BoolLiteral(bool),
+
+    // ── Structural
+    Union(Vec<CollectedType>),
+    Intersection(Vec<CollectedType>),
+    Array(Box<CollectedType>),
+    Tuple(Vec<CollectedType>),
+    Object(Vec<CollectedObjectField>),
+
+    // ── Named type reference (possibly generic, possibly not yet resolved)
+    Named {
+        name: CompactString,
+        args: Vec<CollectedType>,
+    },
+
+    // ── `typeof X` — reference to the type of a value
+    TypeOf(CompactString),
+
+    // ── Indexed access: Type["key"] or Type[K]
+    IndexedAccess {
+        obj: Box<CollectedType>,
+        key: Box<CollectedType>,
+    },
+
+    // ── Template literal: `compact-${Size}` → parts = [Str("compact-"), Named("Size", [])]
+    TemplateLiteral(Vec<CollectedType>),
+
+    // ── Function type: (props: P) => ReactNode
+    Function {
+        params: Vec<CollectedType>,
+        return_type: Box<CollectedType>,
+    },
+
+    // ── Conditional: T extends U ? X : Y — cannot resolve statically, tag for typescript-go
+    Conditional {
+        check: Box<CollectedType>,
+        extends_type: Box<CollectedType>,
+        true_type: Box<CollectedType>,
+        false_type: Box<CollectedType>,
+    },
+
+    // ── Mapped: { [K in Keys]: Value } — cannot resolve statically
+    Mapped {
+        key_type: Box<CollectedType>,
+        value_type: Box<CollectedType>,
+    },
+
+    // ── Fallback for syntax we don't recognise
+    Raw(String),
+}
+
+impl CollectedType {
+    /// True if this type requires the TypeScript type checker to resolve.
+    pub fn needs_type_checker(&self) -> bool {
+        matches!(self, CollectedType::Conditional { .. } | CollectedType::Mapped { .. })
+    }
+
+    /// Produce a raw string representation for diagnostics and fallback display.
+    pub fn to_raw_string(&self) -> String {
+        match self {
+            CollectedType::String => "string".into(),
+            CollectedType::Number => "number".into(),
+            CollectedType::Boolean => "boolean".into(),
+            CollectedType::Null => "null".into(),
+            CollectedType::Undefined => "undefined".into(),
+            CollectedType::Any => "any".into(),
+            CollectedType::Never => "never".into(),
+            CollectedType::Unknown => "unknown".into(),
+            CollectedType::Void => "void".into(),
+            CollectedType::BigInt => "bigint".into(),
+            CollectedType::Symbol => "symbol".into(),
+            CollectedType::StringLiteral(s) => format!("\"{}\"", s),
+            CollectedType::NumberLiteral(n) => n.to_string(),
+            CollectedType::BoolLiteral(b) => b.to_string(),
+            CollectedType::Union(members) => {
+                members.iter().map(|m| m.to_raw_string()).collect::<Vec<_>>().join(" | ")
+            }
+            CollectedType::Intersection(members) => {
+                members.iter().map(|m| m.to_raw_string()).collect::<Vec<_>>().join(" & ")
+            }
+            CollectedType::Array(inner) => format!("{}[]", inner.to_raw_string()),
+            CollectedType::Named { name, args } if args.is_empty() => name.to_string(),
+            CollectedType::Named { name, args } => format!(
+                "{}<{}>",
+                name,
+                args.iter().map(|a| a.to_raw_string()).collect::<Vec<_>>().join(", ")
+            ),
+            CollectedType::TypeOf(name) => format!("typeof {}", name),
+            CollectedType::IndexedAccess { obj, key } => {
+                format!("{}[{}]", obj.to_raw_string(), key.to_raw_string())
+            }
+            CollectedType::TemplateLiteral(parts) => format!(
+                "`{}`",
+                parts
+                    .iter()
+                    .map(|p| match p {
+                        CollectedType::StringLiteral(s) => s.to_string(),
+                        other => format!("${{{}}}", other.to_raw_string()),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("")
+            ),
+            CollectedType::Function { params, return_type } => format!(
+                "({}) => {}",
+                params.iter().map(|p| p.to_raw_string()).collect::<Vec<_>>().join(", "),
+                return_type.to_raw_string()
+            ),
+            CollectedType::Conditional { check, extends_type, true_type, false_type } => format!(
+                "{} extends {} ? {} : {}",
+                check.to_raw_string(),
+                extends_type.to_raw_string(),
+                true_type.to_raw_string(),
+                false_type.to_raw_string()
+            ),
+            CollectedType::Mapped { key_type, value_type } => {
+                format!("{{ [K in {}]: {} }}", key_type.to_raw_string(), value_type.to_raw_string())
+            }
+            CollectedType::Tuple(members) => format!(
+                "[{}]",
+                members.iter().map(|m| m.to_raw_string()).collect::<Vec<_>>().join(", ")
+            ),
+            CollectedType::Object(_) => "{ ... }".into(),
+            CollectedType::Raw(s) => s.clone(),
+        }
+    }
+}
+
+/// An object field as collected from the AST (not yet resolved).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollectedObjectField {
+    pub name: String,
+    pub collected_type: CollectedType,
+    pub required: bool,
+    pub description: String,
+}
+
 // ─── Core Output Types ───────────────────────────────────────────────────────
 
 /// The complete extraction output — top-level return type of the pipeline.
@@ -34,6 +193,23 @@ pub struct ExtractionOutput {
     pub stats: ExtractionStats,
 }
 
+/// One step in a component's resolved inheritance chain.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InheritedLayer {
+    /// Type name as declared: "ButtonHTMLAttributes", "ButtonBaseProps", "ThemingProps"
+    pub type_name: String,
+    /// Absolute path of the file this came from.
+    /// "node_modules/@types/react/..." for HTML attrs; project-local path otherwise.
+    pub file_name: String,
+    /// Props explicitly removed at this layer via Omit<Base, K>.
+    pub omitted: Vec<String>,
+    /// If this is an HTML element attributes type, the element name: "button", "input", etc.
+    pub html_element: Option<String>,
+    /// Number of props this layer contributes (for display).
+    pub total_props: u32,
+}
+
 /// A single React component with its resolved props.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,16 +222,26 @@ pub struct ComponentEntry {
     pub description: String,
     /// Resolved props, keyed by prop name
     pub props: BTreeMap<String, ParsedProp>,
-    /// HTML element this component renders as, if known
-    pub html_element: Option<String>,
-    /// HTML attribute keys omitted from inherited HTML attributes
-    pub omitted_html_props: Vec<String>,
+    /// Full resolved inheritance chain, outermost first.
+    pub inheritance: Vec<InheritedLayer>,
+    /// Curated notable props from inherited layers (not in self.props).
+    pub notable_inherited: BTreeMap<String, ParsedProp>,
+    /// If props type is a discriminated union, the name of the discriminant prop (e.g. "variant").
+    pub discriminant_prop: Option<String>,
     /// Type names that could not be resolved (react-docgen compat)
     pub composes: Vec<String>,
     /// JSDoc @tags on the component (e.g. @deprecated, @since)
     pub tags: BTreeMap<String, String>,
     /// Always empty for functional components; present for RDT compat
     pub methods: Vec<()>,
+}
+
+impl ComponentEntry {
+    /// Shortcut: the HTML element this component renders as, if any.
+    /// Derived from the inheritance chain.
+    pub fn html_element(&self) -> Option<&str> {
+        self.inheritance.iter().find_map(|l| l.html_element.as_deref())
+    }
 }
 
 /// A single resolved prop.
@@ -286,6 +472,10 @@ pub enum OpaqueReason {
     PandaCodegenMissing,
     /// Maximum resolution depth exceeded (circular or too deep)
     DepthExceeded,
+    /// Indexed access type (Type["key"]) — enable typescript-go to resolve.
+    IndexedAccess { expression: String },
+    /// Template literal type — partially or fully unresolvable.
+    TemplateLiteral { expression: String },
 }
 
 /// A field in an object type.
@@ -364,8 +554,8 @@ pub struct CollectedInterface {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawProp {
     pub name: String,
-    /// Raw type string — e.g. "ButtonHTMLAttributes<HTMLButtonElement>"
-    pub raw_type: String,
+    /// Structured type collected from the AST — replaces raw string for reliable resolver access.
+    pub collected_type: CollectedType,
     pub required: bool,
     pub description: String,
     pub tags: BTreeMap<String, String>,
@@ -399,15 +589,37 @@ pub enum ExtendsRef {
 /// A collected type alias.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CollectedTypeAlias {
-    Omit { base_name: TypeName, omitted_keys: Vec<String>, file_path: Utf8PathBuf },
-    Pick { base_name: TypeName, picked_keys: Vec<String>, file_path: Utf8PathBuf },
-    Partial { base_name: TypeName, file_path: Utf8PathBuf },
-    Required { base_name: TypeName, file_path: Utf8PathBuf },
-    Union { members: Vec<String>, file_path: Utf8PathBuf },
-    Intersection { members: Vec<String>, file_path: Utf8PathBuf },
+    Omit { base: CollectedType, omitted_keys: Vec<String>, file_path: Utf8PathBuf },
+    Pick { base: CollectedType, picked_keys: Vec<String>, file_path: Utf8PathBuf },
+    Partial { base: CollectedType, file_path: Utf8PathBuf },
+    Required { base: CollectedType, file_path: Utf8PathBuf },
+    Union { members: Vec<CollectedType>, file_path: Utf8PathBuf },
+    Intersection { members: Vec<CollectedType>, file_path: Utf8PathBuf },
     LiteralUnion { members: Vec<String>, file_path: Utf8PathBuf },
     /// e.g. type Size = SomeOtherType — transparent alias
-    Passthrough { target_name: TypeName, type_args: Vec<String>, file_path: Utf8PathBuf },
+    Passthrough { target: CollectedType, file_path: Utf8PathBuf },
+}
+
+/// The source of a default value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DefaultSource {
+    /// Extracted from parameter destructuring: `({ size = 'md' }: Props) => ...`
+    Destructuring,
+    /// Extracted from `Component.defaultProps = { size: 'md' }` assignment.
+    DefaultProps,
+    /// Extracted from `/** @default 'md' */` JSDoc/TSDoc annotation.
+    JsDoc,
+}
+
+/// A default value as collected by the extractor (before resolver processing).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RawDefault {
+    /// String representation of the default value (literal or source expression).
+    pub value: String,
+    /// True if `value` is a runtime expression we couldn't statically evaluate.
+    pub computed: bool,
+    /// Where this default came from.
+    pub source: DefaultSource,
 }
 
 /// A component → prop type mapping.
@@ -422,6 +634,9 @@ pub struct ComponentMapping {
     /// Byte span for diagnostics
     pub span_start: u32,
     pub span_end: u32,
+    /// Default values extracted from parameter destructuring or defaultProps.
+    /// Key = prop name. Populated only for implementation files (.tsx/.ts), not .d.ts.
+    pub param_defaults: FxHashMap<String, RawDefault>,
 }
 
 // ─── Import/Export Types ──────────────────────────────────────────────────────
@@ -500,6 +715,18 @@ pub enum DiagnosticCode {
     ComponentDetectionFailed,
     BarrelResolutionFailed,
     Unknown,
+    /// JSDoc @default conflicts with code default value — code value was used.
+    JsDocDefaultMismatch,
+    /// Default value is a runtime expression that could not be statically evaluated.
+    ComputedDefault,
+    /// Indexed access type (Type["key"]) that could not be resolved from known tables.
+    IndexedAccessOpaque,
+    /// Template literal type that could not be statically expanded.
+    TemplateLiteralOpaque,
+    /// Callable component detected via call signature interface.
+    CallableComponent,
+    /// Discriminated union detected — props merged with discriminant surfaced.
+    DiscriminatedUnion,
 }
 
 // ─── Statistics ───────────────────────────────────────────────────────────────
@@ -550,11 +777,34 @@ pub struct GlobalSourceData {
 impl GlobalSourceData {
     /// Merge a single file's SourceData into the global data.
     pub fn merge(&mut self, file_path: &Utf8Path, data: SourceData) {
-        self.interfaces.extend(data.interfaces);
+        for (key, iface) in data.interfaces {
+            match self.interfaces.entry(key) {
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                    // Declaration merging: combine props and extends
+                    let existing = e.get_mut();
+                    existing.props.extend(iface.props);
+                    existing.extends.extend(iface.extends);
+                }
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(iface);
+                }
+            }
+        }
         self.type_aliases.extend(data.type_aliases);
         self.enums.extend(data.enums);
         self.import_map.insert(file_path.to_owned(), data.imports);
         self.re_export_map.insert(file_path.to_owned(), data.exports);
         self.component_mappings.extend(data.component_mappings);
+    }
+
+    /// Remove all entries contributed by `file_path`. Called before re-merging an updated file.
+    pub fn remove_file(&mut self, file_path: &Utf8Path) {
+        let prefix = format!("{}:", file_path);
+        self.interfaces.retain(|k, _| !k.starts_with(&prefix));
+        self.type_aliases.retain(|k, _| !k.starts_with(&prefix));
+        self.enums.retain(|k, _| !k.starts_with(&prefix));
+        self.import_map.remove(file_path);
+        self.re_export_map.remove(file_path);
+        self.component_mappings.retain(|m| m.file_path != file_path);
     }
 }

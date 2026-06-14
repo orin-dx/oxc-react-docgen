@@ -19,8 +19,9 @@ use oxc_syntax::scope::ScopeFlags;
 use rustc_hash::FxHashSet;
 
 use crate::types::{
-    CollectedInterface, CollectedTypeAlias, ComponentMapping, EnumEntry, EnumValue, ExtendsRef,
-    ImportBinding, LexedExport, RawProp, SourceData,
+    CollectedInterface, CollectedObjectField, CollectedType, CollectedTypeAlias, ComponentMapping,
+    DefaultSource, EnumEntry, EnumValue, ExtendsRef, ImportBinding, LexedExport, RawDefault,
+    RawProp, SourceData,
 };
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
@@ -119,7 +120,7 @@ impl<'src> SourceDataCollector<'src> {
                 type_args,
             };
         }
-        if crate::react_types::is_react_builtin(lookup_name) {
+        if crate::react_types::is_react_builtin(lookup_name, &rustc_hash::FxHashSet::default()) {
             return ExtendsRef::Builtin { name: name.into(), element: None, type_args };
         }
         // Check if imported
@@ -152,90 +153,276 @@ impl<'src> SourceDataCollector<'src> {
         type_params: &Option<OxcBox<'a, TSTypeParameterInstantiation<'a>>>,
     ) -> Vec<String> {
         match type_params {
-            Some(tp) => tp.params.iter().map(|p| self.ts_type_to_string(p)).collect(),
+            Some(tp) => {
+                tp.params.iter().map(|p| self.ts_type_to_collected(p).to_raw_string()).collect()
+            }
             None => vec![],
         }
     }
 
-    // ─── TSType → raw string representation ──────────────────────────────────
+    // ─── TSType → CollectedType ───────────────────────────────────────────────
 
-    fn ts_type_to_string<'a>(&self, ty: &TSType<'a>) -> String {
+    fn ts_type_to_collected<'a>(&self, ty: &TSType<'a>) -> CollectedType {
         match ty {
-            TSType::TSStringKeyword(_) => "string".to_owned(),
-            TSType::TSNumberKeyword(_) => "number".to_owned(),
-            TSType::TSBooleanKeyword(_) => "boolean".to_owned(),
-            TSType::TSNullKeyword(_) => "null".to_owned(),
-            TSType::TSUndefinedKeyword(_) => "undefined".to_owned(),
-            TSType::TSAnyKeyword(_) => "any".to_owned(),
-            TSType::TSNeverKeyword(_) => "never".to_owned(),
-            TSType::TSUnknownKeyword(_) => "unknown".to_owned(),
-            TSType::TSVoidKeyword(_) => "void".to_owned(),
-            TSType::TSObjectKeyword(_) => "object".to_owned(),
-            TSType::TSBigIntKeyword(_) => "bigint".to_owned(),
-            TSType::TSSymbolKeyword(_) => "symbol".to_owned(),
-            TSType::TSTypeReference(tr) => {
-                let name = self.ts_type_name_str(&tr.type_name);
-                let args = self.extract_type_args(&tr.type_arguments);
-                if args.is_empty() {
-                    name
-                } else {
-                    format!("{}<{}>", name, args.join(", "))
-                }
+            TSType::TSStringKeyword(_) => CollectedType::String,
+            TSType::TSNumberKeyword(_) => CollectedType::Number,
+            TSType::TSBooleanKeyword(_) => CollectedType::Boolean,
+            TSType::TSNullKeyword(_) => CollectedType::Null,
+            TSType::TSUndefinedKeyword(_) => CollectedType::Undefined,
+            TSType::TSAnyKeyword(_) => CollectedType::Any,
+            TSType::TSNeverKeyword(_) => CollectedType::Never,
+            TSType::TSUnknownKeyword(_) => CollectedType::Unknown,
+            TSType::TSVoidKeyword(_) => CollectedType::Void,
+            TSType::TSBigIntKeyword(_) => CollectedType::BigInt,
+            TSType::TSSymbolKeyword(_) => CollectedType::Symbol,
+            TSType::TSObjectKeyword(_) => {
+                CollectedType::Named { name: "object".into(), args: vec![] }
             }
-            TSType::TSUnionType(u) => {
-                u.types.iter().map(|t| self.ts_type_to_string(t)).collect::<Vec<_>>().join(" | ")
-            }
-            TSType::TSIntersectionType(i) => {
-                i.types.iter().map(|t| self.ts_type_to_string(t)).collect::<Vec<_>>().join(" & ")
-            }
-            TSType::TSArrayType(a) => format!("{}[]", self.ts_type_to_string(&a.element_type)),
+
             TSType::TSLiteralType(lit) => match &lit.literal {
-                TSLiteral::StringLiteral(s) => format!("\"{}\"", s.value.as_str()),
-                TSLiteral::NumericLiteral(n) => n.value.to_string(),
-                TSLiteral::BooleanLiteral(b) => b.value.to_string(),
-                TSLiteral::UnaryExpression(u) => {
-                    format!("{}{}", u.operator.as_str(), self.expression_to_string(&u.argument))
+                TSLiteral::StringLiteral(s) => {
+                    CollectedType::StringLiteral(s.value.as_str().into())
                 }
-                _ => "literal".to_owned(),
+                TSLiteral::NumericLiteral(n) => CollectedType::NumberLiteral(n.value),
+                TSLiteral::BooleanLiteral(b) => CollectedType::BoolLiteral(b.value),
+                TSLiteral::UnaryExpression(u) => {
+                    // Handle negative numbers: -1
+                    let raw =
+                        self.source[u.span.start as usize..u.span.end as usize].to_owned();
+                    CollectedType::Raw(raw)
+                }
+                _ => CollectedType::Raw(
+                    self.source[lit.span.start as usize..lit.span.end as usize].to_owned(),
+                ),
             },
-            TSType::TSFunctionType(_) => "(...args: any[]) => any".to_owned(),
-            TSType::TSTupleType(_) => "any[]".to_owned(),
-            TSType::TSTypeLiteral(tl) => {
-                // Inline object type: { key: Type }
-                let members: Vec<String> = tl
+
+            TSType::TSTypeReference(tr) => {
+                let name: CompactString = self.ts_type_name_str(&tr.type_name).into();
+                let args = tr
+                    .type_arguments
+                    .as_ref()
+                    .map(|ta| ta.params.iter().map(|p| self.ts_type_to_collected(p)).collect())
+                    .unwrap_or_default();
+                CollectedType::Named { name, args }
+            }
+
+            TSType::TSTypeQuery(q) => {
+                let name = self.ts_type_query_name(q);
+                CollectedType::TypeOf(name.into())
+            }
+
+            TSType::TSUnionType(u) => {
+                let members: Vec<CollectedType> =
+                    u.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
+                CollectedType::Union(members)
+            }
+
+            TSType::TSIntersectionType(i) => {
+                let members: Vec<CollectedType> =
+                    i.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
+                CollectedType::Intersection(members)
+            }
+
+            TSType::TSArrayType(a) => {
+                CollectedType::Array(Box::new(self.ts_type_to_collected(&a.element_type)))
+            }
+
+            TSType::TSTupleType(t) => {
+                let members: Vec<CollectedType> = t
+                    .element_types
+                    .iter()
+                    .map(|el| self.ts_tuple_element_to_collected(el))
+                    .collect();
+                CollectedType::Tuple(members)
+            }
+
+            TSType::TSTypeLiteral(lit) => {
+                let fields: Vec<CollectedObjectField> = lit
                     .members
                     .iter()
-                    .filter_map(|sig| match sig {
-                        TSSignature::TSPropertySignature(ps) => {
-                            let key = ps.key.static_name()?;
-                            let ty_str = ps
-                                .type_annotation
-                                .as_ref()
-                                .map(|ta| self.ts_type_to_string(&ta.type_annotation))
-                                .unwrap_or_else(|| "any".to_owned());
-                            Some(format!(
-                                "{}{}: {}",
-                                key,
-                                if ps.optional { "?" } else { "" },
-                                ty_str
-                            ))
-                        }
-                        _ => None,
+                    .filter_map(|member| self.ts_signature_to_object_field(member))
+                    .collect();
+                CollectedType::Object(fields)
+            }
+
+            TSType::TSFunctionType(f) => {
+                // In OXC 0.135, FormalParameter has type_annotation as a separate field
+                let params: Vec<CollectedType> = f
+                    .params
+                    .items
+                    .iter()
+                    .map(|p| {
+                        p.type_annotation
+                            .as_ref()
+                            .map(|ta| self.ts_type_to_collected(&ta.type_annotation))
+                            .unwrap_or(CollectedType::Any)
                     })
                     .collect();
-                format!("{{ {} }}", members.join("; "))
+                // return_type on TSFunctionType is Box<TSTypeAnnotation> (not Option)
+                let return_type =
+                    self.ts_type_to_collected(&f.return_type.type_annotation);
+                CollectedType::Function {
+                    params,
+                    return_type: Box::new(return_type),
+                }
             }
+
+            TSType::TSIndexedAccessType(ia) => CollectedType::IndexedAccess {
+                obj: Box::new(self.ts_type_to_collected(&ia.object_type)),
+                key: Box::new(self.ts_type_to_collected(&ia.index_type)),
+            },
+
+            TSType::TSTemplateLiteralType(tl) => {
+                let mut parts: Vec<CollectedType> = Vec::new();
+                for (i, quasi) in tl.quasis.iter().enumerate() {
+                    let s = quasi.value.raw.as_str();
+                    if !s.is_empty() {
+                        parts.push(CollectedType::StringLiteral(s.into()));
+                    }
+                    if let Some(ty) = tl.types.get(i) {
+                        parts.push(self.ts_type_to_collected(ty));
+                    }
+                }
+                CollectedType::TemplateLiteral(parts)
+            }
+
+            TSType::TSConditionalType(c) => CollectedType::Conditional {
+                check: Box::new(self.ts_type_to_collected(&c.check_type)),
+                extends_type: Box::new(self.ts_type_to_collected(&c.extends_type)),
+                true_type: Box::new(self.ts_type_to_collected(&c.true_type)),
+                false_type: Box::new(self.ts_type_to_collected(&c.false_type)),
+            },
+
+            TSType::TSMappedType(m) => {
+                // In OXC 0.135, TSMappedType has `constraint: TSType` directly (not via
+                // type_parameter) and `type_annotation: Option<TSType>` (not Box<TSTypeAnnotation>)
+                let key_type = self.ts_type_to_collected(&m.constraint);
+                let value_type = m
+                    .type_annotation
+                    .as_ref()
+                    .map(|ta| self.ts_type_to_collected(ta))
+                    .unwrap_or(CollectedType::Unknown);
+                CollectedType::Mapped {
+                    key_type: Box::new(key_type),
+                    value_type: Box::new(value_type),
+                }
+            }
+
             TSType::TSParenthesizedType(p) => {
-                format!("({})", self.ts_type_to_string(&p.type_annotation))
+                // Unwrap parentheses — (Type) → Type
+                self.ts_type_to_collected(&p.type_annotation)
             }
-            TSType::TSThisType(_) => "this".to_owned(),
+
+            // TSTypeOperatorType covers keyof, unique, readonly
             TSType::TSTypeOperatorType(op) => {
-                format!("{} {}", op.operator.to_str(), self.ts_type_to_string(&op.type_annotation))
+                let raw =
+                    self.source[op.span.start as usize..op.span.end as usize].to_owned();
+                CollectedType::Raw(raw)
             }
-            _ => "unknown".to_owned(),
+
+            TSType::TSInferType(i) => {
+                let raw =
+                    self.source[i.span.start as usize..i.span.end as usize].to_owned();
+                CollectedType::Raw(raw)
+            }
+
+            // Anything else: capture raw source text as fallback
+            _ => {
+                use oxc_span::GetSpan;
+                let span = ty.span();
+                let raw =
+                    self.source[span.start as usize..span.end as usize].to_owned();
+                CollectedType::Raw(raw)
+            }
         }
     }
 
+    /// Convert a `TSTupleElement` (which is a superset of `TSType`) to a `CollectedType`.
+    ///
+    /// TSTupleElement inherits all TSType variants and adds TSOptionalType and TSRestType.
+    fn ts_tuple_element_to_collected<'a>(&self, el: &TSTupleElement<'a>) -> CollectedType {
+        match el {
+            TSTupleElement::TSOptionalType(o) => {
+                // T? in tuple → Union([T, Undefined])
+                let inner = self.ts_type_to_collected(&o.type_annotation);
+                CollectedType::Union(vec![inner, CollectedType::Undefined])
+            }
+            TSTupleElement::TSRestType(r) => {
+                // ...T[] in tuple → Array(T)
+                CollectedType::Array(Box::new(self.ts_type_to_collected(&r.type_annotation)))
+            }
+            // All TSType variants are inherited — we can safely transmute via span+raw fallback
+            // but the cleanest approach is to match the known shared variants.
+            // Since TSTupleElement inherits TSType, we cast via the span trick:
+            other => {
+                use oxc_span::GetSpan;
+                let span = other.span();
+                let raw = self.source[span.start as usize..span.end as usize].to_owned();
+                // Try to produce a real type from source-text parsing would require re-parsing,
+                // so instead we check common patterns via span-based raw parsing and use
+                // the raw fallback for anything we can't directly handle.
+                // For the common case of plain TSType variants (not TSOptionalType/TSRestType),
+                // we need to re-interpret the element as a TSType. We can't do this safely
+                // at runtime without unsafe, but all such variants produce valid CollectedType
+                // via raw text. Most real tuple usage is simple types.
+                CollectedType::Raw(raw)
+            }
+        }
+    }
+
+    fn ts_type_query_name<'a>(&self, q: &TSTypeQuery<'a>) -> String {
+        // TSTypeQueryExprName can be Identifier or a qualified name
+        // Capture the source text of the expression name
+        use oxc_span::GetSpan;
+        let span = q.expr_name.span();
+        self.source[span.start as usize..span.end as usize].to_owned()
+    }
+
+    fn ts_signature_to_object_field<'a>(
+        &self,
+        member: &TSSignature<'a>,
+    ) -> Option<CollectedObjectField> {
+        match member {
+            TSSignature::TSPropertySignature(sig) => {
+                let name = match &sig.key {
+                    PropertyKey::StaticIdentifier(id) => id.name.as_str().to_owned(),
+                    PropertyKey::StringLiteral(s) => s.value.as_str().to_owned(),
+                    _ => return None,
+                };
+                let collected_type = sig
+                    .type_annotation
+                    .as_ref()
+                    .map(|ta| self.ts_type_to_collected(&ta.type_annotation))
+                    .unwrap_or(CollectedType::Any);
+                let description = self.find_jsdoc(sig.span.start);
+                Some(CollectedObjectField {
+                    name,
+                    collected_type,
+                    required: !sig.optional,
+                    description,
+                })
+            }
+            TSSignature::TSMethodSignature(sig) => {
+                let name = match &sig.key {
+                    PropertyKey::StaticIdentifier(id) => id.name.as_str().to_owned(),
+                    PropertyKey::StringLiteral(s) => s.value.as_str().to_owned(),
+                    _ => return None,
+                };
+                Some(CollectedObjectField {
+                    name,
+                    collected_type: CollectedType::Function {
+                        params: vec![CollectedType::Raw("...".into())],
+                        return_type: Box::new(CollectedType::Any),
+                    },
+                    required: !sig.optional,
+                    description: String::new(),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    #[allow(dead_code)]
     fn expression_to_string<'a>(&self, expr: &Expression<'a>) -> String {
         match expr {
             Expression::NumericLiteral(n) => n.value.to_string(),
@@ -322,18 +509,18 @@ impl<'src> SourceDataCollector<'src> {
         match sig {
             TSSignature::TSPropertySignature(ps) => {
                 let name = ps.key.static_name()?.to_string();
-                let raw_type = ps
+                let collected_type = ps
                     .type_annotation
                     .as_ref()
-                    .map(|ta| self.ts_type_to_string(&ta.type_annotation))
-                    .unwrap_or_else(|| "any".to_owned());
+                    .map(|ta| self.ts_type_to_collected(&ta.type_annotation))
+                    .unwrap_or(CollectedType::Any);
 
                 let description = self.find_jsdoc(ps.span.start);
                 let tags = self.extract_jsdoc_tags(ps.span.start);
 
                 Some(RawProp {
                     name,
-                    raw_type,
+                    collected_type,
                     required: !ps.optional,
                     description,
                     tags,
@@ -348,7 +535,10 @@ impl<'src> SourceDataCollector<'src> {
 
                 Some(RawProp {
                     name,
-                    raw_type: "(...args: any[]) => any".to_owned(),
+                    collected_type: CollectedType::Function {
+                        params: vec![CollectedType::Raw("...".into())],
+                        return_type: Box::new(CollectedType::Any),
+                    },
                     required: !ms.optional,
                     description,
                     tags,
@@ -377,82 +567,98 @@ impl<'src> SourceDataCollector<'src> {
                         if tp.params.len() < 2 {
                             return None;
                         }
-                        let (base_name, _) = self.extract_type_name_from_type(&tp.params[0])?;
+                        let (base_name, base_args) =
+                            self.extract_type_name_from_type(&tp.params[0])?;
+                        let base = CollectedType::Named {
+                            name: base_name,
+                            args: base_args
+                                .into_iter()
+                                .map(CollectedType::Raw)
+                                .collect(),
+                        };
                         let omitted_keys = self.collect_string_union_keys(&tp.params[1]);
-                        Some(CollectedTypeAlias::Omit { base_name, omitted_keys, file_path: fp })
+                        Some(CollectedTypeAlias::Omit { base, omitted_keys, file_path: fp })
                     }
                     "Pick" => {
                         let tp = tr.type_arguments.as_ref()?;
                         if tp.params.len() < 2 {
                             return None;
                         }
-                        let (base_name, _) = self.extract_type_name_from_type(&tp.params[0])?;
+                        let (base_name, base_args) =
+                            self.extract_type_name_from_type(&tp.params[0])?;
+                        let base = CollectedType::Named {
+                            name: base_name,
+                            args: base_args
+                                .into_iter()
+                                .map(CollectedType::Raw)
+                                .collect(),
+                        };
                         let picked_keys = self.collect_string_union_keys(&tp.params[1]);
-                        Some(CollectedTypeAlias::Pick { base_name, picked_keys, file_path: fp })
+                        Some(CollectedTypeAlias::Pick { base, picked_keys, file_path: fp })
                     }
                     "Partial" => {
                         let tp = tr.type_arguments.as_ref()?;
-                        let (base_name, _) =
+                        let (base_name, base_args) =
                             self.extract_type_name_from_type(tp.params.first()?)?;
-                        Some(CollectedTypeAlias::Partial { base_name, file_path: fp })
+                        let base = CollectedType::Named {
+                            name: base_name,
+                            args: base_args
+                                .into_iter()
+                                .map(CollectedType::Raw)
+                                .collect(),
+                        };
+                        Some(CollectedTypeAlias::Partial { base, file_path: fp })
                     }
                     "Required" => {
                         let tp = tr.type_arguments.as_ref()?;
-                        let (base_name, _) =
+                        let (base_name, base_args) =
                             self.extract_type_name_from_type(tp.params.first()?)?;
-                        Some(CollectedTypeAlias::Required { base_name, file_path: fp })
+                        let base = CollectedType::Named {
+                            name: base_name,
+                            args: base_args
+                                .into_iter()
+                                .map(CollectedType::Raw)
+                                .collect(),
+                        };
+                        Some(CollectedTypeAlias::Required { base, file_path: fp })
                     }
                     _ => {
                         // Simple passthrough: `type Size = SomeOtherType`
                         let args = self.extract_type_args(&tr.type_arguments);
-                        Some(CollectedTypeAlias::Passthrough {
-                            target_name: ref_name.into(),
-                            type_args: args,
-                            file_path: fp,
-                        })
+                        let target = CollectedType::Named {
+                            name: ref_name.into(),
+                            args: args.into_iter().map(CollectedType::Raw).collect(),
+                        };
+                        Some(CollectedTypeAlias::Passthrough { target, file_path: fp })
                     }
                 }
             }
             TSType::TSUnionType(u) => {
                 // Check if all members are string/number literals → LiteralUnion
-                let all_literals = u.types.iter().all(|t| {
-                    matches!(
-                        t,
-                        TSType::TSLiteralType(_)
-                            | TSType::TSUndefinedKeyword(_)
-                            | TSType::TSNullKeyword(_)
-                    )
-                });
-                let members: Vec<String> =
-                    u.types.iter().map(|t| self.ts_type_to_string(t)).collect();
-
-                if all_literals
-                    && u.types.iter().all(|t| {
-                        matches!(
-                            t,
-                            TSType::TSLiteralType(_)
-                                | TSType::TSUndefinedKeyword(_)
-                                | TSType::TSNullKeyword(_)
-                        )
-                    })
-                {
-                    // Check if all are string literals
-                    let all_string = u.types.iter().all(|t| match t {
-                        TSType::TSLiteralType(lit) => {
-                            matches!(lit.literal, TSLiteral::StringLiteral(_))
-                        }
-                        TSType::TSUndefinedKeyword(_) | TSType::TSNullKeyword(_) => true,
-                        _ => false,
-                    });
-                    if all_string {
-                        return Some(CollectedTypeAlias::LiteralUnion { members, file_path: fp });
+                let all_string_literals = u.types.iter().all(|t| match t {
+                    TSType::TSLiteralType(lit) => {
+                        matches!(lit.literal, TSLiteral::StringLiteral(_))
                     }
+                    TSType::TSUndefinedKeyword(_) | TSType::TSNullKeyword(_) => true,
+                    _ => false,
+                });
+
+                let members: Vec<CollectedType> =
+                    u.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
+
+                if all_string_literals {
+                    let member_strs: Vec<String> =
+                        members.iter().map(|m| m.to_raw_string()).collect();
+                    return Some(CollectedTypeAlias::LiteralUnion {
+                        members: member_strs,
+                        file_path: fp,
+                    });
                 }
                 Some(CollectedTypeAlias::Union { members, file_path: fp })
             }
             TSType::TSIntersectionType(i) => {
-                let members: Vec<String> =
-                    i.types.iter().map(|t| self.ts_type_to_string(t)).collect();
+                let members =
+                    i.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
                 Some(CollectedTypeAlias::Intersection { members, file_path: fp })
             }
             TSType::TSParenthesizedType(p) => {
@@ -535,6 +741,7 @@ impl<'src> SourceDataCollector<'src> {
                     tags: self.extract_jsdoc_tags(span_start),
                     span_start,
                     span_end,
+                    param_defaults: Default::default(),
                 })
             }
             TSType::TSParenthesizedType(p) => {
@@ -578,6 +785,7 @@ impl<'src> SourceDataCollector<'src> {
             tags: self.extract_jsdoc_tags(decl.span.start),
             span_start: decl.span.start,
             span_end: decl.span.end,
+            param_defaults: Default::default(),
         })
     }
 
@@ -616,6 +824,8 @@ impl<'src> SourceDataCollector<'src> {
         let (props_name, type_args) =
             self.extract_type_name_from_type(&type_ann.type_annotation)?;
 
+        let param_defaults = self.extract_param_defaults(params);
+
         Some(ComponentMapping {
             component_name: name.to_owned(),
             props_type_name: props_name,
@@ -625,7 +835,159 @@ impl<'src> SourceDataCollector<'src> {
             tags: self.extract_jsdoc_tags(decl.span.start),
             span_start: decl.span.start,
             span_end: decl.span.end,
+            param_defaults,
         })
+    }
+
+    /// Try to detect: `declare const Button: React.ForwardRefExoticComponent<ButtonProps & RefAttributes<E>>`
+    ///
+    /// Common in .d.ts files — no initializer, just a type annotation.
+    fn try_forward_ref_exotic_decl<'a>(
+        &self,
+        decl: &VariableDeclarator<'a>,
+        name: &str,
+    ) -> Option<ComponentMapping> {
+        let type_ann = decl.type_annotation.as_ref()?;
+        let ct = self.ts_type_to_collected(&type_ann.type_annotation);
+
+        // Look for ForwardRefExoticComponent<P & RefAttributes<E>>
+        // or ForwardRefExoticComponent<P>
+        let (type_name, args) = match &ct {
+            CollectedType::Named { name, args } => (name.as_str(), args.as_slice()),
+            _ => return None,
+        };
+
+        if !matches!(
+            type_name,
+            "ForwardRefExoticComponent" | "React.ForwardRefExoticComponent"
+        ) {
+            return None;
+        }
+
+        let first_arg = args.first()?;
+
+        // Extract P from P & RefAttributes<E>
+        let props_type = match first_arg {
+            CollectedType::Intersection(members) => {
+                // Find the member that is NOT RefAttributes/RefAttributes<E>
+                members
+                    .iter()
+                    .find(|m| {
+                        !matches!(m, CollectedType::Named { name, .. }
+                            if matches!(name.as_str(), "RefAttributes" | "React.RefAttributes"))
+                    })
+                    .unwrap_or(first_arg)
+            }
+            other => other,
+        };
+
+        let (props_name, props_args) = match props_type {
+            CollectedType::Named { name, args } => (name.clone(), args.clone()),
+            _ => return None,
+        };
+
+        // Convert args to strings for ComponentMapping (resolver will re-parse)
+        let props_type_args: Vec<String> =
+            props_args.iter().map(|a| a.to_raw_string()).collect();
+
+        Some(ComponentMapping {
+            component_name: name.to_owned(),
+            props_type_name: props_name,
+            props_type_args,
+            file_path: self.file_path.clone(),
+            description: self.find_jsdoc(decl.span.start),
+            tags: BTreeMap::new(),
+            span_start: decl.span.start,
+            span_end: decl.span.end,
+            param_defaults: rustc_hash::FxHashMap::default(),
+        })
+    }
+
+    /// Extract default values from destructured function parameters.
+    ///
+    /// Handles `({ size = 'md', disabled = false }: Props) => ...` patterns.
+    fn extract_param_defaults<'a>(
+        &self,
+        params: &FormalParameters<'a>,
+    ) -> rustc_hash::FxHashMap<String, RawDefault> {
+        let mut defaults = rustc_hash::FxHashMap::default();
+
+        let Some(first_param) = params.items.first() else {
+            return defaults;
+        };
+        // In OXC 0.135, BindingPattern is an enum directly (not a struct with .kind)
+        let BindingPattern::ObjectPattern(obj) = &first_param.pattern else {
+            return defaults;
+        };
+
+        for prop in &obj.properties {
+            // In OXC 0.135, BindingProperty.value is BindingPattern.
+            // A default value `{ size = 'md' }` is represented as
+            // BindingProperty { key: "size", value: BindingPattern::AssignmentPattern { left: "size", right: 'md' } }
+            let (name, default_expr) = match &prop.value {
+                BindingPattern::AssignmentPattern(ap) => {
+                    let name = match &ap.left {
+                        BindingPattern::BindingIdentifier(id) => id.name.as_str().to_owned(),
+                        _ => continue,
+                    };
+                    (name, &ap.right)
+                }
+                _ => continue,
+            };
+            let raw_default = self.eval_expr_as_default(default_expr);
+            defaults.insert(name, raw_default);
+        }
+        defaults
+    }
+
+    fn eval_expr_as_default<'a>(&self, expr: &Expression<'a>) -> RawDefault {
+        match expr {
+            Expression::StringLiteral(s) => RawDefault {
+                value: format!("\"{}\"", s.value.as_str()),
+                computed: false,
+                source: DefaultSource::Destructuring,
+            },
+            Expression::NumericLiteral(n) => RawDefault {
+                value: n.value.to_string(),
+                computed: false,
+                source: DefaultSource::Destructuring,
+            },
+            Expression::BooleanLiteral(b) => RawDefault {
+                value: b.value.to_string(),
+                computed: false,
+                source: DefaultSource::Destructuring,
+            },
+            Expression::NullLiteral(_) => RawDefault {
+                value: "null".into(),
+                computed: false,
+                source: DefaultSource::Destructuring,
+            },
+            Expression::Identifier(id) if id.name.as_str() == "undefined" => RawDefault {
+                value: "undefined".into(),
+                computed: false,
+                source: DefaultSource::Destructuring,
+            },
+            // Array and object literals: capture source text, not computed
+            Expression::ArrayExpression(_) | Expression::ObjectExpression(_) => {
+                use oxc_span::GetSpan;
+                let span = expr.span();
+                RawDefault {
+                    value: self.source[span.start as usize..span.end as usize].to_owned(),
+                    computed: false,
+                    source: DefaultSource::Destructuring,
+                }
+            }
+            // Everything else (identifier refs, calls, ternaries): computed
+            _ => {
+                use oxc_span::GetSpan;
+                let span = expr.span();
+                RawDefault {
+                    value: self.source[span.start as usize..span.end as usize].to_owned(),
+                    computed: true,
+                    source: DefaultSource::Destructuring,
+                }
+            }
+        }
     }
 
     /// Extract the callee name of a call expression (simple ident or member expr).
@@ -964,6 +1326,16 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                         .or_else(|| self.try_hoc_wrapped(declarator, &name))
                     {
                         self.data.component_mappings.push(mapping);
+                        continue;
+                    }
+                }
+            }
+            // Pattern 5: declare const Button: React.ForwardRefExoticComponent<ButtonProps & RefAttributes<E>>
+            // Common in .d.ts files — no initializer, just a type annotation
+            if declarator.init.is_none() {
+                if let Some(name) = self.extract_pascal_name(declarator) {
+                    if let Some(mapping) = self.try_forward_ref_exotic_decl(declarator, &name) {
+                        self.data.component_mappings.push(mapping);
                     }
                 }
             }
@@ -985,6 +1357,8 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                             {
                                 let description = self.find_jsdoc(func.span.start);
                                 let tags = self.extract_jsdoc_tags(func.span.start);
+                                let param_defaults =
+                                    self.extract_param_defaults(&func.params);
                                 self.data.component_mappings.push(ComponentMapping {
                                     component_name: name.to_owned(),
                                     props_type_name: props_name,
@@ -994,6 +1368,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                                     tags,
                                     span_start: func.span.start,
                                     span_end: func.span.end,
+                                    param_defaults,
                                 });
                             }
                         }
@@ -1203,7 +1578,7 @@ mod tests {
         assert_eq!(iface.props.len(), 3);
 
         let label = iface.props.iter().find(|p| p.name == "label").unwrap();
-        assert_eq!(label.raw_type, "string");
+        assert_eq!(label.collected_type.to_raw_string(), "string");
         assert!(label.required);
 
         let count = iface.props.iter().find(|p| p.name == "count").unwrap();
@@ -1298,8 +1673,8 @@ mod tests {
         let alias = data.type_aliases.get("/test/types.ts:PartialProps");
         assert!(alias.is_some(), "PartialProps alias not collected");
         match alias.unwrap() {
-            CollectedTypeAlias::Omit { base_name, omitted_keys, .. } => {
-                assert_eq!(base_name.as_str(), "FullProps");
+            CollectedTypeAlias::Omit { base, omitted_keys, .. } => {
+                assert_eq!(base.to_raw_string(), "FullProps");
                 assert!(omitted_keys.contains(&"b".to_owned()));
                 assert!(omitted_keys.contains(&"c".to_owned()));
             }

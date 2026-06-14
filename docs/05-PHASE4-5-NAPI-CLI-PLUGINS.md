@@ -40,6 +40,22 @@ pub struct JsExtractOptions {
     pub pandacss_outdir: Option<String>,
     pub variant_functions: Option<Vec<String>>,
     pub skip_html_props: Option<bool>,
+    // NEW fields:
+    pub tsconfig_path: Option<String>,
+    /// Record<string, string[]> — additional path alias mappings to merge with tsconfig paths.
+    pub extra_paths: Option<serde_json::Value>,
+    /// Record<string, KnownTypeOverride> — override resolution for specific type names.
+    pub known_type_overrides: Option<serde_json::Value>,
+    /// Extra type names to treat as built-in opaque types (in addition to the default set).
+    pub extra_builtins: Option<Vec<String>>,
+    /// Enable Vanilla Extract CSS-in-JS detection.
+    pub vanilla_extract: Option<bool>,
+    /// Directory for the DTS resolution cache.
+    /// Defaults to `{project_root}/node_modules/.cache/oxc-react-docgen` — CI-friendly,
+    /// matches Node.js convention. NOT the user home directory.
+    pub cache_dir: Option<String>,
+    /// Opt-in to resolving complex conditional/mapped types via typescript-go (future, post-v1).
+    pub resolve_complex_types: Option<bool>,
 }
 
 impl From<JsExtractOptions> for PipelineOptions {
@@ -63,6 +79,20 @@ impl From<JsExtractOptions> for PipelineOptions {
         }
     }
 }
+
+// NOTE — Cache default:
+// `cache_dir` defaults to `{project_root}/node_modules/.cache/oxc-react-docgen`.
+// This is CI-friendly (invalidated with node_modules) and matches Node.js convention.
+// Do NOT use `dirs::cache_dir()` (user home) — it survives across CI runs and can
+// cause stale cache hits when the project is rebuilt from scratch.
+
+// NOTE — Session IDs:
+// Use `AtomicU64` with `(process_id << 32) | counter` to guarantee uniqueness
+// across multiple concurrent Vite dev server instances on the same machine.
+// Example:
+//   let pid_part = (std::process::id() as u64) << 32;
+//   let counter  = NEXT_SESSION_COUNTER.fetch_add(1, Ordering::SeqCst) as u64;
+//   let session_id = pid_part | counter;
 
 /// Cold extraction — no session state. Returns JSON string.
 /// 
@@ -498,6 +528,99 @@ fn cmd_inspect(args: InspectArgs) -> Result<()> {
 }
 ```
 
+## Additional CLI dependencies (`crates/cli/Cargo.toml`)
+
+```toml
+comfy-table = "7.0"     # prop table in inspect command
+crossterm   = "0.28"    # raw terminal input for watch mode (q to quit, r to re-extract)
+```
+
+## `inspect` command — table output with `comfy-table`
+
+Replace the manual column-aligned `println!` loop above with a proper table:
+
+```rust
+fn cmd_inspect(args: InspectArgs) -> Result<()> {
+    use comfy_table::{Table, Cell, Color, Attribute};
+    
+    // ... (component lookup as above) ...
+    
+    let mut table = Table::new();
+    table.set_header(vec!["Prop", "Type", "Req", "Default", "From"]);
+    
+    for (_, prop) in &component.props {
+        table.add_row(vec![
+            Cell::new(&prop.name).add_attribute(Attribute::Bold),
+            Cell::new(prop.prop_type.raw_string()).fg(Color::Cyan),
+            Cell::new(if prop.required { "✓" } else { "–" }),
+            Cell::new(prop.default_value.as_ref().map(|d| d.value.as_str()).unwrap_or("–")),
+            Cell::new(prop.parent.as_ref().map(|p| p.name.as_str()).unwrap_or("–")).fg(Color::DarkGrey),
+        ]);
+    }
+    println!("{table}");
+    Ok(())
+}
+```
+
+## Watch mode — `watchexec` 8.x API
+
+Use the async `Watchexec` API (8.x broke the 2.x closure-based API):
+
+```rust
+use watchexec::Watchexec;
+
+async fn cmd_watch(args: WatchArgs, quiet: bool) -> Result<()> {
+    let src_dir = args.src.first().cloned().unwrap_or_else(|| "./src".into());
+    
+    let wx = Watchexec::new_async(|mut action| async move {
+        for event in action.events.iter() {
+            for (path, _) in event.paths() {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if matches!(ext, "ts" | "tsx") {
+                    // trigger re-extraction
+                }
+            }
+        }
+        action
+    }).await?;
+    wx.config.pathset([src_dir]);
+    wx.main().await??;
+    Ok(())
+}
+```
+
+## Config file loading (`docgen.config.ts`)
+
+```rust
+/// Try to load docgen.config.ts from project root, walking up to workspace root.
+/// Spawns node with tsx to evaluate the TS config file.
+/// Returns None if file not found or node not available.
+fn load_config_file(root: &Utf8Path) -> Option<PipelineOptions> {
+    let config_path = find_config_file(root)?; // walks up to workspace root
+    
+    let script = format!(
+        "import cfg from '{}'; process.stdout.write(JSON.stringify(cfg.default ?? cfg))",
+        config_path
+    );
+    
+    let output = std::process::Command::new("node")
+        .args(["--input-type=module", "--import=tsx/esm"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .current_dir(root)
+        .spawn()
+        .ok()?
+        .wait_with_output()
+        .ok()?;
+    
+    if !output.status.success() { return None; }
+    serde_json::from_slice(&output.stdout).ok()
+}
+```
+
+The `find_config_file` helper walks from `root` upward, stopping at a workspace root marker (`pnpm-workspace.yaml`, `package.json` with `"workspaces"`, or a `.git` directory). This allows monorepo projects to place a single `docgen.config.ts` at the workspace root and have it discovered from any package.
+
 ---
 
 # Agent: Vite Plugin (Phase 5a)
@@ -577,112 +700,93 @@ export interface OxcReactDocgenOptions {
   skipHtmlProps?: boolean
 }
 
-export function oxcReactDocgen(userOptions: OxcReactDocgenOptions = {}): Plugin {
+// ── Vite 8 / Rolldown-compatible implementation ─────────────────────────────
+//
+// Key changes from a naive Vite 5/6 port:
+//   - Returns Plugin[] (not Plugin) — allows splitting extraction from virtual module
+//   - Uses `hotUpdate` (not `handleHotUpdate`) — Vite 8 renamed it
+//   - Returns `moduleType: 'js'` in transform — required for Rolldown
+//   - Uses `filter: { id: /pattern/ }` on transform hook — Rolldown perf hint
+//   - Guards `this.environment?.name === 'ssr'` — skips SSR environment
+//   - Extraction is fully async and non-blocking — no `extractionReady` promise gate
+//   - `autoDetect()` + `loadConfigFile()` for zero-config support
+
+export function oxcReactDocgen(inlineOptions: Options = {}): Plugin[] {
   const filter = createFilter(
-    userOptions.include ?? /\.(tsx|ts)$/,
-    userOptions.exclude ?? [
-      /node_modules/,
-      /\.stories\./,
-      /\.test\./,
-      /\.spec\./,
-      /__snapshots__/,
-    ]
+    inlineOptions.include ?? /\.(tsx?|d\.ts)$/,
+    inlineOptions.exclude ?? [/node_modules/, /\.stories\./, /\.test\./, /\.spec\./]
   )
-
-  const napiOptions: ExtractOptions = {
-    srcDirs: [], // set in configResolved
-    reactVersion: userOptions.reactVersion ?? 'react19',
-    crossPackage: userOptions.crossPackage,
-    pandacssOutdir: userOptions.pandacssOutdir === false
-      ? undefined
-      : userOptions.pandacssOutdir,
-    variantFunctions: userOptions.variantFunctions,
-    skipHtmlProps: userOptions.skipHtmlProps,
-  }
-
+  
   let sessionId: number | null = null
   let extractionResult: Record<string, ComponentEntry> = {}
-  let extractionReady: Promise<void> | null = null
-  let root: string = process.cwd()
-
-  return {
-    name: 'oxc-react-docgen',
-    enforce: 'pre', // see source before other transforms
-
+  let extractionComplete = false
+  let napiOptions: ResolvedOptions
+  
+  const extractionPlugin: Plugin = {
+    name: 'oxc-react-docgen:extract',
+    enforce: 'pre',
+    
     async configResolved(config) {
-      root = config.root
-      napiOptions.srcDirs = [root + '/src'] // sensible default
-
+      const detected = await autoDetect(config.root)
+      const configFile = await loadConfigFile(config.root)
+      napiOptions = mergeOptions(DEFAULTS, detected, configFile, inlineOptions).rust
+      
       const api = await getNapi()
       sessionId = api.createSession(napiOptions)
-
-      // Start extraction — non-blocking, resolves before first transform needed
-      extractionReady = Promise.resolve().then(async () => {
-        const json = api.extractAll(napiOptions)
-        const output: ExtractionOutput = JSON.parse(json)
-
-        // Build file-path lookup for transform hook
-        for (const [, entry] of Object.entries(output.components)) {
+      
+      // Start extraction async — don't block Vite startup
+      api.extractAll(napiOptions)
+        .then(json => {
+          const output: ExtractionOutput = JSON.parse(json)
+          for (const [, entry] of Object.entries(output.components)) {
+            extractionResult[entry.filePath] = entry
+          }
+          extractionComplete = true
+          // Modules will pick up __docgenInfo on next HMR cycle or page reload
+        })
+        .catch(err => config.logger.warn(`[oxc-react-docgen] extraction failed: ${err}`))
+    },
+    
+    // Vite 8 / Rolldown: declare filter for Rolldown perf (skips the hook for non-matching ids)
+    transform: {
+      filter: { id: /\.(tsx?|d\.ts)$/ },
+      async handler(code, id) {
+        // Skip SSR environment — __docgenInfo is client-only
+        if (this.environment?.name === 'ssr') return null
+        if (!filter(id)) return null
+        
+        const component = extractionResult[id]
+        if (!component) {
+          // Extraction may still be in progress; return unchanged
+          return null
+        }
+        
+        return {
+          code: `${code}\n${buildDocgenBlock(component)}`,
+          map: null,
+          moduleType: 'js',  // REQUIRED for Vite 8 / Rolldown
+        }
+      }
+    },
+    
+    // Vite 8: hotUpdate (renamed from handleHotUpdate)
+    hotUpdate({ file, environment }) {
+      if (!filter(file) || sessionId === null) return
+      if (environment.name !== 'client') return  // skip SSR environment
+      
+      getNapi().then(api => {
+        const json = api.extractFileIncremental(file, sessionId!, napiOptions)
+        const update: IncrementalUpdate = JSON.parse(json)
+        for (const entry of update.updatedComponents) {
           extractionResult[entry.filePath] = entry
         }
-
-        // Log warnings to Vite's logger
-        for (const diag of output.diagnostics) {
-          if (diag.severity === 'warning') {
-            config.logger.warn(`[oxc-react-docgen] ${diag.message}`)
-          } else if (diag.severity === 'error') {
-            config.logger.error(`[oxc-react-docgen] ${diag.message}`)
-          }
-        }
+        // Return invalidated modules to Vite for HMR
+        return update.affectedFiles
+          .map(f => environment.moduleGraph.getModuleById(f))
+          .filter((m): m is NonNullable<typeof m> => m != null)
       })
     },
-
-    async transform(code, id) {
-      if (!filter(id)) return null
-
-      // Wait for initial extraction to complete
-      // In practice this is already done by the time the first module is requested
-      await extractionReady
-
-      const component = extractionResult[id]
-      if (!component) return null
-
-      // Apply propFilter if provided (TypeScript-side filtering)
-      let props = Object.values(component.props)
-      if (userOptions.propFilter) {
-        props = props.filter(userOptions.propFilter)
-        component.props = Object.fromEntries(props.map(p => [p.name, p]))
-      }
-
-      // Inject __docgenInfo — appended to the module, doesn't affect source map
-      const docgenBlock = buildDocgenBlock(component)
-      return {
-        code: `${code}\n${docgenBlock}`,
-        map: null, // docgenInfo injection doesn't need source maps
-      }
-    },
-
-    async handleHotUpdate({ file, server }) {
-      if (!filter(file) || sessionId === null) return
-
-      const api = await getNapi()
-      const json = api.extractFileIncremental(file, sessionId, napiOptions)
-      const update: IncrementalUpdate = JSON.parse(json)
-
-      // Update our lookup cache
-      for (const entry of update.updatedComponents) {
-        extractionResult[entry.filePath] = entry
-      }
-
-      // Let Vite invalidate and re-transform the affected modules
-      // Vite will re-run our transform hook, which will pick up the updated props
-      const affectedModules = update.affectedFiles
-        .map(f => server.moduleGraph.getModuleById(f))
-        .filter((m): m is NonNullable<typeof m> => m != null)
-
-      return affectedModules
-    },
-
+    
     buildEnd() {
       if (sessionId !== null) {
         getNapi().then(api => api.closeSession(sessionId!))
@@ -690,6 +794,11 @@ export function oxcReactDocgen(userOptions: OxcReactDocgenOptions = {}): Plugin 
       }
     },
   }
+  
+  return [
+    extractionPlugin,
+    virtualModulePlugin(/* see virtual module plugin spec below */),
+  ]
 }
 
 function buildDocgenBlock(component: ComponentEntry): string {
@@ -728,7 +837,7 @@ export type { ComponentEntry, PropItem, ExtractionOutput } from '@oxc-react-docg
     }
   },
   "peerDependencies": {
-    "vite": ">=5.0.0"
+    "vite": ">=5.0.0 || ^8.0.0"
   },
   "dependencies": {
     "@oxc-react-docgen/napi": "workspace:*"

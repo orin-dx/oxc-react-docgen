@@ -27,9 +27,16 @@ pub fn html_element_for(type_name: &str) -> Option<&'static str> {
 ///
 /// These are React-specific type names that we recognize as builtins and don't
 /// attempt to chase through imports.
-pub fn is_react_builtin(name: &str) -> bool {
-    matches!(
-        name,
+///
+/// `extra` allows callers (e.g. the resolver) to pass additional builtin names
+/// from `PipelineOptions.extra_builtins` without needing to change this file.
+pub fn is_react_builtin(
+    name: &str,
+    extra: &rustc_hash::FxHashSet<compact_str::CompactString>,
+) -> bool {
+    extra.contains(name)
+        || matches!(
+            name,
         "ReactNode"
             | "ReactElement"
             | "JSX.Element"
@@ -87,7 +94,7 @@ pub fn is_react_builtin(name: &str) -> bool {
             | "ReactChild"
             | "ForwardRefExoticComponent"
             | "RefAttributes"
-    )
+        )
 }
 
 /// React 18 vs 19 behavioral differences for component detection.

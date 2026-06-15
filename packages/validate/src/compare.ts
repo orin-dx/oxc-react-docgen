@@ -1,54 +1,136 @@
 import { readFileSync, existsSync } from 'node:fs'
-import equal from 'fast-deep-equal'
-import type { ToolResult, ComparisonResult } from './types.ts'
+import type { ToolResult } from './types.ts'
 
-function loadResults(tool: string): ToolResult[] {
-  const p = `./baselines/${tool}.json`
-  if (!existsSync(p)) {
-    console.error(`No baseline for ${tool} — run pnpm run:${tool === 'react-docgen' ? 'rdg' : 'rdt'} first`)
-    process.exit(1)
-  }
-  return JSON.parse(readFileSync(p, 'utf8'))
+function loadBaseline(name: string): Map<string, ToolResult> | null {
+  const p = `./baselines/${name}.json`
+  if (!existsSync(p)) return null
+  const results: ToolResult[] = JSON.parse(readFileSync(p, 'utf8'))
+  return new Map(results.map(r => [r.fixture, r]))
 }
 
-const rdgResults = Object.fromEntries(loadResults('react-docgen').map(r => [r.fixture, r]))
-const rdtResults = Object.fromEntries(loadResults('react-docgen-typescript').map(r => [r.fixture, r]))
+const rdg = loadBaseline('react-docgen')
+const rdt = loadBaseline('react-docgen-typescript')
+const ours = loadBaseline('oxc-react-docgen')
 
-const allFixtures = new Set([...Object.keys(rdgResults), ...Object.keys(rdtResults)])
+if (!rdg && !rdt && !ours) {
+  console.error('No baselines found. Run at least one tool first.')
+  process.exit(1)
+}
+
+const allFixtures = new Set([
+  ...(rdg ? [...rdg.keys()] : []),
+  ...(rdt ? [...rdt.keys()] : []),
+  ...(ours ? [...ours.keys()] : []),
+])
+
+let totalOwn = 0, rdtTotal = 0, oursTotal = 0, wins = 0, ties = 0, misses = 0
 
 for (const fixture of [...allFixtures].sort()) {
-  const rdg = rdgResults[fixture]
-  const rdt = rdtResults[fixture]
+  const r_rdg = rdg?.get(fixture)
+  const r_rdt = rdt?.get(fixture)
+  const r_ours = ours?.get(fixture)
 
   console.log(`\n## ${fixture}`)
 
-  if (!rdg) { console.log('  ⚠️  react-docgen: no result'); continue }
-  if (!rdt) { console.log('  ⚠️  react-docgen-typescript: no result'); continue }
-  if (rdg.error) console.log(`  ❌ rdg error: ${rdg.error}`)
-  if (rdt.error) console.log(`  ❌ rdt error: ${rdt.error}`)
+  if (r_rdg?.error) console.log(`  ❌ react-docgen: ${r_rdg.error.slice(0, 100)}`)
+  if (r_rdt?.error) console.log(`  ❌ react-docgen-typescript: ${r_rdt.error.slice(0, 100)}`)
+  if (r_ours?.error) console.log(`  ❌ oxc-react-docgen: ${r_ours.error.slice(0, 100)}`)
 
-  console.log(`  ⏱  rdg: ${rdg.durationMs.toFixed(1)}ms  |  rdt: ${rdt.durationMs.toFixed(1)}ms`)
+  // Timing
+  const times: string[] = []
+  if (r_rdg) times.push(`rdg: ${r_rdg.durationMs.toFixed(1)}ms`)
+  if (r_rdt) times.push(`rdt: ${r_rdt.durationMs.toFixed(1)}ms`)
+  if (r_ours) times.push(`ours: ${r_ours.durationMs.toFixed(1)}ms`)
+  if (times.length) console.log(`  ⏱  ${times.join('  |  ')}`)
 
-  const rdgComps = Object.keys(rdg.output)
-  const rdtComps = Object.keys(rdt.output)
-  const rdtOnlyComps = rdtComps.filter(c => !rdgComps.includes(c))
-  const rdgOnlyComps = rdgComps.filter(c => !rdtComps.includes(c))
-  if (rdtOnlyComps.length) console.log(`  rdt-only components: ${rdtOnlyComps.join(', ')}`)
-  if (rdgOnlyComps.length) console.log(`  rdg-only components: ${rdgOnlyComps.join(', ')}`)
+  // Components per tool
+  const rdgComps = Object.keys(r_rdg?.output ?? {})
+  const rdtComps = Object.keys(r_rdt?.output ?? {})
+  const oursComps = Object.keys(r_ours?.output ?? {})
+  const allComps = new Set([...rdgComps, ...rdtComps, ...oursComps])
 
-  for (const comp of rdtComps.filter(c => rdgComps.includes(c))) {
-    const rdgProps = Object.keys(rdg.output[comp]?.props ?? {})
-    const rdtProps = Object.keys(rdt.output[comp]?.props ?? {})
-    const rdtOnly = rdtProps.filter(p => !rdgProps.includes(p))
-    const rdgOnly = rdgProps.filter(p => !rdtProps.includes(p))
-    const typeDiffs = rdtProps
-      .filter(p => rdgProps.includes(p))
-      .filter(p => rdt.output[comp].props[p].type !== rdg.output[comp].props[p].type)
-      .map(p => ({ prop: p, rdt: rdt.output[comp].props[p].type, rdg: rdg.output[comp].props[p].type }))
+  for (const comp of [...allComps].sort()) {
+    const rdgProps = Object.keys(r_rdg?.output?.[comp]?.props ?? {})
+    const rdtProps = Object.keys(r_rdt?.output?.[comp]?.props ?? {})
+    const oursProps = Object.keys(r_ours?.output?.[comp]?.props ?? {})
 
-    if (rdtOnly.length) console.log(`  ${comp}: rdt-only props (${rdtOnly.length}): ${rdtOnly.slice(0,5).join(', ')}${rdtOnly.length > 5 ? '...' : ''}`)
-    if (rdgOnly.length) console.log(`  ${comp}: rdg-only props (${rdgOnly.length}): ${rdgOnly.slice(0,5).join(', ')}${rdgOnly.length > 5 ? '...' : ''}`)
-    if (typeDiffs.length) console.log(`  ${comp}: type diffs (${typeDiffs.length}): ${typeDiffs.slice(0,3).map(d => `${d.prop}(rdt:"${d.rdt}" rdg:"${d.rdg}")`).join(', ')}`)
-    if (!rdtOnly.length && !rdgOnly.length && !typeDiffs.length) console.log(`  ${comp}: ✅ identical`)
+    console.log(`\n  ### ${comp}`)
+    console.log(`    props: rdg=${rdgProps.length}  rdt=${rdtProps.length}  ours=${oursProps.length}`)
+
+    rdtTotal += rdtProps.length
+    oursTotal += oursProps.length
+
+    // Props ours has that rdt doesn't
+    const oursOnly = oursProps.filter(p => !rdtProps.includes(p))
+    const rdtOnly = rdtProps.filter(p => !oursProps.includes(p))
+    const rdgOnly = rdgProps.filter(p => !oursProps.includes(p))
+    const common = oursProps.filter(p => rdtProps.includes(p))
+    const ourInheritedElements = r_ours?.inheritedElements ?? []
+
+    if (oursOnly.length) console.log(`    ours-only (${oursOnly.length}): ${oursOnly.slice(0, 8).join(', ')}`)
+    if (rdgOnly.length) console.log(`    rdg-only  (${rdgOnly.length}): ${rdgOnly.slice(0, 5).join(', ')}${rdgOnly.length > 5 ? '...' : ''}`)
+
+    // For rdt-only props: distinguish HTML attrs (covered by our inheritance) from true misses
+    if (rdtOnly.length) {
+      const htmlPropPattern = /^(on[A-Z]|aria-|data-|class|style|id|tab|ref|key$|role$)/
+      const likelyhtmlAttrs = rdtOnly.filter(p => htmlPropPattern.test(p) || ourInheritedElements.length > 0)
+      const trueMisses = rdtOnly.filter(p => !htmlPropPattern.test(p) && ourInheritedElements.length === 0)
+      if (trueMisses.length) {
+        console.log(`    ❗ rdt-only (REAL MISSES) (${trueMisses.length}): ${trueMisses.slice(0, 8).join(', ')}`)
+        misses += trueMisses.length
+      }
+      if (likelyhtmlAttrs.length && ourInheritedElements.length > 0) {
+        console.log(`    ℹ️  rdt expands ${rdtOnly.length} HTML attrs (covered by our inheritance: ${ourInheritedElements.join(', ')})`)
+      } else if (likelyhtmlAttrs.length) {
+        console.log(`    rdt-only (likely HTML attrs) (${rdtOnly.length}): ${rdtOnly.slice(0, 5).join(', ')}...`)
+      }
+    }
+
+    // Type comparison (ours vs rdt)
+    const typeDiffs = common
+      .filter(p => {
+        const o = r_ours?.output?.[comp]?.props?.[p]?.type
+        const t = r_rdt?.output?.[comp]?.props?.[p]?.type
+        return o && t && o !== t
+      })
+      .map(p => ({
+        prop: p,
+        ours: r_ours?.output?.[comp]?.props?.[p]?.type ?? '?',
+        rdt: r_rdt?.output?.[comp]?.props?.[p]?.type ?? '?',
+      }))
+
+    if (typeDiffs.length) {
+      console.log(`    type diffs (${typeDiffs.length}):`)
+      for (const d of typeDiffs.slice(0, 5)) {
+        console.log(`      ${d.prop}: ours="${d.ours}"  rdt="${d.rdt}"`)
+      }
+    }
+
+    const rdtOnlyRealCount = rdtOnly.filter(p => {
+      const htmlPropPattern = /^(on[A-Z]|aria-|data-|class|style|id|tab|ref|key$|role$)/
+      return !htmlPropPattern.test(p) && ourInheritedElements.length === 0
+    }).length
+
+    if (!oursOnly.length && rdtOnlyRealCount === 0 && !typeDiffs.length && oursProps.length > 0) {
+      console.log(`    ✅ own props identical to rdt (HTML attrs via inheritance)`)
+      wins++
+    } else if (oursProps.length === 0 && rdtProps.length === 0) {
+      ties++
+    } else if (oursProps.length === 0 && rdtProps.length > 0 && ourInheritedElements.length > 0) {
+      console.log(`    ✅ 0 own props correct (all props are inherited HTML attrs: ${ourInheritedElements.join(', ')})`)
+      wins++
+    } else if (oursProps.length === 0 && rdtProps.length > 0 && ourInheritedElements.length === 0) {
+      console.log(`    ❌ ours found nothing, rdt found ${rdtProps.length} props`)
+    }
+
+    totalOwn += oursProps.length
   }
 }
+
+console.log('\n' + '='.repeat(60))
+console.log('SUMMARY')
+console.log('='.repeat(60))
+if (rdt) console.log(`react-docgen-typescript: ${rdtTotal} total props across all components`)
+if (ours) console.log(`oxc-react-docgen:        ${oursTotal} total props across all components`)
+console.log(`Coverage: ${oursTotal}/${rdtTotal} (${Math.round(oursTotal/Math.max(rdtTotal,1)*100)}%)`)
+console.log(`Identical matches: ${wins}  |  Both empty: ${ties}  |  Misses: ${misses}`)

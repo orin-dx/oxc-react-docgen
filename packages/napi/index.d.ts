@@ -42,7 +42,7 @@ export type OpaqueReason =
   | { type: 'conditionalType' }
   | { type: 'mappedType' }
   | { type: 'moduleAugmentation' }
-  | { type: 'runtimeDependent'; function_name: string }
+  | { type: 'runtimeDependent'; functionName: string }
   | { type: 'unresolvableImport'; specifier: string }
   | { type: 'pandaCodegenMissing' }
   | { type: 'depthExceeded' }
@@ -80,10 +80,10 @@ export type PropType =
   | { kind: 'tuple'; 0: PropType[] }
   | { kind: 'object'; 0: ObjectField[] }
   | { kind: 'named'; name: string; args: PropType[] }
-  | { kind: 'eventHandler'; event_type: string }
+  | { kind: 'eventHandler'; eventType: string }
   | { kind: 'ref'; element: string | null }
   | { kind: 'htmlAttributes'; element: string; omitted: string[] }
-  | { kind: 'literalUnion'; members: string[]; has_default: boolean }
+  | { kind: 'literalUnion'; members: string[]; hasDefault: boolean }
   | { kind: 'opaque'; raw: string; reason: OpaqueReason }
 
 export interface ParsedProp {
@@ -153,6 +153,9 @@ export interface IncrementalUpdate {
 
 /** Cold extraction — returns JSON string of ExtractionOutput */
 export declare function extractAll(options: ExtractOptions): string
+
+/** Initialize a watch session with full cold extraction. Returns JSON string of ExtractionOutput. */
+export declare function initializeSession(sessionId: number, options: ExtractOptions): string
 
 /** Incremental extraction for HMR — returns JSON string of IncrementalUpdate */
 export declare function extractFileIncremental(

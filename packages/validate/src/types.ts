@@ -20,6 +20,8 @@ export interface ToolResult {
   fixture: string
   durationMs: number
   output: NormalizedOutput
+  /** HTML element(s) the component inherits from (our tool only) */
+  inheritedElements?: string[]
   error?: string
 }
 

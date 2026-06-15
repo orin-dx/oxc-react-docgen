@@ -679,7 +679,9 @@ impl PropType {
             PropType::Array(inner) => format!("{}[]", inner.raw_string()),
             PropType::Tuple(_) => "tuple".into(),
             PropType::Object(_) => "object".into(),
-            PropType::LiteralUnion { members, .. } => members.join(" | "),
+            PropType::LiteralUnion { members, .. } => {
+                members.iter().map(|m| format!(r#""{}""#, m)).collect::<Vec<_>>().join(" | ")
+            }
             PropType::Named { name, args } if args.is_empty() => name.to_string(),
             PropType::Named { name, args } => {
                 let args_str =

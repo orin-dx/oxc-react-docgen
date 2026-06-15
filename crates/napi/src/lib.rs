@@ -161,6 +161,25 @@ pub fn extract_file_incremental(
     incremental_update_to_json(&update).map_err(|e| napi::Error::from_reason(e.to_string()))
 }
 
+/// Initialize a watch session with a full cold extraction.
+/// Returns JSON string of ExtractionOutput.
+/// Call this after create_session(), in configResolved or buildStart.
+#[napi]
+pub fn initialize_session(session_id: u32, options: JsExtractOptions) -> NapiResult<String> {
+    let session = match SESSIONS.get(&session_id) {
+        Some(s) => s.clone(),
+        None => {
+            // Session not found — create it on-demand.
+            let s = Arc::new(WatchSession::new(PipelineOptions::from(options)));
+            SESSIONS.insert(session_id, s.clone());
+            s
+        }
+    };
+    let output = session.initialize();
+    oxc_react_docgen_core::pipeline::extraction_output_to_json(&output)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
 /// Release session state. Call in Vite's buildEnd hook.
 #[napi]
 pub fn close_session(session_id: u32) {

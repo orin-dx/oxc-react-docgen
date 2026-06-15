@@ -1049,6 +1049,99 @@ impl<'src> SourceDataCollector<'src> {
         }
     }
 
+    /// Detect: `const X = cva(base, { variants: { key: { val: "...", ... } } })`
+    /// Store each variant key's values in self.data.enums under the scoped key.
+    fn try_collect_cva_call<'a>(&mut self, decl: &VariableDeclarator<'a>, name: &str) {
+        let Some(init) = decl.init.as_ref() else { return };
+        let call = match init {
+            Expression::CallExpression(ce) => ce,
+            _ => return,
+        };
+
+        // Check callee is a known variant function
+        let callee_name = match &call.callee {
+            Expression::Identifier(id) => id.name.as_str().to_owned(),
+            Expression::StaticMemberExpression(m) => m.property.name.as_str().to_owned(),
+            _ => return,
+        };
+
+        if !matches!(
+            callee_name.as_str(),
+            "cva" | "tv" | "defineRecipe" | "recipe" | "defineSlotRecipe"
+        ) {
+            return;
+        }
+
+        // Second argument should be an object with a "variants" key
+        let Some(second_arg) = call.arguments.get(1) else { return };
+        let second_expr = match second_arg {
+            Argument::SpreadElement(_) => return,
+            other => match other.as_expression() {
+                Some(e) => e,
+                None => return,
+            },
+        };
+        let obj = match second_expr {
+            Expression::ObjectExpression(o) => o,
+            _ => return,
+        };
+
+        // Find the "variants" property
+        let variants_value = obj.properties.iter().find_map(|prop| {
+            if let ObjectPropertyKind::ObjectProperty(p) = prop {
+                if let PropertyKey::StaticIdentifier(key) = &p.key {
+                    if key.name.as_str() == "variants" {
+                        return match &p.value {
+                            Expression::ObjectExpression(o) => Some(o),
+                            _ => None,
+                        };
+                    }
+                }
+            }
+            None
+        });
+        let Some(variants_value) = variants_value else { return };
+
+        let scoped_key = self.scoped_key(name);
+        let mut entries: Vec<EnumEntry> = Vec::new();
+
+        for prop in &variants_value.properties {
+            if let ObjectPropertyKind::ObjectProperty(variant_prop) = prop {
+                let variant_key = match &variant_prop.key {
+                    PropertyKey::StaticIdentifier(id) => id.name.as_str().to_owned(),
+                    PropertyKey::StringLiteral(s) => s.value.as_str().to_owned(),
+                    _ => continue,
+                };
+
+                // The value is another object: { default: "...", sm: "...", ... }
+                let values_obj = match &variant_prop.value {
+                    Expression::ObjectExpression(o) => o,
+                    _ => continue,
+                };
+
+                for value_prop in &values_obj.properties {
+                    if let ObjectPropertyKind::ObjectProperty(vp) = value_prop {
+                        let value_name = match &vp.key {
+                            PropertyKey::StaticIdentifier(id) => id.name.as_str().to_owned(),
+                            PropertyKey::StringLiteral(s) => s.value.as_str().to_owned(),
+                            _ => continue,
+                        };
+
+                        entries.push(EnumEntry {
+                            name: variant_key.clone(),
+                            value: EnumValue::String(value_name),
+                            description: String::new(),
+                        });
+                    }
+                }
+            }
+        }
+
+        if !entries.is_empty() {
+            self.data.enums.insert(scoped_key, entries);
+        }
+    }
+
     fn expression_to_enum_value<'a>(&self, expr: &Expression<'a>) -> Option<EnumValue> {
         match expr {
             Expression::StringLiteral(s) => Some(EnumValue::String(s.value.as_str().to_owned())),
@@ -1318,6 +1411,11 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
     fn visit_variable_declaration(&mut self, node: &VariableDeclaration<'a>) {
         for declarator in &node.declarations {
             self.try_collect_const_enum(declarator);
+            // Collect cva() / tv() variant definitions for all file types (.ts and .tsx)
+            if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+                let name = id.name.as_str().to_owned();
+                self.try_collect_cva_call(declarator, &name);
+            }
             if self.is_tsx {
                 if let Some(name) = self.extract_pascal_name(declarator) {
                     if let Some(mapping) = self

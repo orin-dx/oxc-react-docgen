@@ -172,15 +172,21 @@ fn resolve_cva_variant_props(
                         }));
                     }
 
+                    // CVA/tv/defineRecipe VariantProps adds `| null` to every
+                    // variant key (passing null opts out of the variant, using
+                    // the default). Match what the TypeScript type system produces.
                     let props = variant_map
                         .into_iter()
                         .map(|(variant_key, values)| {
                             simple_prop(
                                 &variant_key,
-                                PropType::LiteralUnion {
-                                    members: values,
-                                    has_default: false,
-                                },
+                                PropType::Union(vec![
+                                    PropType::LiteralUnion {
+                                        members: values,
+                                        has_default: false,
+                                    },
+                                    PropType::Null,
+                                ]),
                                 false,
                                 "",
                             )

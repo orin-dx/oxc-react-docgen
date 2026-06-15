@@ -103,17 +103,36 @@ pub fn resolve_component(
         props.entry(prop.name.clone()).or_insert(prop);
     }
 
-    // Populate notable_inherited from HTML element layers.
+    // Populate notable_inherited from HTML element layers and non-HTML inherited layers.
     let mut notable_inherited: BTreeMap<String, ParsedProp> = BTreeMap::new();
     for layer in &chain.inheritance {
         if let Some(ref element) = layer.html_element {
             let notable_attrs = react_types::notable_html_attrs(element);
             for attr_name in notable_attrs {
-                // Only add if not in own props.
-                if !props.contains_key(*attr_name) {
-                    if let Some(prop) = chain.inherited_by_name.get(*attr_name) {
-                        notable_inherited.insert(attr_name.to_string(), prop.clone());
-                    }
+                if props.contains_key(*attr_name) { continue; } // own prop wins
+                if notable_inherited.contains_key(*attr_name) { continue; } // already added
+
+                // Synthesize a minimal prop for display purposes
+                let prop_type = infer_html_attr_prop_type(attr_name);
+                notable_inherited.insert(attr_name.to_string(), ParsedProp {
+                    name: attr_name.to_string(),
+                    prop_type,
+                    required: false,
+                    default_value: None,
+                    description: String::new(),
+                    tags: Default::default(),
+                    parent: Some(PropParent {
+                        name: format!("{}HTMLAttributes", capitalize_element(element)),
+                        file_name: "node_modules/@types/react/index.d.ts".to_string(),
+                    }),
+                    declarations: vec![],
+                });
+            }
+        } else {
+            // For non-HTML layers: add inherited props from chain.inherited_by_name
+            for (name, prop) in &chain.inherited_by_name {
+                if !props.contains_key(name) && !notable_inherited.contains_key(name) {
+                    notable_inherited.insert(name.clone(), prop.clone());
                 }
             }
         }
@@ -219,14 +238,24 @@ fn resolve_props_chain(
         return ResolvedChain::default();
     }
 
-    // ── Step 1: React builtin check ──────────────────────────────────────────
-    if react_types::is_react_builtin(type_name, &ctx.extra_builtins) {
-        // React builtins don't expand into prop lists at chain level;
-        // they become a compose entry or are ignored.
-        return ResolvedChain::empty_with_compose(type_name.to_owned());
+    // Strip "React." namespace prefix before all builtin/utility checks.
+    let type_name_bare = type_name.strip_prefix("React.").unwrap_or(type_name);
+
+    // ── Step 1: TypeScript built-in utility types — silent no-op ─────────────
+    // Not prop providers; suppress false "unresolvable" warnings.
+    if matches!(type_name_bare,
+        "Omit" | "Pick" | "Partial" | "Required" | "Readonly" | "NonNullable"
+        | "ReturnType" | "Parameters" | "Awaited" | "Extract" | "Exclude"
+        | "Record" | "ReadonlyArray" | "Array" | "Promise"
+    ) {
+        return ResolvedChain::default();
     }
 
-    // ── Step 2: Known pattern check (SxProps, VariantProps, etc.) ────────────
+    // ── Step 2: Known pattern check (SxProps, VariantProps, ComponentProps…) ─
+    // Run BEFORE is_react_builtin: some builtins (ComponentPropsWithoutRef,
+    // PropsWithChildren, etc.) expand into props via known.rs and must NOT be
+    // short-circuited as terminal types. resolve_known with the bare name handles
+    // both "ComponentPropsWithoutRef" and "React.ComponentPropsWithoutRef".
     {
         let resolved_args: Vec<PropType> = type_args
             .iter()
@@ -236,11 +265,23 @@ fn resolve_props_chain(
             })
             .collect();
 
-        if let Some(result) = resolve_known(type_name, &resolved_args, &ctx.global) {
+        if let Some(result) = resolve_known(type_name_bare, &resolved_args, &ctx.global) {
             return match result {
                 KnownPatternResult::Props(props) => ResolvedChain { props, ..Default::default() },
+                KnownPatternResult::Type(PropType::HtmlAttributes { element, omitted }) => {
+                    // HtmlAttributes from ComponentPropsWithoutRef<'button'> or
+                    // HTMLChakraProps<'button'> — record as InheritedLayer so
+                    // notable_inherited can be synthesized from the element's attr table.
+                    let layer = InheritedLayer {
+                        type_name: type_name.to_owned(),
+                        file_name: resolve_react_types_file(consuming_file, ctx),
+                        omitted,
+                        html_element: Some(element),
+                        total_props: 0,
+                    };
+                    ResolvedChain { inheritance: vec![layer], ..Default::default() }
+                }
                 KnownPatternResult::Type(pt) => {
-                    // Known opaque — treat as a single "type" compose
                     ResolvedChain::empty_with_compose(pt.raw_string())
                 }
                 KnownPatternResult::Alias { name, .. } => resolve_props_chain(
@@ -255,6 +296,13 @@ fn resolve_props_chain(
                 ),
             };
         }
+    }
+
+    // ── Step 2.5: React builtin check (after known patterns) ─────────────────
+    // Terminal React types (ReactNode, Ref, FC, etc.) that survived the known-pattern
+    // check are not prop providers — add to composes and stop.
+    if react_types::is_react_builtin(type_name_bare, &ctx.extra_builtins) {
+        return ResolvedChain::empty_with_compose(type_name.to_owned());
     }
 
     // ── Step 3: Resolve import to canonical (file, name) ─────────────────────
@@ -437,9 +485,40 @@ fn resolve_extends_ref(
                 };
                 (ResolvedChain::default(), Some(layer))
             } else {
-                // Non-element builtin (AriaAttributes etc.) — no layer, empty chain.
-                let _ = type_args;
-                (ResolvedChain::default(), None)
+                // Non-HTML-element builtins. ComponentPropsWithoutRef/ComponentProps:
+                // expand directly to HtmlAttributes based on the first type arg.
+                let bare = name.as_str().strip_prefix("React.").unwrap_or(name.as_str());
+                if matches!(bare, "ComponentPropsWithoutRef" | "ComponentPropsWithRef" | "ComponentProps") {
+                    if let Some(raw_arg) = type_args.first() {
+                        let inner = raw_arg.trim().trim_matches('"').trim_matches('\'');
+                        if !inner.is_empty() {
+                            let layer = InheritedLayer {
+                                type_name: name.to_string(),
+                                file_name: resolve_react_types_file(iface_file, ctx),
+                                omitted: vec![],
+                                html_element: Some(inner.to_lowercase()),
+                                total_props: 0,
+                            };
+                            return (
+                                ResolvedChain { inheritance: vec![layer.clone()], ..Default::default() },
+                                Some(layer),
+                            );
+                        }
+                    }
+                }
+                // Other non-HTML builtins (PropsWithChildren, ElementRef, etc.)
+                // — resolve through the chain so resolve_known can handle them.
+                let chain = resolve_props_chain(
+                    name.as_str(),
+                    type_args,
+                    iface_file,
+                    mapping,
+                    ctx,
+                    visited,
+                    depth,
+                    diagnostics,
+                );
+                (chain, None)
             }
         }
 
@@ -496,16 +575,19 @@ fn resolve_type_alias_chain(
     match alias {
         CollectedTypeAlias::Passthrough { target, file_path } => {
             match target {
-                CollectedType::Named { name, args: _ } => resolve_props_chain(
-                    name.as_str(),
-                    &[],
-                    file_path,
-                    mapping,
-                    ctx,
-                    visited,
-                    depth + 1,
-                    diagnostics,
-                ),
+                CollectedType::Named { name, args } => {
+                    let raw_args: Vec<String> = args.iter().map(|a| a.to_raw_string()).collect();
+                    resolve_props_chain(
+                        name.as_str(),
+                        &raw_args,
+                        file_path,
+                        mapping,
+                        ctx,
+                        visited,
+                        depth + 1,
+                        diagnostics,
+                    )
+                }
                 _ => ResolvedChain::default(),
             }
         }
@@ -596,8 +678,9 @@ fn resolve_base_as_chain(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ResolvedChain {
     match base {
-        CollectedType::Named { name, args: _ } => {
-            resolve_props_chain(name.as_str(), &[], file_path, mapping, ctx, visited, depth + 1, diagnostics)
+        CollectedType::Named { name, args } => {
+            let raw_args: Vec<String> = args.iter().map(|a| a.to_raw_string()).collect();
+            resolve_props_chain(name.as_str(), &raw_args, file_path, mapping, ctx, visited, depth + 1, diagnostics)
         }
         CollectedType::Intersection(members) => {
             let mut chain = ResolvedChain::default();
@@ -605,6 +688,32 @@ fn resolve_base_as_chain(
                 let sub =
                     resolve_base_as_chain(member, file_path, mapping, ctx, visited, depth, diagnostics);
                 chain.merge_parent(sub);
+            }
+            chain
+        }
+        CollectedType::Object(fields) => {
+            // Inline object type in an intersection: `ComponentPropsWithoutRef<'button'> & { asChild?: boolean }`
+            // Expand the object fields directly as own props.
+            let mut chain = ResolvedChain::default();
+            for field in fields {
+                let prop_type = resolve_collected_type(
+                    &field.collected_type,
+                    file_path,
+                    ctx,
+                    visited,
+                    depth,
+                    diagnostics,
+                );
+                chain.props.push(ParsedProp {
+                    name: field.name.clone(),
+                    prop_type,
+                    required: field.required,
+                    default_value: None,
+                    description: field.description.clone(),
+                    tags: Default::default(),
+                    parent: None,
+                    declarations: vec![],
+                });
             }
             chain
         }
@@ -872,8 +981,20 @@ pub fn resolve_collected_type(
 
         // ── Raw fallback ─────────────────────────────────────────────────────
         CollectedType::Raw(s) => {
-            // If it looks like a simple identifier, try as a Named type.
             let trimmed = s.trim();
+            // `typeof X` — ExtendsRef.type_args serialized form; resolve as Named.
+            if let Some(name) = trimmed.strip_prefix("typeof ") {
+                return PropType::Named { name: name.trim().into(), args: vec![] };
+            }
+            // Double-quoted string literal: `"button"` → StringLiteral.
+            if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
+                return PropType::StringLiteral(trimmed[1..trimmed.len()-1].to_owned());
+            }
+            // Single-quoted string literal: `'button'` → StringLiteral.
+            if trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2 {
+                return PropType::StringLiteral(trimmed[1..trimmed.len()-1].to_owned());
+            }
+            // Simple identifier → Named type reference.
             if !trimmed.is_empty()
                 && !trimmed.contains(' ')
                 && !trimmed.contains('|')
@@ -920,16 +1041,42 @@ fn resolve_named(
     }
 
     // ── 1. React builtin check ────────────────────────────────────────────────
-    if react_types::is_react_builtin(name.as_str(), &ctx.extra_builtins) {
+    let lookup_name = name.strip_prefix("React.").unwrap_or(name.as_str());
+    if react_types::is_react_builtin(lookup_name, &ctx.extra_builtins) {
         return react_type_to_prop_type(name.as_str(), args, consuming_file, ctx, visited, depth, diagnostics);
     }
 
-    // ── 2. Known pattern check ────────────────────────────────────────────────
+    // Resolve type arguments eagerly — needed for both source lookups and known patterns.
     let resolved_args: Vec<PropType> = args
         .iter()
         .map(|a| resolve_collected_type(a, consuming_file, ctx, visited, depth + 1, diagnostics))
         .collect();
 
+    // ── 2. Import resolution → canonical (file, name) ─────────────────────────
+    // Check source-defined types BEFORE known library patterns so that user-defined
+    // types like ThemingProps or StylesApiProps are never silently replaced by
+    // opaque known-pattern shortcuts.
+    let (canonical_file, canonical_name) =
+        resolve_to_canonical(name.as_str(), consuming_file, ctx, diagnostics)
+            .unwrap_or_else(|| (consuming_file.to_owned(), name.to_string()));
+
+    let scoped_key = format!("{}:{}", canonical_file, canonical_name);
+
+    // ── 3. Type alias lookup ──────────────────────────────────────────────────
+    if let Some(alias) = ctx.global.type_aliases.get(&scoped_key).cloned() {
+        return resolve_type_alias_type(&alias, consuming_file, ctx, visited, depth, diagnostics);
+    }
+
+    // ── 4. Interface lookup ───────────────────────────────────────────────────
+    // At the prop-TYPE level (not chain level), an interface name is returned as Named.
+    // Full prop expansion only happens at the component level via resolve_props_chain.
+    if ctx.global.interfaces.contains_key(&scoped_key) {
+        return PropType::Named { name: name.clone(), args: resolved_args };
+    }
+
+    // ── 5. Known pattern check (fallback — only when not found in source) ─────
+    // Library opaque patterns (ThemingProps, StylesApiProps, VariantProps, …) are
+    // applied only when the type cannot be resolved from the project's own source.
     if let Some(result) = resolve_known(name.as_str(), &resolved_args, &ctx.global) {
         return match result {
             KnownPatternResult::Type(pt) => pt,
@@ -946,26 +1093,39 @@ fn resolve_named(
         };
     }
 
-    // ── 3. Import resolution → canonical (file, name) ─────────────────────────
-    let (canonical_file, canonical_name) =
-        resolve_to_canonical(name.as_str(), consuming_file, ctx, diagnostics)
-            .unwrap_or_else(|| (consuming_file.to_owned(), name.to_string()));
-
-    let scoped_key = format!("{}:{}", canonical_file, canonical_name);
-
-    // ── 4. Type alias lookup ──────────────────────────────────────────────────
-    if let Some(alias) = ctx.global.type_aliases.get(&scoped_key).cloned() {
-        return resolve_type_alias_type(&alias, consuming_file, ctx, visited, depth, diagnostics);
+    // ── 6. Silent no-op for well-known unresolvable types ────────────────────
+    // TypeScript built-in utility types, DOM element types, and React HTML
+    // attribute types all appear as prop types in real-world .d.ts files but
+    // cannot be expanded without a type-checker. Return Named silently.
+    let bare = name.strip_prefix("React.").unwrap_or(name.as_str());
+    if matches!(
+        bare,
+        // TypeScript utility types
+        "Partial" | "Required" | "Readonly" | "NonNullable" | "Record"
+            | "ReadonlyArray" | "Array" | "Promise" | "Extract" | "Exclude"
+            | "ReturnType" | "Parameters" | "Awaited" | "Omit" | "Pick"
+            // TypeScript primitives used as type names
+            | "object" | "Object" | "Function" | "Symbol" | "BigInt"
+            // React HTML attribute types (not in is_react_builtin; appear as prop types)
+            | "HTMLAttributes" | "InputHTMLAttributes" | "TextareaHTMLAttributes"
+            | "SelectHTMLAttributes" | "ButtonHTMLAttributes" | "AnchorHTMLAttributes"
+            | "FormHTMLAttributes" | "LabelHTMLAttributes" | "ImgHTMLAttributes"
+            | "VideoHTMLAttributes" | "AudioHTMLAttributes" | "DOMAttributes"
+            | "AriaAttributes" | "HTMLInputTypeAttribute" | "HTMLAttributeReferrerPolicy"
+            | "HTMLAttributeAnchorTarget" | "HTMLInputAutoCompleteAttribute"
+    ) || bare.ends_with("HTMLAttributes")
+    {
+        return PropType::Named { name: name.clone(), args: resolved_args };
     }
-
-    // ── 5. Interface lookup ───────────────────────────────────────────────────
-    // At the prop-TYPE level (not chain level), an interface name is returned as Named.
-    // Full prop expansion only happens at the component level via resolve_props_chain.
-    if ctx.global.interfaces.contains_key(&scoped_key) {
+    // DOM element ref types (HTMLDivElement, HTMLInputElement, etc.)
+    if bare.starts_with("HTML") && bare.ends_with("Element") {
+        return PropType::Named { name: name.clone(), args: resolved_args };
+    }
+    if bare.starts_with("SVG") && bare.ends_with("Element") {
         return PropType::Named { name: name.clone(), args: resolved_args };
     }
 
-    // ── 6. Unresolvable — emit diagnostic, return Named ───────────────────────
+    // ── 7. Unresolvable — emit diagnostic, return Named ───────────────────────
     diagnostics.push(Diagnostic {
         severity: DiagnosticSeverity::Warning,
         message: format!(
@@ -1677,6 +1837,43 @@ fn strip_json_comments(s: &str) -> String {
         .join("\n")
 }
 
+// ─── HTML attr helpers ────────────────────────────────────────────────────────
+
+fn infer_html_attr_prop_type(attr_name: &str) -> PropType {
+    match attr_name {
+        "onClick" | "onKeyDown" | "onKeyUp" | "onFocus" | "onBlur"
+        | "onChange" | "onInput" | "onSubmit" | "onReset" | "onLoad" | "onError"
+        | "onPress" | "onPressStart" | "onPressEnd"
+        | "onHoverStart" | "onHoverEnd" | "onFocusChange" | "onPressChange" => {
+            PropType::EventHandler { event_type: "Event".to_string() }
+        }
+        "disabled" | "readOnly" | "required" | "checked" | "multiple"
+        | "noValidate" | "autoFocus" | "fullWidth" | "loading" | "isDisabled"
+        | "isReadOnly" | "isRequired" => PropType::Boolean,
+        "tabIndex" | "rows" | "cols" | "maxLength" | "min" | "max"
+        | "width" | "height" | "size" => PropType::Number,
+        "style" => PropType::CssProperties,
+        "children" => PropType::ReactNode,
+        _ => PropType::String,
+    }
+}
+
+fn capitalize_element(element: &str) -> &'static str {
+    match element {
+        "button" => "Button",
+        "input" => "Input",
+        "a" => "Anchor",
+        "textarea" => "Textarea",
+        "select" => "Select",
+        "form" => "Form",
+        "label" => "Label",
+        "img" => "Img",
+        "video" => "Video",
+        "audio" => "Audio",
+        _ => "HTML",
+    }
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -2034,6 +2231,96 @@ mod tests {
             "Expected 'button' in inheritance layers, got {:?}",
             entry.inheritance
         );
+    }
+
+    // ── Test 10b: ComponentPropsWithoutRef in intersection type alias ─────────
+    // Regression test for the Radix UI pattern:
+    //   type PrimitiveButtonProps = React.ComponentPropsWithoutRef<"button"> & { asChild?: boolean }
+    //   interface ButtonProps extends PrimitiveButtonProps {}
+
+    #[test]
+    fn test_component_props_without_ref_in_intersection_alias() {
+        let file_path = Utf8PathBuf::from("/test/button.tsx");
+
+        let mut global = GlobalSourceData::default();
+
+        // type PrimitiveButtonProps = React.ComponentPropsWithoutRef<"button"> & { asChild?: boolean }
+        let alias_key = format!("{}:PrimitiveButtonProps", file_path);
+        global.type_aliases.insert(
+            alias_key,
+            CollectedTypeAlias::Intersection {
+                members: vec![
+                    CollectedType::Named {
+                        name: "React.ComponentPropsWithoutRef".into(),
+                        args: vec![CollectedType::StringLiteral("button".into())],
+                    },
+                    CollectedType::Object(vec![CollectedObjectField {
+                        name: "asChild".into(),
+                        collected_type: CollectedType::Boolean,
+                        required: false,
+                        description: String::new(),
+                    }]),
+                ],
+                file_path: file_path.clone(),
+            },
+        );
+
+        // interface ButtonProps extends PrimitiveButtonProps {}
+        let iface_key = format!("{}:ButtonProps", file_path);
+        global.interfaces.insert(
+            iface_key,
+            CollectedInterface {
+                scoped_key: format!("{}:ButtonProps", file_path),
+                name: "ButtonProps".into(),
+                file_path: file_path.clone(),
+                props: vec![],
+                extends: vec![ExtendsRef::SameFile {
+                    name: "PrimitiveButtonProps".into(),
+                    type_args: vec![],
+                }],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Button".into(),
+            props_type_name: "ButtonProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, diagnostics) = resolve_component(&mapping, &ctx);
+
+        // Should have asChild as an own prop
+        assert!(
+            entry.props.contains_key("asChild"),
+            "Expected 'asChild' prop, got props: {:?}",
+            entry.props.keys().collect::<Vec<_>>()
+        );
+
+        // Should have button in the inheritance chain
+        assert!(
+            entry.inheritance.iter().any(|l| l.html_element.as_deref() == Some("button")),
+            "Expected 'button' in inheritance layers, got {:?}",
+            entry.inheritance
+        );
+
+        // Should not have ComponentPropsWithoutRef in composes
+        assert!(
+            !entry.composes.contains(&"React.ComponentPropsWithoutRef".to_owned()),
+            "ComponentPropsWithoutRef should not appear in composes, got {:?}",
+            entry.composes
+        );
+
+        let warnings: Vec<_> = diagnostics.iter().filter(|d| matches!(d.severity, DiagnosticSeverity::Warning)).collect();
+        assert!(warnings.is_empty(), "Expected no warnings, got {:?}", warnings);
     }
 
     // ── Test 11: Array type ───────────────────────────────────────────────────

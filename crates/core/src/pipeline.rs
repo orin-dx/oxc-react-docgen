@@ -4,6 +4,7 @@
 //! Also manages DTS cache and incremental watch-mode state.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -180,20 +181,37 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
     let mut diagnostics = Vec::new();
 
     // Load the DTS parse-result cache (silently empty if missing/stale).
-    let cache = DtsCache::load_from_disk(options.cache_dir.as_deref());
+    let cache = Arc::new(DtsCache::load_from_disk(options.cache_dir.as_deref()));
+    let cache_ref = Arc::clone(&cache);
 
     // Phase 1: Discover source files.
     let src_files = discover_files(&options.src_dirs, &options.exclude_patterns);
     let files_parsed = src_files.len() as u32;
 
-    // Phase 2: Parallel parse with rayon.
+    // Counter for cache hits (atomic so rayon closures can increment safely).
+    let cache_hits = AtomicU32::new(0);
+
+    // Phase 2: Parallel parse with rayon — check DTS cache for .d.ts files.
     let source_data_vec: Vec<(Utf8PathBuf, SourceData)> = src_files
         .par_iter()
         .map(|path| {
+            let is_dts = path.as_str().ends_with(".d.ts");
+            if is_dts {
+                if let Some(cached) = cache_ref.get(path) {
+                    cache_hits.fetch_add(1, Ordering::Relaxed);
+                    return (path.clone(), cached);
+                }
+            }
             let source = std::fs::read_to_string(path).unwrap_or_default();
-            (path.clone(), crate::extractor::parse_file(path, &source))
+            let data = crate::extractor::parse_file(path, &source);
+            if is_dts {
+                cache_ref.insert(path, data.clone());
+            }
+            (path.clone(), data)
         })
         .collect();
+
+    let dts_cache_hits = cache_hits.load(Ordering::Relaxed);
 
     // Phase 3: Merge into GlobalSourceData (sequential — fast hash-map insertions).
     let mut global = GlobalSourceData::default();
@@ -218,15 +236,37 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
 
     // Phase 5: Collect output.
     let mut components = std::collections::BTreeMap::new();
+    let mut seen_names: std::collections::HashMap<String, u32> = Default::default();
+
     for (entry, diags) in results {
-        components.insert(entry.display_name.clone(), entry);
+        let base_name = entry.display_name.clone();
+        let count = seen_names.entry(base_name.clone()).or_insert(0);
+        *count += 1;
+
+        let key = if *count == 1 {
+            base_name
+        } else {
+            // Suffix with file stem to make unique
+            let file_stem = entry
+                .file_path
+                .file_stem()
+                .unwrap_or("unknown");
+            format!("{} ({})", base_name, file_stem)
+        };
+
+        components.insert(key, entry);
         diagnostics.extend(diags);
     }
 
     let enums = collect_public_enums(&global);
 
     // Persist cache for the next run.
-    cache.save_to_disk();
+    // Arc::try_unwrap succeeds because all rayon workers have finished; fallback
+    // calls save_to_disk via the Arc deref since DtsCache::save_to_disk takes &self.
+    match Arc::try_unwrap(cache) {
+        Ok(c) => c.save_to_disk(),
+        Err(arc) => arc.save_to_disk(),
+    }
 
     let duration_ms = start.elapsed().as_millis() as u64;
     let components_extracted = components.len() as u32;
@@ -238,6 +278,7 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
         stats: ExtractionStats {
             components_extracted,
             files_parsed,
+            dts_cache_hits,
             duration_ms,
             ..Default::default()
         },
@@ -395,6 +436,25 @@ impl WatchSession {
         output
     }
 
+    /// Return the current full extraction state from the in-memory caches.
+    /// Suitable for writing to `--out` after each incremental update.
+    pub fn snapshot(&self) -> ExtractionOutput {
+        let components: std::collections::BTreeMap<String, ComponentEntry> = self
+            .component_cache
+            .iter()
+            .map(|r| (r.key().clone(), r.value().clone()))
+            .collect();
+        let global = self.global.load();
+        let enums: std::collections::BTreeMap<String, Vec<EnumEntry>> =
+            global.enums.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        ExtractionOutput {
+            components,
+            enums,
+            diagnostics: vec![],
+            stats: ExtractionStats::default(),
+        }
+    }
+
     /// Handle a single file change — re-resolve only affected components.
     pub fn update_file(&self, changed: &Utf8Path) -> IncrementalUpdate {
         let start = Instant::now();
@@ -404,12 +464,15 @@ impl WatchSession {
         let new_data = crate::extractor::parse_file(changed, &source);
         self.source_cache.insert(changed.to_owned(), new_data.clone());
 
-        // 2. Patch GlobalSourceData (load → clone → mutate → store).
-        let old_global = self.global.load_full();
-        let mut new_global = (*old_global).clone();
-        new_global.remove_file(changed);
-        new_global.merge(changed, new_data);
-        let new_global = Arc::new(new_global);
+        // 2. Patch GlobalSourceData atomically using rcu (read-copy-update).
+        // rcu retries if the pointer was swapped by a concurrent update_file call,
+        // preventing lost-update races under parallel file change events.
+        let new_global = self.global.rcu(|old| {
+            let mut g = (**old).clone();
+            g.remove_file(changed);
+            g.merge(changed, new_data.clone());
+            g
+        });
 
         // 3. Find all transitively affected files via the reverse dep graph.
         let affected = self.reverse_deps.affected(changed);
@@ -437,9 +500,6 @@ impl WatchSession {
             updated_components.push(entry);
             diagnostics.extend(diags);
         }
-
-        // 5. Atomically swap in the new global.
-        self.global.store(new_global);
 
         IncrementalUpdate {
             updated_components,

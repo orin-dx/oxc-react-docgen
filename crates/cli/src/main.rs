@@ -519,8 +519,10 @@ fn cmd_watch(args: WatchArgs, quiet: bool, config_path: Option<&str>) -> Result<
                             }
                         }
                         if let Some(ref p) = out_path {
-                            // Write a placeholder; a full re-extract is needed for complete output
-                            let _ = std::fs::write(p, "{}");
+                            let snapshot = session_inner.snapshot();
+                            if let Ok(json) = serde_json::to_string(&snapshot) {
+                                let _ = std::fs::write(p, json);
+                            }
                         }
                     }
                 }
@@ -614,25 +616,28 @@ fn load_config_file(start_dir: &std::path::Path) -> Option<PipelineOptions> {
 }
 
 fn try_load_config(path: &std::path::Path) -> Option<PipelineOptions> {
-    let script = format!(
-        "import cfg from '{}'; process.stdout.write(JSON.stringify(cfg.default ?? cfg))",
-        path.display()
-    );
+    use std::io::Write;
+
+    // Pass the config path via environment variable to avoid any path content
+    // being interpreted as JavaScript (command injection via crafted filenames).
+    let script = "import { pathToFileURL } from 'node:url';\
+        const p = process.env.__DOCGEN_CONFIG_PATH;\
+        const m = await import(pathToFileURL(p).href);\
+        process.stdout.write(JSON.stringify(m.default ?? m));";
 
     let mut child = std::process::Command::new("node")
         .args(["--input-type=module"])
         .env("NODE_OPTIONS", "--import=tsx/esm")
+        .env("__DOCGEN_CONFIG_PATH", path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()
         .ok()?;
 
-    // Write the script to stdin
-    use std::io::Write;
-    if let Some(stdin) = child.stdin.as_mut() {
-        stdin.write_all(script.as_bytes()).ok()?;
-    }
+    // Write the script to stdin, then close stdin to signal EOF.
+    child.stdin.as_mut()?.write_all(script.as_bytes()).ok()?;
+    drop(child.stdin.take());
 
     let output = child.wait_with_output().ok()?;
 

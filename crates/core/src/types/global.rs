@@ -1,0 +1,105 @@
+//! Global resolution context — merged source data from all parsed files.
+
+use camino::{Utf8Path, Utf8PathBuf};
+use compact_str::CompactString;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use super::collected::{
+    CollectedInterface, CollectedTypeAlias, ComponentMapping, EnumEntry, ImportBinding,
+    LexedExport, SourceData,
+};
+use super::diagnostic::Diagnostic;
+
+// ─── ResolveState ─────────────────────────────────────────────────────────────
+
+/// Mutable resolution state threaded through all resolver functions.
+/// Bundles the three params that every recursive resolver function needs,
+/// eliminating 8-arg signatures.
+#[derive(Default)]
+pub struct ResolveState {
+    /// Cycle-detection set: "${file}:${type_name}" keys.
+    pub visited: FxHashSet<CompactString>,
+    /// Accumulated non-fatal issues.
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+// ─── ScopedKey ────────────────────────────────────────────────────────────────
+
+/// Type-checked map key for `"${file_path}:${name}"` strings.
+/// Prevents raw string keys from being confused with plain names.
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct ScopedKey(CompactString);
+
+impl ScopedKey {
+    pub fn new(file: &Utf8Path, name: &str) -> Self {
+        Self(format!("{}:{}", file, name).into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+// ─── GlobalSourceData ─────────────────────────────────────────────────────────
+
+/// Merged source data from all files — the shared resolution context.
+/// Built once, then read by all parallel resolution workers.
+/// Uses Arc in pipeline — clone is cheap.
+#[derive(Debug, Default, Clone)]
+pub struct GlobalSourceData {
+    /// All interfaces across all files.
+    /// Key: "${absolute_file_path}:${name}" — always scoped, never bare
+    pub interfaces: FxHashMap<String, CollectedInterface>,
+
+    /// All type aliases across all files.
+    /// Key: "${absolute_file_path}:${name}"
+    pub type_aliases: FxHashMap<String, CollectedTypeAlias>,
+
+    /// All enum-like definitions across all files.
+    /// Key: "${absolute_file_path}:${name}"
+    pub enums: FxHashMap<String, Vec<EnumEntry>>,
+
+    /// Import resolution map: file → [ImportBinding]
+    pub import_map: FxHashMap<Utf8PathBuf, Vec<ImportBinding>>,
+
+    /// Re-export map: file → [LexedExport]
+    pub re_export_map: FxHashMap<Utf8PathBuf, Vec<LexedExport>>,
+
+    /// All component mappings discovered
+    pub component_mappings: Vec<ComponentMapping>,
+}
+
+impl GlobalSourceData {
+    /// Merge a single file's SourceData into the global data.
+    pub fn merge(&mut self, file_path: &Utf8Path, data: SourceData) {
+        for (key, iface) in data.interfaces {
+            match self.interfaces.entry(key) {
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                    // Declaration merging: combine props and extends
+                    let existing = e.get_mut();
+                    existing.props.extend(iface.props);
+                    existing.extends.extend(iface.extends);
+                }
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(iface);
+                }
+            }
+        }
+        self.type_aliases.extend(data.type_aliases);
+        self.enums.extend(data.enums);
+        self.import_map.insert(file_path.to_owned(), data.imports);
+        self.re_export_map.insert(file_path.to_owned(), data.exports);
+        self.component_mappings.extend(data.component_mappings);
+    }
+
+    /// Remove all entries contributed by `file_path`. Called before re-merging an updated file.
+    pub fn remove_file(&mut self, file_path: &Utf8Path) {
+        let prefix = format!("{}:", file_path);
+        self.interfaces.retain(|k, _| !k.starts_with(&prefix));
+        self.type_aliases.retain(|k, _| !k.starts_with(&prefix));
+        self.enums.retain(|k, _| !k.starts_with(&prefix));
+        self.import_map.remove(file_path);
+        self.re_export_map.remove(file_path);
+        self.component_mappings.retain(|m| m.file_path != file_path);
+    }
+}

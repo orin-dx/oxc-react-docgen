@@ -1,0 +1,2241 @@
+---
+source: crates/core/tests/snapshots.rs
+expression: value
+---
+{
+  "components": {
+    "Button": {
+      "displayName": "Button",
+      "filePath": "[ROOT]/fixtures/chakra/Button.d.ts",
+      "description": "The type of the button, used in form contexts.",
+      "props": {
+        "as": {
+          "name": "as",
+          "type": {
+            "kind": "elementType"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The element or component to render as. Enables polymorphic usage.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "children": {
+          "name": "children",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The content to render inside the button.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "iconSpacing": {
+          "name": "iconSpacing",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'0.5rem'",
+            "computed": false
+          },
+          "description": "The space between the button icon and label.\nAccepts any valid CSS spacing token.",
+          "tags": {
+            "default": "'0.5rem'"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the button will be styled in its active state.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "isDisabled": {
+          "name": "isDisabled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the button will be disabled.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "isFullWidth": {
+          "name": "isFullWidth",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the button will take up the full width of its container.",
+          "tags": {
+            "default": "false",
+            "deprecated": "Use `width=\"full\"` or `width=\"100%\"` style prop instead."
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "isLoading": {
+          "name": "isLoading",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the button will show a spinner and be disabled.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "leftIcon": {
+          "name": "leftIcon",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "If added, the button will show an icon before the button's label.\nReceives a `ReactElement` so the component can clone it and inject size.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "loadingText": {
+          "name": "loadingText",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The label to show when `isLoading` is `true`. When provided the spinner is\nplaced before this text using the `spinnerPlacement` side.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "rightIcon": {
+          "name": "rightIcon",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "If added, the button will show an icon after the button's label.\nReceives a `ReactElement` so the component can clone it and inject size.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "spinner": {
+          "name": "spinner",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Replace the spinner component when `isLoading` is `true`.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "spinnerPlacement": {
+          "name": "spinnerPlacement",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "start"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "end"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'start'",
+            "computed": false
+          },
+          "description": "Determines where to place the spinner when `isLoading` is `true`\nand `loadingText` is set.",
+          "tags": {
+            "default": "'start'"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "type": {
+          "name": "type",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "button"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "submit"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "reset"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'button'",
+            "computed": false
+          },
+          "description": "The type of the button, used in form contexts.",
+          "tags": {
+            "default": "'button'"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        }
+      },
+      "inheritance": [
+        {
+          "typeName": "HTMLChakraProps",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "button",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "aria-describedby": {
+          "name": "aria-describedby",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-expanded": {
+          "name": "aria-expanded",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-haspopup": {
+          "name": "aria-haspopup",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-pressed": {
+          "name": "aria-pressed",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "disabled": {
+          "name": "disabled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "form": {
+          "name": "form",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "name": {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onKeyDown": {
+          "name": "onKeyDown",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onKeyUp": {
+          "name": "onKeyUp",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "value": {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [
+        "ThemingProps"
+      ],
+      "tags": {},
+      "methods": []
+    },
+    "ButtonGroup": {
+      "displayName": "ButtonGroup",
+      "filePath": "[ROOT]/fixtures/chakra/Button.d.ts",
+      "description": "",
+      "props": {},
+      "inheritance": [
+        {
+          "typeName": "HTMLChakraProps",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "div",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "className": {
+          "name": "className",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "style": {
+          "name": "style",
+          "type": {
+            "kind": "cssProperties"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
+    "Input": {
+      "displayName": "Input",
+      "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
+      "description": "A regular expression that the value must match for form validation.",
+      "props": {
+        "autoComplete": {
+          "name": "autoComplete",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The HTML autocomplete attribute.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "autoFocus": {
+          "name": "autoFocus",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the input element is focused on the initial render.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "colorScheme": {
+          "name": "colorScheme",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Maps to a key in `theme.colors`. Controls the colour family applied to\nfocus rings and interactive states.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "defaultValue": {
+          "name": "defaultValue",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "number"
+              },
+              {
+                "kind": "named",
+                "name": "ReadonlyArray",
+                "args": [
+                  {
+                    "kind": "string"
+                  }
+                ]
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The uncontrolled default value.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "errorBorderColor": {
+          "name": "errorBorderColor",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The border color when `isInvalid` is `true`. Use a Chakra color token\n(e.g. `'red.500'`) or any valid CSS color.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "focusBorderColor": {
+          "name": "focusBorderColor",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The border color when the input is focused. Use a Chakra color token\n(e.g. `'blue.400'`) or any valid CSS color.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The HTML `id` attribute. Should match the `htmlFor` of an associated label.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "isDisabled": {
+          "name": "isDisabled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the form control will be disabled. Passed to the underlying\n`<input>` as the `disabled` attribute and applies the disabled style.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "isFullWidth": {
+          "name": "isFullWidth",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the input element will span the full width of its parent.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "isInvalid": {
+          "name": "isInvalid",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the input will indicate an error state via aria-invalid and\nthe `errorBorderColor`.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "isReadOnly": {
+          "name": "isReadOnly",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the input is marked read-only. Passed as `readOnly` to the\nunderlying `<input>` and styles the field accordingly.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "isRequired": {
+          "name": "isRequired",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the form control will be required.\nPassed as `required` and adds an aria-required attribute.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "maxLength": {
+          "name": "maxLength",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The maximum number of characters allowed.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "minLength": {
+          "name": "minLength",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The minimum number of characters required.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "name": {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The HTML `name` attribute. Used with forms.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "React.FocusEventHandler"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Callback fired when the input loses focus.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "onChange": {
+          "name": "onChange",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "React.ChangeEventHandler"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Callback fired when the input value changes.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "React.FocusEventHandler"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Callback fired when the input gains focus.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "pattern": {
+          "name": "pattern",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "A regular expression that the value must match for form validation.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "placeholder": {
+          "name": "placeholder",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The placeholder text shown before the user enters a value.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The size of the input. Resolves from the Input component theme.\nBuilt-in values: `'xs'`, `'sm'`, `'md'`, `'lg'`.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "type": {
+          "name": "type",
+          "type": {
+            "kind": "named",
+            "name": "React.HTMLInputTypeAttribute",
+            "args": []
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'text'",
+            "computed": false
+          },
+          "description": "The HTML `type` attribute for the underlying `<input>` element.",
+          "tags": {
+            "default": "'text'"
+          },
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "value": {
+          "name": "value",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "named",
+                "name": "ReadonlyArray",
+                "args": [
+                  {
+                    "kind": "string"
+                  }
+                ]
+              },
+              {
+                "kind": "number"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The controlled value of the input.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "variant": {
+          "name": "variant",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The visual variant of the input as defined in the Input component theme.\nBuilt-in values: `'outline'`, `'filled'`, `'flushed'`, `'unstyled'`.",
+          "tags": {},
+          "parent": {
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        }
+      },
+      "inheritance": [
+        {
+          "typeName": "HTMLChakraProps",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "input",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "checked": {
+          "name": "checked",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "InputHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "defaultChecked": {
+          "name": "defaultChecked",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "InputHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "disabled": {
+          "name": "disabled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "InputHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "max": {
+          "name": "max",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "InputHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "min": {
+          "name": "min",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "InputHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onInput": {
+          "name": "onInput",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "InputHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "readOnly": {
+          "name": "readOnly",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "InputHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "required": {
+          "name": "required",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "InputHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [
+        "ThemingProps"
+      ],
+      "tags": {},
+      "methods": []
+    },
+    "InputGroup": {
+      "displayName": "InputGroup",
+      "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
+      "description": "The variant to propagate to all child Input components.",
+      "props": {
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The size to propagate to all child Input components.",
+          "tags": {},
+          "parent": {
+            "name": "InputGroupProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputGroupProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        },
+        "variant": {
+          "name": "variant",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The variant to propagate to all child Input components.",
+          "tags": {},
+          "parent": {
+            "name": "InputGroupProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputGroupProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        }
+      },
+      "inheritance": [
+        {
+          "typeName": "HTMLChakraProps",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "div",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "className": {
+          "name": "className",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "style": {
+          "name": "style",
+          "type": {
+            "kind": "cssProperties"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
+    "InputLeftAddon": {
+      "displayName": "InputLeftAddon",
+      "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
+      "description": "Element placed to the left of the Input inside an InputGroup.",
+      "props": {},
+      "inheritance": [
+        {
+          "typeName": "HTMLChakraProps",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "div",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "className": {
+          "name": "className",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "style": {
+          "name": "style",
+          "type": {
+            "kind": "cssProperties"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
+    "InputLeftElement": {
+      "displayName": "InputLeftElement",
+      "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
+      "description": "Icon or interactive element positioned inside the left side of the Input.",
+      "props": {
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The size of the input element (inherits from InputGroup).",
+          "tags": {},
+          "parent": {
+            "name": "InputElementProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputElementProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        }
+      },
+      "inheritance": [
+        {
+          "typeName": "HTMLChakraProps",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "div",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "className": {
+          "name": "className",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "style": {
+          "name": "style",
+          "type": {
+            "kind": "cssProperties"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
+    "InputRightAddon": {
+      "displayName": "InputRightAddon",
+      "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
+      "description": "Element placed to the right of the Input inside an InputGroup.",
+      "props": {},
+      "inheritance": [
+        {
+          "typeName": "HTMLChakraProps",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "div",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "className": {
+          "name": "className",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "style": {
+          "name": "style",
+          "type": {
+            "kind": "cssProperties"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
+    "InputRightElement": {
+      "displayName": "InputRightElement",
+      "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
+      "description": "Icon or interactive element positioned inside the right side of the Input.",
+      "props": {
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The size of the input element (inherits from InputGroup).",
+          "tags": {},
+          "parent": {
+            "name": "InputElementProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputElementProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            }
+          ]
+        }
+      },
+      "inheritance": [
+        {
+          "typeName": "HTMLChakraProps",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "div",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "className": {
+          "name": "className",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "style": {
+          "name": "style",
+          "type": {
+            "kind": "cssProperties"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    }
+  },
+  "enums": {},
+  "diagnostics": [],
+  "stats": {
+    "componentsExtracted": 8,
+    "componentsSkipped": 0,
+    "filesParsed": 3,
+    "dtsFilesParsed": 0,
+    "dtsCacheHits": 0,
+    "durationMs": 0,
+    "tier1Count": 0,
+    "tier3Count": 0,
+    "opaqueCount": 0
+  }
+}

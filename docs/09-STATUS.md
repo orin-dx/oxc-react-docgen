@@ -125,12 +125,30 @@ Both `CollectedType` and `PropType` are deeply recursive enums. Using serde deri
 
 ## Immediate Next Steps (priority order)
 
-1. **Implement Phase 5a** — Vite plugin (spec is updated: `hotUpdate`, `moduleType:'js'`, `Plugin[]`, environment API, auto-detection, preset system)
-4. **Implement Phase 5b** — Rolldown native Rust plugin (Rolldown 1.0 is stable)
-5. **Implement Phase 6** — Integration tests with fixture baselines, `run-ours.ts` in validate package
-6. **Wire config file loading** — complete `try_load_config` to actually map JSON → PipelineOptions
-7. **Fix WatchSession race condition** — use `ArcSwap::rcu` or Mutex
-8. **Add preset system** — `presets.shadcn()`, `presets.mui()`, `presets.chakra()`, etc.
+**Refactor phase COMPLETE (R1-R8, R11). Ready for Phase 5+.**
+
+Completed refactor sequence:
+
+1. **R1** ✅ — `insta` snapshot tests across all 7 fixtures (safety net)
+2. **R2** ✅ — Split `types.rs` → `types/{collected,output,diagnostic,global}.rs`; added `ScopedKey`, `ResolveState` types
+3. **R3** ✅ — `ResolveState` wired into all 17 resolver functions; `visited/diagnostics` threaded as one struct
+4. **R4** ✅ — Split `resolver.rs` (2,482 lines) → `resolver/` (12 sub-modules: chain, extends, alias, collected, named, primitives, template, func, react, import, html)
+5. **R5** ✅ — Split `extractor.rs` (1,867 lines) → `extractor/` (7 sub-modules: component, interface, alias, jsdoc, visit, defaults)
+6. **R6** ✅ — Split `pipeline.rs` → `pipeline/{discover,watch}.rs`; fixed 3 silent IO failures to emit `Diagnostic::IoError`
+7. **R7** ✅ — Split `cli/main.rs` (760 lines) → `commands/{extract,watch,inspect,check,completions}.rs` + `config.rs` + `output.rs`
+8. **R8** ✅ — Visibility: `cache`, `extractor`, `import_map`, `known`, `resolver` → `pub(crate)`; `pipeline`, `types`, `react_types` remain `pub`
+9. **R9** — Skipped: PropType derive requires breaking JSON format (tuple variants can't use `#[serde(tag)]` cleanly)
+10. **R10** — Deferred: cross-package resolution is a new feature, not refactor
+11. **R11** ✅ — `.clippy.toml` with `too-many-arguments-threshold = 6`, `too-many-lines-threshold = 100`
+
+All 97 tests (90 unit + 7 snapshot) green throughout.
+
+After refactor:
+- Phase 5a — Vite plugin
+- Phase 5b — Rolldown native Rust plugin
+- Phase 6 — Integration tests + benchmarks
+- Wire config file loading
+- Add preset system
 
 ---
 

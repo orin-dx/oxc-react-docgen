@@ -1,0 +1,565 @@
+//! Semantic output types produced by the resolver (Phase 3).
+
+use camino::Utf8PathBuf;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+use super::collected::{EnumEntry, TypeName};
+use super::diagnostic::Diagnostic;
+
+// ─── Top-level output ─────────────────────────────────────────────────────────
+
+/// The complete extraction output — top-level return type of the pipeline.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionOutput {
+    /// Extracted component entries, keyed by component name
+    pub components: BTreeMap<String, ComponentEntry>,
+    /// Enum definitions discovered during extraction
+    pub enums: BTreeMap<String, Vec<EnumEntry>>,
+    /// Non-fatal issues encountered during extraction
+    pub diagnostics: Vec<Diagnostic>,
+    /// Extraction statistics
+    pub stats: ExtractionStats,
+}
+
+/// One step in a component's resolved inheritance chain.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InheritedLayer {
+    /// Type name as declared: "ButtonHTMLAttributes", "ButtonBaseProps", "ThemingProps"
+    pub type_name: String,
+    /// Absolute path of the file this came from.
+    /// "node_modules/@types/react/..." for HTML attrs; project-local path otherwise.
+    pub file_name: String,
+    /// Props explicitly removed at this layer via Omit<Base, K>.
+    pub omitted: Vec<String>,
+    /// If this is an HTML element attributes type, the element name: "button", "input", etc.
+    pub html_element: Option<String>,
+    /// Number of props this layer contributes (for display).
+    pub total_props: u32,
+}
+
+/// A single React component with its resolved props.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComponentEntry {
+    /// Display name of the component
+    pub display_name: String,
+    /// Absolute path of the file containing the component
+    pub file_path: Utf8PathBuf,
+    /// Component-level JSDoc description
+    pub description: String,
+    /// Resolved props, keyed by prop name
+    pub props: BTreeMap<String, ParsedProp>,
+    /// Full resolved inheritance chain, outermost first.
+    pub inheritance: Vec<InheritedLayer>,
+    /// Curated notable props from inherited layers (not in self.props).
+    pub notable_inherited: BTreeMap<String, ParsedProp>,
+    /// If props type is a discriminated union, the name of the discriminant prop (e.g. "variant").
+    pub discriminant_prop: Option<String>,
+    /// Type names that could not be resolved (react-docgen compat)
+    pub composes: Vec<String>,
+    /// JSDoc @tags on the component (e.g. @deprecated, @since)
+    pub tags: BTreeMap<String, String>,
+    /// Always empty for functional components; present for RDT compat
+    pub methods: Vec<()>,
+}
+
+impl ComponentEntry {
+    /// Shortcut: the HTML element this component renders as, if any.
+    /// Derived from the inheritance chain.
+    pub fn html_element(&self) -> Option<&str> {
+        self.inheritance.iter().find_map(|l| l.html_element.as_deref())
+    }
+}
+
+/// A single resolved prop.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParsedProp {
+    /// Prop name
+    pub name: String,
+    /// Resolved semantic type
+    #[serde(rename = "type")]
+    pub prop_type: PropType,
+    /// Whether the prop is required
+    pub required: bool,
+    /// Default value if known (from destructured params or JSDoc)
+    pub default_value: Option<DefaultValue>,
+    /// JSDoc description of the prop
+    pub description: String,
+    /// JSDoc @tags on the prop (@deprecated, @since, @see, etc.)
+    pub tags: BTreeMap<String, String>,
+    /// Interface/type where this prop was originally declared
+    pub parent: Option<PropParent>,
+    /// All declarations of this prop name (for overloads/merging)
+    pub declarations: Vec<PropParent>,
+}
+
+/// Default value for a prop.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefaultValue {
+    /// String representation of the default value
+    pub value: String,
+    /// Whether this is a computed value we couldn't fully evaluate
+    pub computed: bool,
+}
+
+/// Where a prop was declared — enables RDT propFilter compatibility.
+/// The canonical RDT pattern: `prop => !prop.parent.fileName.includes('node_modules')`
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PropParent {
+    /// Name of the interface/type alias that declared this prop
+    pub name: String,
+    /// Absolute path of the file — matches RDT's `fileName` field
+    pub file_name: String,
+}
+
+// ─── PropType — The Canonical Semantic Type Representation ────────────────────
+
+/// Semantic type of a prop. Rich enough to produce any output format.
+/// Use match exhaustively — no `_` fallthrough in serializers.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PropType {
+    // ── Primitives
+    String,
+    Number,
+    Boolean,
+    Null,
+    Undefined,
+    Any,
+    Never,
+    Unknown,
+    Void,
+
+    // ── Literals
+    StringLiteral(std::string::String),
+    NumberLiteral(f64),
+    BoolLiteral(bool),
+
+    // ── Composites
+    Union(Vec<PropType>),
+    Intersection(Vec<PropType>),
+    Array(Box<PropType>),
+    Tuple(Vec<PropType>),
+    Object(Vec<ObjectField>),
+
+    // ── Named reference (post-resolution)
+    Named {
+        name: TypeName,
+        /// Generic args, already resolved to PropType
+        args: Vec<PropType>,
+    },
+
+    // ── React-specific terminals
+    /// ReactNode, ReactElement, JSX.Element — all treated the same for docgen
+    ReactNode,
+    /// React.CSSProperties
+    CssProperties,
+    /// Event handler: (e: MouseEvent) => void etc.
+    EventHandler {
+        /// "MouseEvent", "ChangeEvent<HTMLInputElement>", etc.
+        event_type: std::string::String,
+    },
+    /// Ref<T> / RefObject<T> / ForwardedRef<T>
+    Ref {
+        /// Inner element type if known
+        element: Option<std::string::String>,
+    },
+    /// React.ElementType — component can render as any element
+    /// Used for: `as?: ElementType`, `component?: ElementType`
+    ElementType,
+
+    // ── HTML attribute inheritance
+    /// All attributes of an HTML element, minus omitted keys.
+    /// Produced when we see ComponentPropsWithoutRef<'button'> etc.
+    HtmlAttributes {
+        element: std::string::String,
+        omitted: Vec<std::string::String>,
+    },
+
+    // ── Variant systems (statically resolved)
+    /// Result of CvaVariantPropsHandler — the wrapper is fully dissolved.
+    /// Each member is a string literal value.
+    LiteralUnion {
+        members: Vec<std::string::String>,
+        /// true if this prop has a defaultVariant
+        has_default: bool,
+    },
+
+    // ── Known opaque patterns (cannot/should not be expanded)
+    /// MUI SxProps, SystemStyleObject etc. — complex, not user-facing props
+    SxProps,
+
+    // ── Unresolvable — graceful degradation
+    Opaque {
+        /// Original type string as written in source
+        raw: std::string::String,
+        reason: OpaqueReason,
+    },
+}
+
+impl PropType {
+    /// True if this type is a pure literal union (all members are literals).
+    /// Used by serializers to choose between "enum" and "union" in RDT output.
+    pub fn is_literal_union(&self) -> bool {
+        match self {
+            PropType::Union(members) => members.iter().all(|m| {
+                matches!(
+                    m,
+                    PropType::StringLiteral(_)
+                        | PropType::NumberLiteral(_)
+                        | PropType::BoolLiteral(_)
+                )
+            }),
+            PropType::LiteralUnion { .. } => true,
+            _ => false,
+        }
+    }
+
+    /// Raw type string for display (e.g. in RDT PropItemType.raw)
+    pub fn raw_string(&self) -> std::string::String {
+        match self {
+            PropType::String => "string".into(),
+            PropType::Number => "number".into(),
+            PropType::Boolean => "boolean".into(),
+            PropType::Null => "null".into(),
+            PropType::Undefined => "undefined".into(),
+            PropType::Any => "any".into(),
+            PropType::Never => "never".into(),
+            PropType::Unknown => "unknown".into(),
+            PropType::Void => "void".into(),
+            PropType::StringLiteral(s) => format!("\"{}\"", s),
+            PropType::NumberLiteral(n) => n.to_string(),
+            PropType::BoolLiteral(b) => b.to_string(),
+            PropType::Union(members) => {
+                members.iter().map(|m| m.raw_string()).collect::<Vec<_>>().join(" | ")
+            }
+            PropType::Intersection(members) => {
+                members.iter().map(|m| m.raw_string()).collect::<Vec<_>>().join(" & ")
+            }
+            PropType::Array(inner) => format!("{}[]", inner.raw_string()),
+            PropType::Tuple(_) => "tuple".into(),
+            PropType::Object(_) => "object".into(),
+            PropType::LiteralUnion { members, .. } => {
+                members.iter().map(|m| format!(r#""{}""#, m)).collect::<Vec<_>>().join(" | ")
+            }
+            PropType::Named { name, args } if args.is_empty() => name.to_string(),
+            PropType::Named { name, args } => {
+                let args_str =
+                    args.iter().map(|a| a.raw_string()).collect::<Vec<_>>().join(", ");
+                format!("{}<{}>", name, args_str)
+            }
+            PropType::ReactNode => "ReactNode".into(),
+            PropType::CssProperties => "CSSProperties".into(),
+            PropType::EventHandler { event_type } => {
+                format!("({}: {}) => void", "e", event_type)
+            }
+            PropType::Ref { element: Some(e) } => format!("Ref<{}>", e),
+            PropType::Ref { element: None } => "Ref<unknown>".into(),
+            PropType::ElementType => "ElementType".into(),
+            PropType::HtmlAttributes { element, .. } => {
+                format!("{}HTMLAttributes", element_to_type_name(element))
+            }
+            PropType::SxProps => "SxProps".into(),
+            PropType::Opaque { raw, .. } => raw.clone(),
+        }
+    }
+}
+
+impl serde::Serialize for PropType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.to_tagged_value().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for PropType {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let v = serde_json::Value::deserialize(deserializer)?;
+        Self::from_tagged_value(&v).map_err(D::Error::custom)
+    }
+}
+
+impl PropType {
+    fn to_tagged_value(&self) -> serde_json::Value {
+        match self {
+            // Unit variants (primitives)
+            PropType::String    => serde_json::json!({"kind": "string"}),
+            PropType::Number    => serde_json::json!({"kind": "number"}),
+            PropType::Boolean   => serde_json::json!({"kind": "boolean"}),
+            PropType::Null      => serde_json::json!({"kind": "null"}),
+            PropType::Undefined => serde_json::json!({"kind": "undefined"}),
+            PropType::Any       => serde_json::json!({"kind": "any"}),
+            PropType::Never     => serde_json::json!({"kind": "never"}),
+            PropType::Unknown   => serde_json::json!({"kind": "unknown"}),
+            PropType::Void      => serde_json::json!({"kind": "void"}),
+            PropType::ReactNode    => serde_json::json!({"kind": "reactNode"}),
+            PropType::CssProperties => serde_json::json!({"kind": "cssProperties"}),
+            PropType::ElementType  => serde_json::json!({"kind": "elementType"}),
+            PropType::SxProps      => serde_json::json!({"kind": "sxProps"}),
+            // Newtype/tuple variants — inner is not a map, so wrap as "0"
+            PropType::StringLiteral(s) => serde_json::json!({"kind": "stringLiteral", "0": s}),
+            PropType::NumberLiteral(n) => serde_json::json!({"kind": "numberLiteral", "0": n}),
+            PropType::BoolLiteral(b)   => serde_json::json!({"kind": "boolLiteral", "0": b}),
+            PropType::Union(members) => serde_json::json!({
+                "kind": "union",
+                "0": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
+            }),
+            PropType::Intersection(members) => serde_json::json!({
+                "kind": "intersection",
+                "0": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
+            }),
+            PropType::Array(inner) => serde_json::json!({
+                "kind": "array",
+                "0": inner.to_tagged_value()
+            }),
+            PropType::Tuple(members) => serde_json::json!({
+                "kind": "tuple",
+                "0": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
+            }),
+            PropType::Object(fields) => serde_json::json!({
+                "kind": "object",
+                "0": fields.iter().map(|f| serde_json::json!({
+                    "name": f.name,
+                    "propType": f.prop_type.to_tagged_value(),
+                    "required": f.required,
+                    "description": f.description,
+                })).collect::<Vec<_>>()
+            }),
+            // Struct variants — fields merge directly with kind
+            PropType::Named { name, args } => serde_json::json!({
+                "kind": "named",
+                "name": name.as_str(),
+                "args": args.iter().map(|a| a.to_tagged_value()).collect::<Vec<_>>()
+            }),
+            PropType::EventHandler { event_type } => serde_json::json!({
+                "kind": "eventHandler",
+                "eventType": event_type
+            }),
+            PropType::Ref { element } => serde_json::json!({
+                "kind": "ref",
+                "element": element
+            }),
+            PropType::HtmlAttributes { element, omitted } => serde_json::json!({
+                "kind": "htmlAttributes",
+                "element": element,
+                "omitted": omitted
+            }),
+            PropType::LiteralUnion { members, has_default } => serde_json::json!({
+                "kind": "literalUnion",
+                "members": members,
+                "hasDefault": has_default
+            }),
+            PropType::Opaque { raw, reason } => {
+                let reason_val = match reason {
+                    OpaqueReason::ConditionalType => serde_json::json!({"type": "conditionalType"}),
+                    OpaqueReason::MappedType => serde_json::json!({"type": "mappedType"}),
+                    OpaqueReason::ModuleAugmentation => serde_json::json!({"type": "moduleAugmentation"}),
+                    OpaqueReason::RuntimeDependent { function_name } => serde_json::json!({"type": "runtimeDependent", "functionName": function_name}),
+                    OpaqueReason::UnresolvableImport { specifier } => serde_json::json!({"type": "unresolvableImport", "specifier": specifier}),
+                    OpaqueReason::PandaCodegenMissing => serde_json::json!({"type": "pandaCodegenMissing"}),
+                    OpaqueReason::DepthExceeded => serde_json::json!({"type": "depthExceeded"}),
+                    OpaqueReason::IndexedAccess { expression } => serde_json::json!({"type": "indexedAccess", "expression": expression}),
+                    OpaqueReason::TemplateLiteral { expression } => serde_json::json!({"type": "templateLiteral", "expression": expression}),
+                };
+                serde_json::json!({"kind": "opaque", "raw": raw, "reason": reason_val})
+            }
+        }
+    }
+
+    fn from_tagged_value(v: &serde_json::Value) -> Result<Self, std::string::String> {
+        let kind = v.get("kind").and_then(|k| k.as_str())
+            .ok_or_else(|| "missing 'kind' field in PropType JSON".to_string())?;
+        match kind {
+            "string"    => Ok(PropType::String),
+            "number"    => Ok(PropType::Number),
+            "boolean"   => Ok(PropType::Boolean),
+            "null"      => Ok(PropType::Null),
+            "undefined" => Ok(PropType::Undefined),
+            "any"       => Ok(PropType::Any),
+            "never"     => Ok(PropType::Never),
+            "unknown"   => Ok(PropType::Unknown),
+            "void"      => Ok(PropType::Void),
+            "reactNode" | "react_node" => Ok(PropType::ReactNode),
+            "cssProperties" | "css_properties" => Ok(PropType::CssProperties),
+            "elementType" | "element_type" => Ok(PropType::ElementType),
+            "sxProps" | "sx_props" => Ok(PropType::SxProps),
+            "stringLiteral" | "string_literal" => {
+                let s = v["0"].as_str().unwrap_or("").to_owned();
+                Ok(PropType::StringLiteral(s))
+            }
+            "numberLiteral" | "number_literal" => {
+                let n = v["0"].as_f64().unwrap_or(0.0);
+                Ok(PropType::NumberLiteral(n))
+            }
+            "boolLiteral" | "bool_literal" => {
+                let b = v["0"].as_bool().unwrap_or(false);
+                Ok(PropType::BoolLiteral(b))
+            }
+            "union" => {
+                let members = v["0"].as_array()
+                    .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
+                    .unwrap_or(Ok(vec![]))?;
+                Ok(PropType::Union(members))
+            }
+            "intersection" => {
+                let members = v["0"].as_array()
+                    .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
+                    .unwrap_or(Ok(vec![]))?;
+                Ok(PropType::Intersection(members))
+            }
+            "array" => {
+                let inner = Self::from_tagged_value(&v["0"])?;
+                Ok(PropType::Array(Box::new(inner)))
+            }
+            "tuple" => {
+                let members = v["0"].as_array()
+                    .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
+                    .unwrap_or(Ok(vec![]))?;
+                Ok(PropType::Tuple(members))
+            }
+            "object" => {
+                let fields = v["0"].as_array()
+                    .map(|a| a.iter().map(|f| {
+                        Ok(ObjectField {
+                            name: f["name"].as_str().unwrap_or("").to_owned(),
+                            prop_type: Self::from_tagged_value(&f["propType"])?,
+                            required: f["required"].as_bool().unwrap_or(false),
+                            description: f["description"].as_str().unwrap_or("").to_owned(),
+                        })
+                    }).collect::<Result<Vec<_>, std::string::String>>())
+                    .unwrap_or(Ok(vec![]))?;
+                Ok(PropType::Object(fields))
+            }
+            "named" => {
+                let name = v["name"].as_str().unwrap_or("").into();
+                let args = v["args"].as_array()
+                    .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
+                    .unwrap_or(Ok(vec![]))?;
+                Ok(PropType::Named { name, args })
+            }
+            "eventHandler" | "event_handler" => {
+                let event_type = v["eventType"].as_str()
+                    .or_else(|| v["event_type"].as_str())
+                    .unwrap_or("").to_owned();
+                Ok(PropType::EventHandler { event_type })
+            }
+            "ref" => {
+                let element = v["element"].as_str().map(|s| s.to_owned());
+                Ok(PropType::Ref { element })
+            }
+            "htmlAttributes" | "html_attributes" => {
+                let element = v["element"].as_str().unwrap_or("div").to_owned();
+                let omitted = v["omitted"].as_array()
+                    .map(|a| a.iter().filter_map(|v| v.as_str()).map(|s| s.to_owned()).collect())
+                    .unwrap_or_default();
+                Ok(PropType::HtmlAttributes { element, omitted })
+            }
+            "literalUnion" | "literal_union" => {
+                let members = v["members"].as_array()
+                    .map(|a| a.iter().filter_map(|v| v.as_str()).map(|s| s.to_owned()).collect())
+                    .unwrap_or_default();
+                let has_default = v["hasDefault"].as_bool()
+                    .or_else(|| v["has_default"].as_bool())
+                    .unwrap_or(false);
+                Ok(PropType::LiteralUnion { members, has_default })
+            }
+            "opaque" => {
+                let raw = v["raw"].as_str().unwrap_or("").to_owned();
+                let reason = match v["reason"]["type"].as_str().unwrap_or("depthExceeded") {
+                    "conditionalType" => OpaqueReason::ConditionalType,
+                    "mappedType" => OpaqueReason::MappedType,
+                    "moduleAugmentation" => OpaqueReason::ModuleAugmentation,
+                    "runtimeDependent" => OpaqueReason::RuntimeDependent {
+                        function_name: v["reason"]["functionName"].as_str().unwrap_or("").to_owned(),
+                    },
+                    "unresolvableImport" => OpaqueReason::UnresolvableImport {
+                        specifier: v["reason"]["specifier"].as_str().unwrap_or("").to_owned(),
+                    },
+                    "pandaCodegenMissing" => OpaqueReason::PandaCodegenMissing,
+                    "indexedAccess" => OpaqueReason::IndexedAccess {
+                        expression: v["reason"]["expression"].as_str().unwrap_or("").to_owned(),
+                    },
+                    "templateLiteral" => OpaqueReason::TemplateLiteral {
+                        expression: v["reason"]["expression"].as_str().unwrap_or("").to_owned(),
+                    },
+                    _ => OpaqueReason::DepthExceeded,
+                };
+                Ok(PropType::Opaque { raw, reason })
+            }
+            other => Ok(PropType::Opaque {
+                raw: format!("unknown PropType kind: {}", other),
+                reason: OpaqueReason::DepthExceeded,
+            }),
+        }
+    }
+}
+
+fn element_to_type_name(element: &str) -> &'static str {
+    match element {
+        "button" => "Button",
+        "input" => "Input",
+        "textarea" => "Textarea",
+        "select" => "Select",
+        "a" => "Anchor",
+        "form" => "Form",
+        "label" => "Label",
+        "img" => "Img",
+        "div" | "span" | "p" | "h1" | "h2" | "h3" => "HTML",
+        _ => "HTML",
+    }
+}
+
+/// Why a type could not be resolved.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OpaqueReason {
+    /// TypeScript conditional type — needs type checker
+    ConditionalType,
+    /// TypeScript mapped type — needs type checker
+    MappedType,
+    /// Module augmentation result — needs type checker
+    ModuleAugmentation,
+    /// Runtime-dependent: cva(), tv(), etc. where args not statically visible
+    RuntimeDependent { function_name: std::string::String },
+    /// Import could not be resolved to a file
+    UnresolvableImport { specifier: std::string::String },
+    /// PandaCSS styled-system not generated yet
+    PandaCodegenMissing,
+    /// Maximum resolution depth exceeded (circular or too deep)
+    DepthExceeded,
+    /// Indexed access type (Type["key"]) — enable typescript-go to resolve.
+    IndexedAccess { expression: std::string::String },
+    /// Template literal type — partially or fully unresolvable.
+    TemplateLiteral { expression: std::string::String },
+}
+
+/// A field in an object type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectField {
+    pub name: std::string::String,
+    pub prop_type: PropType,
+    pub required: bool,
+    pub description: std::string::String,
+}
+
+// ─── Statistics ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionStats {
+    pub components_extracted: u32,
+    pub components_skipped: u32,
+    pub files_parsed: u32,
+    pub dts_files_parsed: u32,
+    pub dts_cache_hits: u32,
+    pub duration_ms: u64,
+    pub tier1_count: u32,
+    pub tier3_count: u32,
+    pub opaque_count: u32,
+}

@@ -3,11 +3,11 @@
 // 2048 is required to compile serde_json::to_string for this type.
 #![recursion_limit = "2048"]
 
-pub mod cache;
-pub mod extractor;
-pub mod import_map;
-pub mod known;
+pub(crate) mod cache;
+pub(crate) mod extractor;
+pub(crate) mod import_map;
+pub(crate) mod known;
 pub mod pipeline;
 pub mod react_types;
-pub mod resolver;
+pub(crate) mod resolver;
 pub mod types;

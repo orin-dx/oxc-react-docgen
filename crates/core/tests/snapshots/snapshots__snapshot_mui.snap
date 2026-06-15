@@ -1,0 +1,1858 @@
+---
+source: crates/core/tests/snapshots.rs
+expression: value
+---
+{
+  "components": {
+    "Button": {
+      "displayName": "Button",
+      "filePath": "[ROOT]/fixtures/mui/Button.d.ts",
+      "description": "The variant to use.",
+      "props": {
+        "TouchRippleProps": {
+          "name": "TouchRippleProps",
+          "type": {
+            "kind": "named",
+            "name": "object",
+            "args": []
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props applied to the `TouchRipple` element.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "children": {
+          "name": "children",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The content of the component.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "classes": {
+          "name": "classes",
+          "type": {
+            "kind": "named",
+            "name": "Partial",
+            "args": [
+              {
+                "kind": "named",
+                "name": "Record",
+                "args": [
+                  {
+                    "kind": "string"
+                  },
+                  {
+                    "kind": "string"
+                  }
+                ]
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Override or extend the styles applied to the component.",
+          "tags": {
+            "see": "https://mui.com/api/button/#css"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "color": {
+          "name": "color",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "inherit"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "primary"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "secondary"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "success"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "error"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "info"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "warning"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'primary'",
+            "computed": false
+          },
+          "description": "The color of the component.\nIt supports both default and custom theme colors, which can be added as shown in the\n[palette customization guide](https://mui.com/material-ui/customization/palette/#custom-colors).",
+          "tags": {
+            "default": "'primary'"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "component": {
+          "name": "component",
+          "type": {
+            "kind": "elementType"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The component used for the root node. Enables polymorphic rendering.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "disableElevation": {
+          "name": "disableElevation",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, no elevation is used.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "disableFocusRipple": {
+          "name": "disableFocusRipple",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the keyboard focus ripple is disabled.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "disableRipple": {
+          "name": "disableRipple",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the ripple effect is disabled globally on this component.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "disableTouchRipple": {
+          "name": "disableTouchRipple",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the touch ripple effect is disabled.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "disabled": {
+          "name": "disabled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "If `true`, the component is disabled.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "endIcon": {
+          "name": "endIcon",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Element placed after the children.\nTypically an icon component, e.g. `<ArrowForwardIcon />`.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "focusRipple": {
+          "name": "focusRipple",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the base button will have a keyboard focus ripple.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "focusVisibleClassName": {
+          "name": "focusVisibleClassName",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "This prop can help identify which element has keyboard focus.\nThe class name will be applied when the element gains the focus through the keyboard interaction.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "fullWidth": {
+          "name": "fullWidth",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the button will take up the full width of its container.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "href": {
+          "name": "href",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The URL to link to when the button is clicked.\nIf defined, an `<a>` element will be used as the root node.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "loading": {
+          "name": "loading",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the loading indicator is visible and the button is disabled.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "loadingIndicator": {
+          "name": "loadingIndicator",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "<CircularProgress color=\"inherit\" size={16} />",
+            "computed": false
+          },
+          "description": "Element placed before the children if the button is in loading state.\nThe node should contain an element with `role=\"progressbar\"` with an accessible name.\nBy default, the children position is center.",
+          "tags": {
+            "default": "<CircularProgress color=\"inherit\" size={16} />"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "loadingPosition": {
+          "name": "loadingPosition",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "start"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "end"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "center"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'center'",
+            "computed": false
+          },
+          "description": "The loading indicator can be positioned on the start, end, or the center of the button.",
+          "tags": {
+            "default": "'center'"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "onFocusVisible": {
+          "name": "onFocusVisible",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "React.FocusEventHandler"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Callback fired when the component is focused with a keyboard.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "small"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "medium"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "large"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'medium'",
+            "computed": false
+          },
+          "description": "The size of the component. `small` is equivalent to the dense button styling.",
+          "tags": {
+            "default": "'medium'"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "startIcon": {
+          "name": "startIcon",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Element placed before the children.\nTypically an icon component, e.g. `<BookmarkIcon />`.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "sx": {
+          "name": "sx",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "cssProperties"
+              },
+              {
+                "kind": "eventHandler",
+                "eventType": "T"
+              },
+              {
+                "kind": "named",
+                "name": "ReadonlyArray",
+                "args": [
+                  {
+                    "kind": "union",
+                    "0": [
+                      {
+                        "kind": "boolean"
+                      },
+                      {
+                        "kind": "cssProperties"
+                      },
+                      {
+                        "kind": "eventHandler",
+                        "eventType": "T"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The system prop that allows defining system overrides as well as additional CSS styles.",
+          "tags": {
+            "see": "https://mui.com/system/getting-started/the-sx-prop/"
+          },
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "named",
+            "name": "NonNullable",
+            "args": [
+              {
+                "kind": "number"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "0",
+            "computed": false
+          },
+          "description": "",
+          "tags": {
+            "default": "0"
+          },
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "touchRippleRef": {
+          "name": "touchRippleRef",
+          "type": {
+            "kind": "ref",
+            "element": "unknown"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "A ref that points to the `TouchRipple` element.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        },
+        "variant": {
+          "name": "variant",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "text"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "outlined"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "contained"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'text'",
+            "computed": false
+          },
+          "description": "The variant to use.",
+          "tags": {
+            "default": "'text'"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
+            }
+          ]
+        }
+      },
+      "inheritance": [
+        {
+          "typeName": "React.ButtonHTMLAttributes",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "button",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "aria-describedby": {
+          "name": "aria-describedby",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-expanded": {
+          "name": "aria-expanded",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-haspopup": {
+          "name": "aria-haspopup",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-pressed": {
+          "name": "aria-pressed",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "form": {
+          "name": "form",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "name": {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onKeyDown": {
+          "name": "onKeyDown",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onKeyUp": {
+          "name": "onKeyUp",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "type": {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "value": {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
+    "TextField": {
+      "displayName": "TextField",
+      "filePath": "[ROOT]/fixtures/mui/TextField.d.ts",
+      "description": "",
+      "props": {
+        "FormHelperTextProps": {
+          "name": "FormHelperTextProps",
+          "type": {
+            "kind": "named",
+            "name": "Partial",
+            "args": [
+              {
+                "kind": "named",
+                "name": "FormHelperTextProps",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props applied to the `FormHelperText` element.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "InputLabelProps": {
+          "name": "InputLabelProps",
+          "type": {
+            "kind": "named",
+            "name": "Partial",
+            "args": [
+              {
+                "kind": "named",
+                "name": "InputLabelProps",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props applied to the `InputLabel` element. Pointer events on the label\nare disabled by default.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "InputProps": {
+          "name": "InputProps",
+          "type": {
+            "kind": "named",
+            "name": "Partial",
+            "args": [
+              {
+                "kind": "named",
+                "name": "BaseInputProps",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props applied to the Input element. It will be a `FilledInput`,\n`OutlinedInput`, or `Input` component depending on the `variant` prop value.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "SelectProps": {
+          "name": "SelectProps",
+          "type": {
+            "kind": "named",
+            "name": "object",
+            "args": []
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props applied to the `Select` element.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "autoComplete": {
+          "name": "autoComplete",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Hint text shown in the input when `autoComplete` is configured.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "autoFocus": {
+          "name": "autoFocus",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the `input` element is focused during the first mount.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "classes": {
+          "name": "classes",
+          "type": {
+            "kind": "named",
+            "name": "Partial",
+            "args": [
+              {
+                "kind": "named",
+                "name": "Record",
+                "args": [
+                  {
+                    "kind": "string"
+                  },
+                  {
+                    "kind": "string"
+                  }
+                ]
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Override or extend the styles applied to the component.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "color": {
+          "name": "color",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "primary"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "secondary"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "error"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "info"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "success"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "warning"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'primary'",
+            "computed": false
+          },
+          "description": "The color of the component. Supports default and custom theme colors.",
+          "tags": {
+            "default": "'primary'"
+          },
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "defaultValue": {
+          "name": "defaultValue",
+          "type": {
+            "kind": "unknown"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The default value. Use when the component is not controlled.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "disabled": {
+          "name": "disabled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "If `true`, the component is disabled.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "error": {
+          "name": "error",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the label is displayed in an error state.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "fullWidth": {
+          "name": "fullWidth",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the input will take up the full width of its container.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "helperText": {
+          "name": "helperText",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The helper text content. Rendered below the input using FormHelperText.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The id of the `input` element. Use this prop to make `label` and\n`helperText` accessible for screen readers.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "inputProps": {
+          "name": "inputProps",
+          "type": {
+            "kind": "named",
+            "name": "React.InputHTMLAttributes",
+            "args": [
+              {
+                "kind": "named",
+                "name": "HTMLInputElement",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "[Attributes](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#Attributes)\napplied to the `input` element.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "inputRef": {
+          "name": "inputRef",
+          "type": {
+            "kind": "ref",
+            "element": "HTMLInputElement"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Pass a ref to the `input` element.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "label": {
+          "name": "label",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The label content.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "margin": {
+          "name": "margin",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "dense"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "normal"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "none"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'none'",
+            "computed": false
+          },
+          "description": "If `dense` or `normal`, will adjust vertical spacing of this and\ncontained components.",
+          "tags": {
+            "default": "'none'"
+          },
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "maxRows": {
+          "name": "maxRows",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "number"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Maximum number of rows to display when multiline option is set to true.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "multiline": {
+          "name": "multiline",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, a `textarea` element will be rendered instead of an `input`.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "name": {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Name attribute of the `input` element.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "React.FocusEventHandler"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Callback fired when the input loses focus.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "onChange": {
+          "name": "onChange",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "React.ChangeEventHandler"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Callback fired when the value is changed.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "React.FocusEventHandler"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Callback fired when the input gains focus.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "placeholder": {
+          "name": "placeholder",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The short hint displayed in the `input` before the user enters a value.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "required": {
+          "name": "required",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the label is displayed as required and the `input` element is\nrequired.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "rows": {
+          "name": "rows",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "number"
+              },
+              {
+                "kind": "string"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Number of rows to display when multiline option is set to true.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "select": {
+          "name": "select",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "Render a [`Select`](https://mui.com/material-ui/api/select/) element while\npassing the Input element to `Select` as `input` parameter.\nPrompts the user to supply a `children` node.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "small"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "medium"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'medium'",
+            "computed": false
+          },
+          "description": "The size of the component.",
+          "tags": {
+            "default": "'medium'"
+          },
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "sx": {
+          "name": "sx",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "cssProperties"
+              },
+              {
+                "kind": "eventHandler",
+                "eventType": "T"
+              },
+              {
+                "kind": "named",
+                "name": "ReadonlyArray",
+                "args": [
+                  {
+                    "kind": "union",
+                    "0": [
+                      {
+                        "kind": "boolean"
+                      },
+                      {
+                        "kind": "cssProperties"
+                      },
+                      {
+                        "kind": "eventHandler",
+                        "eventType": "T"
+                      },
+                      {
+                        "kind": "null"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The system prop that allows defining system overrides as well as\nadditional CSS styles.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "type": {
+          "name": "type",
+          "type": {
+            "kind": "named",
+            "name": "React.HTMLInputTypeAttribute",
+            "args": []
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Type of the `input` element. It should be\n[a valid HTML5 input type](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#Form_%3Cinput%3E_types).",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "value": {
+          "name": "value",
+          "type": {
+            "kind": "unknown"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The value of the `input` element, required for a controlled component.",
+          "tags": {},
+          "parent": {
+            "name": "TextFieldPropsBase",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextFieldPropsBase",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        },
+        "variant": {
+          "name": "variant",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "standard"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "filled"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "outlined"
+              }
+            ]
+          },
+          "required": true,
+          "defaultValue": {
+            "value": "'outlined'",
+            "computed": false
+          },
+          "description": "The variant to use.",
+          "tags": {
+            "default": "'outlined'"
+          },
+          "parent": {
+            "name": "StandardTextFieldProps",
+            "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "StandardTextFieldProps",
+              "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
+            }
+          ]
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": "variant",
+      "composes": [],
+      "tags": {},
+      "methods": []
+    }
+  },
+  "enums": {},
+  "diagnostics": [
+    {
+      "severity": "info",
+      "message": "Discriminated union detected with discriminant prop 'variant'",
+      "file": "[ROOT]/fixtures/mui/TextField.d.ts",
+      "line": null,
+      "column": null,
+      "help": null,
+      "code": "DISCRIMINATED_UNION"
+    }
+  ],
+  "stats": {
+    "componentsExtracted": 2,
+    "componentsSkipped": 0,
+    "filesParsed": 2,
+    "dtsFilesParsed": 0,
+    "dtsCacheHits": 0,
+    "durationMs": 0,
+    "tier1Count": 0,
+    "tier3Count": 0,
+    "opaqueCount": 0
+  }
+}

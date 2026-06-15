@@ -8,9 +8,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use arc_swap::ArcSwap;
 use camino::{Utf8Path, Utf8PathBuf};
-use dashmap::DashMap;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
@@ -18,6 +16,12 @@ use serde::{Deserialize, Serialize};
 use crate::cache::DtsCache;
 use crate::resolver::{resolve_component, ResolutionContext};
 use crate::types::*;
+
+mod discover;
+pub mod watch;
+
+use discover::{discover_files, should_skip};
+pub use watch::WatchSession;
 
 // ─── PipelineOptions ─────────────────────────────────────────────────────────
 
@@ -108,7 +112,7 @@ pub struct IncrementalUpdate {
 /// Reverse dependency graph: file → list of files that import from it.
 /// Built once from GlobalSourceData; used by WatchSession for BFS propagation.
 pub struct ReverseDeps {
-    inner: FxHashMap<Utf8PathBuf, Vec<Utf8PathBuf>>,
+    pub(super) inner: FxHashMap<Utf8PathBuf, Vec<Utf8PathBuf>>,
 }
 
 impl ReverseDeps {
@@ -192,22 +196,36 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
     let cache_hits = AtomicU32::new(0);
 
     // Phase 2: Parallel parse with rayon — check DTS cache for .d.ts files.
-    let source_data_vec: Vec<(Utf8PathBuf, SourceData)> = src_files
+    let source_data_vec: Vec<(Utf8PathBuf, SourceData, Option<Diagnostic>)> = src_files
         .par_iter()
         .map(|path| {
             let is_dts = path.as_str().ends_with(".d.ts");
             if is_dts {
                 if let Some(cached) = cache_ref.get(path) {
                     cache_hits.fetch_add(1, Ordering::Relaxed);
-                    return (path.clone(), cached);
+                    return (path.clone(), cached, None);
                 }
             }
-            let source = std::fs::read_to_string(path).unwrap_or_default();
+            let (source, io_diag) = match std::fs::read_to_string(path) {
+                Ok(s) => (s, None),
+                Err(e) => (
+                    String::new(),
+                    Some(Diagnostic {
+                        severity: DiagnosticSeverity::Error,
+                        message: format!("Failed to read '{}': {}", path, e),
+                        file: Some(path.to_string()),
+                        line: None,
+                        column: None,
+                        help: Some("Check file permissions and that the file exists.".into()),
+                        code: DiagnosticCode::IoError,
+                    }),
+                ),
+            };
             let data = crate::extractor::parse_file(path, &source);
             if is_dts {
                 cache_ref.insert(path, data.clone());
             }
-            (path.clone(), data)
+            (path.clone(), data, io_diag)
         })
         .collect();
 
@@ -215,7 +233,8 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
 
     // Phase 3: Merge into GlobalSourceData (sequential — fast hash-map insertions).
     let mut global = GlobalSourceData::default();
-    for (path, data) in source_data_vec {
+    for (path, data, io_diag) in source_data_vec {
+        if let Some(d) = io_diag { diagnostics.push(d); }
         global.merge(&path, data);
     }
     let global = Arc::new(global);
@@ -285,62 +304,7 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
     }
 }
 
-// ─── File discovery ───────────────────────────────────────────────────────────
-
-/// Walk `src_dirs` and collect every `.ts` / `.tsx` file, excluding:
-/// - Built-in patterns: `.stories.`, `.test.`, `.spec.`, `__snapshots__`, `node_modules`
-/// - User-supplied extra exclude patterns
-fn discover_files(
-    src_dirs: &[Utf8PathBuf],
-    extra_excludes: &[String],
-) -> Vec<Utf8PathBuf> {
-    let mut files = Vec::new();
-
-    for dir in src_dirs {
-        let walker = ignore::WalkBuilder::new(dir.as_std_path())
-            .hidden(false)
-            .git_ignore(true)
-            .build();
-
-        for entry in walker.flatten() {
-            let path = entry.path();
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if !matches!(ext, "ts" | "tsx") {
-                continue;
-            }
-
-            let path_str = path.to_str().unwrap_or("");
-
-            // Built-in excludes.
-            if path_str.contains(".stories.")
-                || path_str.contains(".test.")
-                || path_str.contains(".spec.")
-                || path_str.contains("__snapshots__")
-                || path_str.contains("node_modules")
-            {
-                continue;
-            }
-
-            // User-supplied excludes.
-            if extra_excludes.iter().any(|p| path_str.contains(p.as_str())) {
-                continue;
-            }
-
-            if let Ok(utf8) = Utf8PathBuf::from_path_buf(path.to_owned()) {
-                files.push(utf8);
-            }
-        }
-    }
-
-    files.sort(); // deterministic ordering across OS / FS
-    files
-}
-
 // ─── Helper functions ─────────────────────────────────────────────────────────
-
-fn should_skip(name: &str, exclude_prefixes: &[String]) -> bool {
-    exclude_prefixes.iter().any(|p| name.starts_with(p.as_str()))
-}
 
 /// Collect enum entries that are exported from their source files.
 fn collect_public_enums(
@@ -370,144 +334,6 @@ fn collect_public_enums(
     }
 
     result
-}
-
-// ─── Watch session ────────────────────────────────────────────────────────────
-
-/// Stateful session for incremental watch-mode extraction.
-///
-/// `global` and `component_cache` are updated atomically / concurrently on each
-/// file change.  `reverse_deps` is rebuilt on structural changes (new file,
-/// deleted file) via a new `WatchSession`.
-pub struct WatchSession {
-    pub options: PipelineOptions,
-    /// Current merged source data — swapped atomically via `ArcSwap`.
-    pub global: ArcSwap<GlobalSourceData>,
-    /// Reverse-dependency graph built at initialisation time.
-    pub reverse_deps: Arc<ReverseDeps>,
-    /// Per-file SourceData cache (avoids re-reading files that haven't changed).
-    pub source_cache: DashMap<Utf8PathBuf, SourceData>,
-    /// Latest resolved component entries, keyed by display name.
-    pub component_cache: DashMap<String, ComponentEntry>,
-}
-
-impl WatchSession {
-    /// Create an empty WatchSession (call `initialize()` before first use).
-    pub fn new(options: PipelineOptions) -> Self {
-        Self {
-            options,
-            global: ArcSwap::new(Arc::new(GlobalSourceData::default())),
-            reverse_deps: Arc::new(ReverseDeps { inner: Default::default() }),
-            source_cache: DashMap::new(),
-            component_cache: DashMap::new(),
-        }
-    }
-
-    /// Run a full cold extraction to populate this session's caches.
-    ///
-    /// Must be called once before `update_file()`.
-    pub fn initialize(&self) -> ExtractionOutput {
-        // Cold extraction for the public-facing output.
-        let output = extract(&self.options);
-
-        // Rebuild GlobalSourceData locally so we can populate our own caches.
-        let src_files =
-            discover_files(&self.options.src_dirs, &self.options.exclude_patterns);
-        let mut global = GlobalSourceData::default();
-
-        for path in &src_files {
-            let source = std::fs::read_to_string(path).unwrap_or_default();
-            let data = crate::extractor::parse_file(path, &source);
-            self.source_cache.insert(path.clone(), data.clone());
-            global.merge(path, data);
-        }
-
-        // Build reverse deps from the fully-merged global.
-        // Note: we can't mutate self.reverse_deps (it's Arc, not ArcSwap).
-        // On structural changes the caller should create a new WatchSession.
-        let new_global = Arc::new(global);
-        self.global.store(new_global);
-
-        // Seed component cache from the cold output.
-        for (name, entry) in &output.components {
-            self.component_cache.insert(name.clone(), entry.clone());
-        }
-
-        output
-    }
-
-    /// Return the current full extraction state from the in-memory caches.
-    /// Suitable for writing to `--out` after each incremental update.
-    pub fn snapshot(&self) -> ExtractionOutput {
-        let components: std::collections::BTreeMap<String, ComponentEntry> = self
-            .component_cache
-            .iter()
-            .map(|r| (r.key().clone(), r.value().clone()))
-            .collect();
-        let global = self.global.load();
-        let enums: std::collections::BTreeMap<String, Vec<EnumEntry>> =
-            global.enums.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        ExtractionOutput {
-            components,
-            enums,
-            diagnostics: vec![],
-            stats: ExtractionStats::default(),
-        }
-    }
-
-    /// Handle a single file change — re-resolve only affected components.
-    pub fn update_file(&self, changed: &Utf8Path) -> IncrementalUpdate {
-        let start = Instant::now();
-
-        // 1. Re-parse the changed file.
-        let source = std::fs::read_to_string(changed).unwrap_or_default();
-        let new_data = crate::extractor::parse_file(changed, &source);
-        self.source_cache.insert(changed.to_owned(), new_data.clone());
-
-        // 2. Patch GlobalSourceData atomically using rcu (read-copy-update).
-        // rcu retries if the pointer was swapped by a concurrent update_file call,
-        // preventing lost-update races under parallel file change events.
-        let new_global = self.global.rcu(|old| {
-            let mut g = (**old).clone();
-            g.remove_file(changed);
-            g.merge(changed, new_data.clone());
-            g
-        });
-
-        // 3. Find all transitively affected files via the reverse dep graph.
-        let affected = self.reverse_deps.affected(changed);
-
-        // 4. Re-resolve affected components.
-        let affected_mappings: Vec<ComponentMapping> = new_global
-            .component_mappings
-            .iter()
-            .filter(|m| affected.contains(&m.file_path))
-            .cloned()
-            .collect();
-
-        let ctx = ResolutionContext::new(new_global.clone(), &self.options);
-        let results: Vec<(ComponentEntry, Vec<Diagnostic>)> = affected_mappings
-            .par_iter()
-            .map(|m| resolve_component(m, &ctx))
-            .collect();
-
-        let mut updated_components = Vec::new();
-        let mut diagnostics = Vec::new();
-
-        for (entry, diags) in results {
-            self.component_cache
-                .insert(entry.display_name.clone(), entry.clone());
-            updated_components.push(entry);
-            diagnostics.extend(diags);
-        }
-
-        IncrementalUpdate {
-            updated_components,
-            affected_files: affected.into_iter().collect(),
-            diagnostics,
-            duration_ms: start.elapsed().as_millis() as u64,
-        }
-    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

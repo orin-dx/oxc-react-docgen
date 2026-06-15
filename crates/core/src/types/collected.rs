@@ -1,0 +1,630 @@
+//! Raw AST-level types produced by the extractor (Phase 0-2).
+//! These are the extractor's output and the resolver's input.
+
+use camino::Utf8PathBuf;
+use compact_str::CompactString;
+use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+// ─── Type Aliases ─────────────────────────────────────────────────────────────
+
+/// Compact string used for names, type strings — avoids heap alloc under 24 bytes.
+pub type TypeName = CompactString;
+
+// ─── CollectedType ────────────────────────────────────────────────────────────
+
+/// A structured representation of a TypeScript type as collected from the AST.
+/// This is the extractor's output — NOT yet resolved to a semantic PropType.
+/// The resolver pattern-matches on this to produce PropType.
+#[derive(Debug, Clone)]
+pub enum CollectedType {
+    // ── Primitives
+    String,
+    Number,
+    Boolean,
+    Null,
+    Undefined,
+    Any,
+    Never,
+    Unknown,
+    Void,
+    BigInt,
+    Symbol,
+
+    // ── Literals
+    StringLiteral(CompactString),
+    NumberLiteral(f64),
+    BoolLiteral(bool),
+
+    // ── Structural
+    Union(Vec<CollectedType>),
+    Intersection(Vec<CollectedType>),
+    Array(Box<CollectedType>),
+    Tuple(Vec<CollectedType>),
+    Object(Vec<CollectedObjectField>),
+
+    // ── Named type reference (possibly generic, possibly not yet resolved)
+    Named {
+        name: CompactString,
+        args: Vec<CollectedType>,
+    },
+
+    // ── `typeof X` — reference to the type of a value
+    TypeOf(CompactString),
+
+    // ── Indexed access: Type["key"] or Type[K]
+    IndexedAccess {
+        obj: Box<CollectedType>,
+        key: Box<CollectedType>,
+    },
+
+    // ── Template literal: `compact-${Size}` → parts = [Str("compact-"), Named("Size", [])]
+    TemplateLiteral(Vec<CollectedType>),
+
+    // ── Function type: (props: P) => ReactNode
+    Function {
+        params: Vec<CollectedType>,
+        return_type: Box<CollectedType>,
+    },
+
+    // ── Conditional: T extends U ? X : Y — cannot resolve statically, tag for typescript-go
+    Conditional {
+        check: Box<CollectedType>,
+        extends_type: Box<CollectedType>,
+        true_type: Box<CollectedType>,
+        false_type: Box<CollectedType>,
+    },
+
+    // ── Mapped: { [K in Keys]: Value } — cannot resolve statically
+    Mapped {
+        key_type: Box<CollectedType>,
+        value_type: Box<CollectedType>,
+    },
+
+    // ── Fallback for syntax we don't recognise
+    Raw(std::string::String),
+}
+
+impl CollectedType {
+    /// True if this type requires the TypeScript type checker to resolve.
+    pub fn needs_type_checker(&self) -> bool {
+        matches!(self, CollectedType::Conditional { .. } | CollectedType::Mapped { .. })
+    }
+
+    /// Produce a raw string representation for diagnostics and fallback display.
+    pub fn to_raw_string(&self) -> std::string::String {
+        match self {
+            CollectedType::String => "string".into(),
+            CollectedType::Number => "number".into(),
+            CollectedType::Boolean => "boolean".into(),
+            CollectedType::Null => "null".into(),
+            CollectedType::Undefined => "undefined".into(),
+            CollectedType::Any => "any".into(),
+            CollectedType::Never => "never".into(),
+            CollectedType::Unknown => "unknown".into(),
+            CollectedType::Void => "void".into(),
+            CollectedType::BigInt => "bigint".into(),
+            CollectedType::Symbol => "symbol".into(),
+            CollectedType::StringLiteral(s) => format!("\"{}\"", s),
+            CollectedType::NumberLiteral(n) => n.to_string(),
+            CollectedType::BoolLiteral(b) => b.to_string(),
+            CollectedType::Union(members) => {
+                members.iter().map(|m| m.to_raw_string()).collect::<Vec<_>>().join(" | ")
+            }
+            CollectedType::Intersection(members) => {
+                members.iter().map(|m| m.to_raw_string()).collect::<Vec<_>>().join(" & ")
+            }
+            CollectedType::Array(inner) => format!("{}[]", inner.to_raw_string()),
+            CollectedType::Named { name, args } if args.is_empty() => name.to_string(),
+            CollectedType::Named { name, args } => format!(
+                "{}<{}>",
+                name,
+                args.iter().map(|a| a.to_raw_string()).collect::<Vec<_>>().join(", ")
+            ),
+            CollectedType::TypeOf(name) => format!("typeof {}", name),
+            CollectedType::IndexedAccess { obj, key } => {
+                format!("{}[{}]", obj.to_raw_string(), key.to_raw_string())
+            }
+            CollectedType::TemplateLiteral(parts) => format!(
+                "`{}`",
+                parts
+                    .iter()
+                    .map(|p| match p {
+                        CollectedType::StringLiteral(s) => s.to_string(),
+                        other => format!("${{{}}}", other.to_raw_string()),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("")
+            ),
+            CollectedType::Function { params, return_type } => format!(
+                "({}) => {}",
+                params.iter().map(|p| p.to_raw_string()).collect::<Vec<_>>().join(", "),
+                return_type.to_raw_string()
+            ),
+            CollectedType::Conditional { check, extends_type, true_type, false_type } => format!(
+                "{} extends {} ? {} : {}",
+                check.to_raw_string(),
+                extends_type.to_raw_string(),
+                true_type.to_raw_string(),
+                false_type.to_raw_string()
+            ),
+            CollectedType::Mapped { key_type, value_type } => {
+                format!("{{ [K in {}]: {} }}", key_type.to_raw_string(), value_type.to_raw_string())
+            }
+            CollectedType::Tuple(members) => format!(
+                "[{}]",
+                members.iter().map(|m| m.to_raw_string()).collect::<Vec<_>>().join(", ")
+            ),
+            CollectedType::Object(_) => "{ ... }".into(),
+            CollectedType::Raw(s) => s.clone(),
+        }
+    }
+
+    fn to_json_value(&self) -> serde_json::Value {
+        match self {
+            // Primitives: serialize as short string tags
+            CollectedType::String    => serde_json::json!("str"),
+            CollectedType::Number    => serde_json::json!("num"),
+            CollectedType::Boolean   => serde_json::json!("bool"),
+            CollectedType::Null      => serde_json::json!("null"),
+            CollectedType::Undefined => serde_json::json!("undef"),
+            CollectedType::Any       => serde_json::json!("any"),
+            CollectedType::Never     => serde_json::json!("never"),
+            CollectedType::Unknown   => serde_json::json!("unknown"),
+            CollectedType::Void      => serde_json::json!("void"),
+            CollectedType::BigInt    => serde_json::json!("bigint"),
+            CollectedType::Symbol    => serde_json::json!("symbol"),
+            // Literals
+            CollectedType::StringLiteral(s) => serde_json::json!({"sl": s.as_str()}),
+            CollectedType::NumberLiteral(n) => serde_json::json!({"nl": n}),
+            CollectedType::BoolLiteral(b)   => serde_json::json!({"bl": b}),
+            // Named: {"n": name, "a": [args...]}
+            CollectedType::Named { name, args } => serde_json::json!({
+                "n": name.as_str(),
+                "a": args.iter().map(|a| a.to_json_value()).collect::<Vec<_>>()
+            }),
+            // Union: {"u": [members...]}
+            CollectedType::Union(members) => serde_json::json!({
+                "u": members.iter().map(|m| m.to_json_value()).collect::<Vec<_>>()
+            }),
+            // Intersection: {"i": [members...]}
+            CollectedType::Intersection(members) => serde_json::json!({
+                "i": members.iter().map(|m| m.to_json_value()).collect::<Vec<_>>()
+            }),
+            // Array: {"arr": inner}
+            CollectedType::Array(inner) => serde_json::json!({"arr": inner.to_json_value()}),
+            // Tuple: {"tup": [members...]}
+            CollectedType::Tuple(members) => serde_json::json!({
+                "tup": members.iter().map(|m| m.to_json_value()).collect::<Vec<_>>()
+            }),
+            // Object: {"obj": [{name, t, req, desc}...]}
+            CollectedType::Object(fields) => serde_json::json!({
+                "obj": fields.iter().map(|f| serde_json::json!({
+                    "name": f.name,
+                    "t": f.collected_type.to_json_value(),
+                    "req": f.required,
+                    "desc": f.description,
+                })).collect::<Vec<_>>()
+            }),
+            // TypeOf: {"to": name}
+            CollectedType::TypeOf(name) => serde_json::json!({"to": name.as_str()}),
+            // IndexedAccess: {"ia": {o, k}}
+            CollectedType::IndexedAccess { obj, key } => serde_json::json!({
+                "ia": {"o": obj.to_json_value(), "k": key.to_json_value()}
+            }),
+            // TemplateLiteral: {"tl": [parts...]}
+            CollectedType::TemplateLiteral(parts) => serde_json::json!({
+                "tl": parts.iter().map(|p| p.to_json_value()).collect::<Vec<_>>()
+            }),
+            // Function: {"fn": {p: [params], r: return_type}}
+            CollectedType::Function { params, return_type } => serde_json::json!({
+                "fn": {
+                    "p": params.iter().map(|p| p.to_json_value()).collect::<Vec<_>>(),
+                    "r": return_type.to_json_value()
+                }
+            }),
+            // Conditional: {"cond": {c, e, t, f}}
+            CollectedType::Conditional { check, extends_type, true_type, false_type } => serde_json::json!({
+                "cond": {
+                    "c": check.to_json_value(),
+                    "e": extends_type.to_json_value(),
+                    "t": true_type.to_json_value(),
+                    "f": false_type.to_json_value(),
+                }
+            }),
+            // Mapped: {"mapped": {k, v}}
+            CollectedType::Mapped { key_type, value_type } => serde_json::json!({
+                "mapped": {"k": key_type.to_json_value(), "v": value_type.to_json_value()}
+            }),
+            // Raw fallback: {"raw": s}
+            CollectedType::Raw(s) => serde_json::json!({"raw": s}),
+        }
+    }
+
+    fn from_json_value(v: &serde_json::Value) -> Result<Self, std::string::String> {
+        match v {
+            serde_json::Value::String(s) => Ok(match s.as_str() {
+                "str"     => CollectedType::String,
+                "num"     => CollectedType::Number,
+                "bool"    => CollectedType::Boolean,
+                "null"    => CollectedType::Null,
+                "undef"   => CollectedType::Undefined,
+                "any"     => CollectedType::Any,
+                "never"   => CollectedType::Never,
+                "unknown" => CollectedType::Unknown,
+                "void"    => CollectedType::Void,
+                "bigint"  => CollectedType::BigInt,
+                "symbol"  => CollectedType::Symbol,
+                other     => CollectedType::Raw(other.to_string()),
+            }),
+            serde_json::Value::Object(map) => {
+                if let Some(s) = map.get("sl").and_then(|v| v.as_str()) {
+                    return Ok(CollectedType::StringLiteral(s.into()));
+                }
+                if let Some(n) = map.get("nl").and_then(|v| v.as_f64()) {
+                    return Ok(CollectedType::NumberLiteral(n));
+                }
+                if let Some(b) = map.get("bl").and_then(|v| v.as_bool()) {
+                    return Ok(CollectedType::BoolLiteral(b));
+                }
+                if let Some(name) = map.get("n").and_then(|v| v.as_str()) {
+                    let args = map.get("a")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>())
+                        .unwrap_or(Ok(vec![]))?;
+                    return Ok(CollectedType::Named { name: name.into(), args });
+                }
+                if let Some(arr) = map.get("u").and_then(|v| v.as_array()) {
+                    return Ok(CollectedType::Union(
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                    ));
+                }
+                if let Some(arr) = map.get("i").and_then(|v| v.as_array()) {
+                    return Ok(CollectedType::Intersection(
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                    ));
+                }
+                if let Some(inner) = map.get("arr") {
+                    return Ok(CollectedType::Array(Box::new(Self::from_json_value(inner)?)));
+                }
+                if let Some(arr) = map.get("tup").and_then(|v| v.as_array()) {
+                    return Ok(CollectedType::Tuple(
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                    ));
+                }
+                if let Some(arr) = map.get("obj").and_then(|v| v.as_array()) {
+                    let fields: Vec<CollectedObjectField> = arr.iter().map(|f| {
+                        let o = f.as_object().ok_or_else(|| "expected object for field".to_string())?;
+                        Ok(CollectedObjectField {
+                            name: o.get("name").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
+                            collected_type: Self::from_json_value(o.get("t").unwrap_or(&serde_json::Value::Null))?,
+                            required: o.get("req").and_then(|v| v.as_bool()).unwrap_or(false),
+                            description: o.get("desc").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
+                        })
+                    }).collect::<Result<_, std::string::String>>()?;
+                    return Ok(CollectedType::Object(fields));
+                }
+                if let Some(name) = map.get("to").and_then(|v| v.as_str()) {
+                    return Ok(CollectedType::TypeOf(name.into()));
+                }
+                if let Some(inner) = map.get("ia") {
+                    let obj = Self::from_json_value(inner.get("o").unwrap_or(&serde_json::Value::Null))?;
+                    let key = Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::IndexedAccess { obj: Box::new(obj), key: Box::new(key) });
+                }
+                if let Some(arr) = map.get("tl").and_then(|v| v.as_array()) {
+                    return Ok(CollectedType::TemplateLiteral(
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                    ));
+                }
+                if let Some(inner) = map.get("fn") {
+                    let params = inner.get("p").and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>())
+                        .unwrap_or(Ok(vec![]))?;
+                    let rt = Self::from_json_value(inner.get("r").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::Function { params, return_type: Box::new(rt) });
+                }
+                if let Some(inner) = map.get("cond") {
+                    let check = Self::from_json_value(inner.get("c").unwrap_or(&serde_json::Value::Null))?;
+                    let ext   = Self::from_json_value(inner.get("e").unwrap_or(&serde_json::Value::Null))?;
+                    let tt    = Self::from_json_value(inner.get("t").unwrap_or(&serde_json::Value::Null))?;
+                    let ft    = Self::from_json_value(inner.get("f").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::Conditional {
+                        check: Box::new(check),
+                        extends_type: Box::new(ext),
+                        true_type: Box::new(tt),
+                        false_type: Box::new(ft),
+                    });
+                }
+                if let Some(inner) = map.get("mapped") {
+                    let k = Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
+                    let vt = Self::from_json_value(inner.get("v").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::Mapped { key_type: Box::new(k), value_type: Box::new(vt) });
+                }
+                if let Some(s) = map.get("raw").and_then(|v| v.as_str()) {
+                    return Ok(CollectedType::Raw(s.to_owned()));
+                }
+                // Unknown shape — fall back to raw
+                Ok(CollectedType::Raw(v.to_string()))
+            }
+            _ => Ok(CollectedType::Raw(v.to_string())),
+        }
+    }
+}
+
+impl serde::Serialize for CollectedType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let v = self.to_json_value();
+        v.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for CollectedType {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        let v = serde_json::Value::deserialize(deserializer)?;
+        Self::from_json_value(&v).map_err(D::Error::custom)
+    }
+}
+
+impl serde::Serialize for CollectedObjectField {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("CollectedObjectField", 4)?;
+        s.serialize_field("name", &self.name)?;
+        s.serialize_field("collected_type", &self.collected_type)?;
+        s.serialize_field("required", &self.required)?;
+        s.serialize_field("description", &self.description)?;
+        s.end()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for CollectedObjectField {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        struct FieldVisitor;
+
+        impl<'de> Visitor<'de> for FieldVisitor {
+            type Value = CollectedObjectField;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct CollectedObjectField")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<CollectedObjectField, A::Error> {
+                let mut name: Option<std::string::String> = None;
+                let mut collected_type: Option<CollectedType> = None;
+                let mut required: Option<bool> = None;
+                let mut description: Option<std::string::String> = None;
+
+                while let Some(key) = map.next_key::<std::string::String>()? {
+                    match key.as_str() {
+                        "name" => { name = Some(map.next_value()?); }
+                        "collected_type" => { collected_type = Some(map.next_value()?); }
+                        "required" => { required = Some(map.next_value()?); }
+                        "description" => { description = Some(map.next_value()?); }
+                        _ => { let _ = map.next_value::<serde::de::IgnoredAny>()?; }
+                    }
+                }
+
+                Ok(CollectedObjectField {
+                    name: name.ok_or_else(|| de::Error::missing_field("name"))?,
+                    collected_type: collected_type.ok_or_else(|| de::Error::missing_field("collected_type"))?,
+                    required: required.ok_or_else(|| de::Error::missing_field("required"))?,
+                    description: description.ok_or_else(|| de::Error::missing_field("description"))?,
+                })
+            }
+        }
+
+        deserializer.deserialize_struct(
+            "CollectedObjectField",
+            &["name", "collected_type", "required", "description"],
+            FieldVisitor,
+        )
+    }
+}
+
+/// An object field as collected from the AST (not yet resolved).
+#[derive(Debug, Clone)]
+pub struct CollectedObjectField {
+    pub name: std::string::String,
+    pub collected_type: CollectedType,
+    pub required: bool,
+    pub description: std::string::String,
+}
+
+// ─── Enum Types (used in both SourceData and ExtractionOutput) ────────────────
+
+/// An enum-like constant discovered during extraction.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnumEntry {
+    pub name: std::string::String,
+    pub value: EnumValue,
+    pub description: std::string::String,
+}
+
+/// The value of an enum entry.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", untagged)]
+pub enum EnumValue {
+    String(std::string::String),
+    Number(f64),
+    Bool(bool),
+}
+
+// ─── Source Data (collected during Phase 0-2) ─────────────────────────────────
+
+/// Raw data collected from parsing a single file.
+/// Owned data only — no AST references. Safe for rayon + arc.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SourceData {
+    /// Interfaces found in this file.
+    /// Key: "${absolute_file_path}:${interface_name}"
+    pub interfaces: FxHashMap<std::string::String, CollectedInterface>,
+
+    /// Type aliases found in this file.
+    /// Key: "${absolute_file_path}:${type_name}"
+    pub type_aliases: FxHashMap<std::string::String, CollectedTypeAlias>,
+
+    /// Enum-like values found in this file.
+    /// Key: "${absolute_file_path}:${name}"
+    pub enums: FxHashMap<std::string::String, Vec<EnumEntry>>,
+
+    /// Component → prop type mappings found in this file.
+    /// Only populated for .tsx files.
+    pub component_mappings: Vec<ComponentMapping>,
+
+    /// Import bindings in this file — local name → source
+    pub imports: Vec<ImportBinding>,
+
+    /// Re-exports from this file
+    pub exports: Vec<LexedExport>,
+}
+
+/// A collected interface declaration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollectedInterface {
+    /// Scoped key: "${file_path}:${name}"
+    pub scoped_key: std::string::String,
+    pub name: TypeName,
+    pub file_path: Utf8PathBuf,
+    pub props: Vec<RawProp>,
+    pub extends: Vec<ExtendsRef>,
+    pub description: std::string::String,
+    pub tags: BTreeMap<std::string::String, std::string::String>,
+}
+
+/// A raw prop — types not yet resolved to PropType.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RawProp {
+    pub name: std::string::String,
+    /// Structured type collected from the AST — replaces raw string for reliable resolver access.
+    pub collected_type: CollectedType,
+    pub required: bool,
+    pub description: std::string::String,
+    pub tags: BTreeMap<std::string::String, std::string::String>,
+    /// Byte span in source file — used for miette diagnostics
+    pub span_start: u32,
+    pub span_end: u32,
+}
+
+/// An extends reference in an interface declaration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExtendsRef {
+    /// interface Foo extends Bar — Bar defined in SAME file
+    SameFile { name: TypeName, type_args: Vec<std::string::String> },
+    /// interface Foo extends Bar — Bar came from an import
+    Imported {
+        local_name: TypeName,
+        type_args: Vec<std::string::String>,
+        /// The import specifier this name came from, if determinable
+        source_specifier: Option<std::string::String>,
+    },
+    /// interface Foo extends ButtonHTMLAttributes<HTMLButtonElement>
+    /// Recognized as baked-in React/DOM type — no file lookup needed
+    Builtin {
+        name: TypeName,
+        /// Resolved HTML element: "button", "input", etc.
+        element: Option<std::string::String>,
+        type_args: Vec<std::string::String>,
+    },
+}
+
+/// A collected type alias.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CollectedTypeAlias {
+    Omit { base: CollectedType, omitted_keys: Vec<std::string::String>, file_path: Utf8PathBuf },
+    Pick { base: CollectedType, picked_keys: Vec<std::string::String>, file_path: Utf8PathBuf },
+    Partial { base: CollectedType, file_path: Utf8PathBuf },
+    Required { base: CollectedType, file_path: Utf8PathBuf },
+    Union { members: Vec<CollectedType>, file_path: Utf8PathBuf },
+    Intersection { members: Vec<CollectedType>, file_path: Utf8PathBuf },
+    LiteralUnion { members: Vec<std::string::String>, file_path: Utf8PathBuf },
+    /// e.g. type Size = SomeOtherType — transparent alias
+    Passthrough { target: CollectedType, file_path: Utf8PathBuf },
+}
+
+/// The source of a default value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DefaultSource {
+    /// Extracted from parameter destructuring: `({ size = 'md' }: Props) => ...`
+    Destructuring,
+    /// Extracted from `Component.defaultProps = { size: 'md' }` assignment.
+    DefaultProps,
+    /// Extracted from `/** @default 'md' */` JSDoc/TSDoc annotation.
+    JsDoc,
+}
+
+/// A default value as collected by the extractor (before resolver processing).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RawDefault {
+    /// String representation of the default value (literal or source expression).
+    pub value: std::string::String,
+    /// True if `value` is a runtime expression we couldn't statically evaluate.
+    pub computed: bool,
+    /// Where this default came from.
+    pub source: DefaultSource,
+}
+
+/// A component → prop type mapping.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComponentMapping {
+    pub component_name: std::string::String,
+    pub props_type_name: TypeName,
+    pub props_type_args: Vec<std::string::String>,
+    pub file_path: Utf8PathBuf,
+    pub description: std::string::String,
+    pub tags: BTreeMap<std::string::String, std::string::String>,
+    /// Byte span for diagnostics
+    pub span_start: u32,
+    pub span_end: u32,
+    /// Default values extracted from parameter destructuring or defaultProps.
+    /// Key = prop name. Populated only for implementation files (.tsx/.ts), not .d.ts.
+    pub param_defaults: FxHashMap<std::string::String, RawDefault>,
+}
+
+// ─── Import/Export Types ───────────────────────────────────────────────────────
+
+/// An import binding found in a source file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportBinding {
+    /// Local name as used in this file (after `as` rename)
+    pub local_name: TypeName,
+    /// Original exported name
+    pub exported_name: TypeName,
+    /// Import specifier: "@radix-ui/react-button", "./types", etc.
+    pub specifier: std::string::String,
+    /// true for `import type { ... }`
+    pub is_type_only: bool,
+}
+
+/// An export found in a source file — classified for re-export tracking.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LexedExport {
+    /// `export { Foo }` or `export { Foo as Bar }` from "./types"
+    ReExportNamed {
+        local_name: std::string::String,
+        source_name: std::string::String,
+        source_specifier: std::string::String,
+        is_type_only: bool,
+    },
+    /// `export * from "./types"`
+    ReExportAll {
+        source_specifier: std::string::String,
+        is_type_only: bool,
+    },
+    /// `export * as Ns from "./types"`
+    ReExportNamespace {
+        namespace: std::string::String,
+        source_specifier: std::string::String,
+    },
+    /// `export interface Foo { }` / `export type Bar = ...` / `export const X`
+    LocalDeclaration {
+        name: std::string::String,
+        is_type_only: bool,
+    },
+}

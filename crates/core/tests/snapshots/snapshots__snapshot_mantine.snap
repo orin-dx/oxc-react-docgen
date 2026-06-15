@@ -1,0 +1,1763 @@
+---
+source: crates/core/tests/snapshots.rs
+expression: value
+---
+{
+  "components": {
+    "Button": {
+      "displayName": "Button",
+      "filePath": "[ROOT]/fixtures/mantine/Button.d.ts",
+      "description": "Determines which auto-complete feature the browser offers.",
+      "props": {
+        "autoContrast": {
+          "name": "autoContrast",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Determines which auto-complete feature the browser offers.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "children": {
+          "name": "children",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The content of the button.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "color": {
+          "name": "color",
+          "type": {
+            "kind": "named",
+            "name": "MantineColor",
+            "args": []
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "theme.primaryColor",
+            "computed": false
+          },
+          "description": "Key of `theme.colors` or any valid CSS color.\nDetermines the button colour for built-in variants.",
+          "tags": {
+            "default": "theme.primaryColor"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "component": {
+          "name": "component",
+          "type": {
+            "kind": "elementType"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Allows rendering the button as any HTML element or React component,\npreserving all button props and styles.",
+          "tags": {
+            "example": ""
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "disabled": {
+          "name": "disabled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the button is disabled: non-interactive and visually dimmed.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "fullWidth": {
+          "name": "fullWidth",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the button stretches to fill its container's full width.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "gradient": {
+          "name": "gradient",
+          "type": {
+            "kind": "object",
+            "0": [
+              {
+                "name": "from",
+                "propType": {
+                  "kind": "string"
+                },
+                "required": true,
+                "description": "The starting color. Accepts a Mantine color token or CSS color."
+              },
+              {
+                "name": "to",
+                "propType": {
+                  "kind": "string"
+                },
+                "required": true,
+                "description": "The ending color. Accepts a Mantine color token or CSS color."
+              },
+              {
+                "name": "deg",
+                "propType": {
+                  "kind": "number"
+                },
+                "required": false,
+                "description": "The gradient angle in degrees."
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Gradient configuration used when `variant='gradient'`.",
+          "tags": {
+            "example": "{ from: 'blue', to: 'cyan', deg: 90 }"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "justify": {
+          "name": "justify",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'center'",
+            "computed": false
+          },
+          "description": "Sets the CSS `justify-content` of the inner flex container.\nUseful for controlling icon + label alignment when `fullWidth` is set.",
+          "tags": {
+            "default": "'center'"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "leftSection": {
+          "name": "leftSection",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Element rendered in the left section of the button (before the label).\nTypically an icon component.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "loaderProps": {
+          "name": "loaderProps",
+          "type": {
+            "kind": "named",
+            "name": "LoaderProps",
+            "args": []
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props forwarded to the internal `Loader` component shown when\n`loading` is `true`.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "loading": {
+          "name": "loading",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, a loader is displayed inside the button and it is disabled.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "radius": {
+          "name": "radius",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "literalUnion",
+                "members": [
+                  "\"xs\"",
+                  "\"sm\"",
+                  "\"md\"",
+                  "\"lg\"",
+                  "\"xl\""
+                ],
+                "hasDefault": false
+              },
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "number"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "theme.defaultRadius",
+            "computed": false
+          },
+          "description": "Key of `theme.radius` or a number (px) for the border radius.",
+          "tags": {
+            "default": "theme.defaultRadius"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "rightSection": {
+          "name": "rightSection",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Element rendered in the right section of the button (after the label).\nTypically an icon component.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "literalUnion",
+                "members": [
+                  "\"xs\"",
+                  "\"sm\"",
+                  "\"md\"",
+                  "\"lg\"",
+                  "\"xl\""
+                ],
+                "hasDefault": false
+              },
+              {
+                "kind": "literalUnion",
+                "members": [
+                  "compact-\"xs\"",
+                  "compact-\"sm\"",
+                  "compact-\"md\"",
+                  "compact-\"lg\"",
+                  "compact-\"xl\""
+                ],
+                "hasDefault": false
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'sm'",
+            "computed": false
+          },
+          "description": "Controls the height and padding of the button.",
+          "tags": {
+            "default": "'sm'"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "variant": {
+          "name": "variant",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "default"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "filled"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "light"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "outline"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "subtle"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "transparent"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "white"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "gradient"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'filled'",
+            "computed": false
+          },
+          "description": "The visual variant of the button.\n- `'default'` — neutral outlined button\n- `'filled'` — solid filled button (most prominent)\n- `'light'` — lightly tinted background\n- `'outline'` — transparent background with a coloured border\n- `'subtle'` — no border or background, only coloured text\n- `'transparent'` — fully transparent, no background or border\n- `'white'` — white background regardless of colour scheme\n- `'gradient'` — linear gradient; requires the `gradient` prop",
+          "tags": {
+            "default": "'filled'"
+          },
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        }
+      },
+      "inheritance": [
+        {
+          "typeName": "React.ButtonHTMLAttributes",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "button",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "aria-describedby": {
+          "name": "aria-describedby",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-expanded": {
+          "name": "aria-expanded",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-haspopup": {
+          "name": "aria-haspopup",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "aria-pressed": {
+          "name": "aria-pressed",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "form": {
+          "name": "form",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "name": {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onKeyDown": {
+          "name": "onKeyDown",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onKeyUp": {
+          "name": "onKeyUp",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "type": {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "value": {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "ButtonHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [
+        "StylesApiProps"
+      ],
+      "tags": {},
+      "methods": []
+    },
+    "TextInput": {
+      "displayName": "TextInput",
+      "filePath": "[ROOT]/fixtures/mantine/TextInput.d.ts",
+      "description": "A ref passed to the underlying `<input>` DOM element.",
+      "props": {
+        "autoComplete": {
+          "name": "autoComplete",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Hint for the browser's autocomplete feature.",
+          "tags": {
+            "see": "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete"
+          },
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "autoFocus": {
+          "name": "autoFocus",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the browser will focus the input on mount.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "color": {
+          "name": "color",
+          "type": {
+            "kind": "named",
+            "name": "MantineColor",
+            "args": []
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "theme.primaryColor",
+            "computed": false
+          },
+          "description": "Key of `theme.colors` or any CSS color used for the focused border.",
+          "tags": {
+            "default": "theme.primaryColor"
+          },
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "defaultValue": {
+          "name": "defaultValue",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The uncontrolled default value.",
+          "tags": {},
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "description": {
+          "name": "description",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "A short description rendered below the label and above the input.\nUseful for hints or formatting guidance.",
+          "tags": {},
+          "parent": {
+            "name": "InputWrapperBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputWrapperBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "descriptionProps": {
+          "name": "descriptionProps",
+          "type": {
+            "kind": "named",
+            "name": "React.HTMLAttributes",
+            "args": [
+              {
+                "kind": "named",
+                "name": "HTMLParagraphElement",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props forwarded to the description element.",
+          "tags": {},
+          "parent": {
+            "name": "InputWrapperBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputWrapperBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "disabled": {
+          "name": "disabled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the input is disabled.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "error": {
+          "name": "error",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Error content displayed below the input. When a non-empty string or\nReactNode is provided the input switches to its error visual state.",
+          "tags": {},
+          "parent": {
+            "name": "InputWrapperBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputWrapperBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "errorProps": {
+          "name": "errorProps",
+          "type": {
+            "kind": "named",
+            "name": "React.HTMLAttributes",
+            "args": [
+              {
+                "kind": "named",
+                "name": "HTMLParagraphElement",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props forwarded to the error element.",
+          "tags": {},
+          "parent": {
+            "name": "InputWrapperBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputWrapperBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The `id` of the input element; also used as the label's `htmlFor`.",
+          "tags": {},
+          "parent": {
+            "name": "InputWrapperBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputWrapperBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "inputWrapperOrder": {
+          "name": "inputWrapperOrder",
+          "type": {
+            "kind": "named",
+            "name": "Array",
+            "args": [
+              {
+                "kind": "union",
+                "0": [
+                  {
+                    "kind": "stringLiteral",
+                    "0": "label"
+                  },
+                  {
+                    "kind": "stringLiteral",
+                    "0": "input"
+                  },
+                  {
+                    "kind": "stringLiteral",
+                    "0": "description"
+                  },
+                  {
+                    "kind": "stringLiteral",
+                    "0": "error"
+                  }
+                ]
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "['label', 'input', 'description', 'error']",
+            "computed": false
+          },
+          "description": "Controls the ordering of the label, input, description, and error\nsections within the wrapper. Defaults to the MUI-like order:\nlabel → input → description → error.",
+          "tags": {
+            "default": "['label', 'input', 'description', 'error']"
+          },
+          "parent": {
+            "name": "InputWrapperBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputWrapperBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "label": {
+          "name": "label",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Label displayed above the input. Renders a `<label>` element that is\nassociated with the input via `htmlFor`.",
+          "tags": {},
+          "parent": {
+            "name": "InputWrapperBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputWrapperBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "labelProps": {
+          "name": "labelProps",
+          "type": {
+            "kind": "named",
+            "name": "React.LabelHTMLAttributes",
+            "args": [
+              {
+                "kind": "named",
+                "name": "HTMLLabelElement",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props forwarded to the `<label>` element rendered by the wrapper.",
+          "tags": {},
+          "parent": {
+            "name": "InputWrapperBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputWrapperBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "leftSection": {
+          "name": "leftSection",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Content rendered inside the input shell on the left side.\nTypically an icon component.",
+          "tags": {},
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "leftSectionPointerEvents": {
+          "name": "leftSectionPointerEvents",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'none'",
+            "computed": false
+          },
+          "description": "Controls pointer-events on the left section container. Set to `'none'`\nto let clicks pass through to the input.",
+          "tags": {
+            "default": "'none'"
+          },
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "leftSectionProps": {
+          "name": "leftSectionProps",
+          "type": {
+            "kind": "named",
+            "name": "React.HTMLAttributes",
+            "args": [
+              {
+                "kind": "named",
+                "name": "HTMLDivElement",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props forwarded to the left section `<div>` wrapper.",
+          "tags": {},
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "leftSectionWidth": {
+          "name": "leftSectionWidth",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "36",
+            "computed": false
+          },
+          "description": "Width of the left section. Used to set the appropriate padding-left on\nthe `<input>` so the text does not overlap the section.",
+          "tags": {
+            "default": "36"
+          },
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "maxLength": {
+          "name": "maxLength",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The maximum number of characters the user can enter.",
+          "tags": {},
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "minLength": {
+          "name": "minLength",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The minimum number of characters required.",
+          "tags": {},
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "name": {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The `name` attribute for use in a form. Associates the input with a form field.",
+          "tags": {},
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "React.FocusEventHandler"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Callback fired when the input loses focus.",
+          "tags": {},
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "onChange": {
+          "name": "onChange",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "React.ChangeEventHandler"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Callback fired when the value changes.",
+          "tags": {},
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "React.FocusEventHandler"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Callback fired when the input gains focus.",
+          "tags": {},
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "pattern": {
+          "name": "pattern",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "A regex pattern the value must match for HTML5 form validation.",
+          "tags": {},
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "placeholder": {
+          "name": "placeholder",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Placeholder text displayed when the input is empty.",
+          "tags": {},
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "pointer": {
+          "name": "pointer",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "Sets `cursor: pointer` style on the input. Useful when the input\nopens a picker (DatePicker, Select, etc.).",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "radius": {
+          "name": "radius",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "literalUnion",
+                "members": [
+                  "\"xs\"",
+                  "\"sm\"",
+                  "\"md\"",
+                  "\"lg\"",
+                  "\"xl\""
+                ],
+                "hasDefault": false
+              },
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "number"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "theme.defaultRadius",
+            "computed": false
+          },
+          "description": "Key of `theme.radius` or a number (px) for the border radius.",
+          "tags": {
+            "default": "theme.defaultRadius"
+          },
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "readOnly": {
+          "name": "readOnly",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the input is read-only.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "ref": {
+          "name": "ref",
+          "type": {
+            "kind": "ref",
+            "element": "HTMLInputElement"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "A ref passed to the underlying `<input>` DOM element.",
+          "tags": {},
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "required": {
+          "name": "required",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, the `<input>` element is marked as required.\nUnlike `withAsterisk`, this sets the native required attribute\nand triggers HTML5 form validation.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "rightSection": {
+          "name": "rightSection",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Content rendered inside the input shell on the right side.\nTypically an icon, clear button, or unit label.",
+          "tags": {},
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "rightSectionPointerEvents": {
+          "name": "rightSectionPointerEvents",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'none'",
+            "computed": false
+          },
+          "description": "Controls pointer-events on the right section container. Set to `'all'`\nwhen the section contains an interactive element (e.g. a clear button).",
+          "tags": {
+            "default": "'none'"
+          },
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "rightSectionProps": {
+          "name": "rightSectionProps",
+          "type": {
+            "kind": "named",
+            "name": "React.HTMLAttributes",
+            "args": [
+              {
+                "kind": "named",
+                "name": "HTMLDivElement",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props forwarded to the right section `<div>` wrapper.",
+          "tags": {},
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "rightSectionWidth": {
+          "name": "rightSectionWidth",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "36",
+            "computed": false
+          },
+          "description": "Width of the right section. Used to set the appropriate padding-right on\nthe `<input>` so the text does not overlap the section.",
+          "tags": {
+            "default": "36"
+          },
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "literalUnion",
+            "members": [
+              "\"xs\"",
+              "\"sm\"",
+              "\"md\"",
+              "\"lg\"",
+              "\"xl\""
+            ],
+            "hasDefault": false
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'sm'",
+            "computed": false
+          },
+          "description": "Controls the height and font size of the input.",
+          "tags": {
+            "default": "'sm'"
+          },
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "type": {
+          "name": "type",
+          "type": {
+            "kind": "named",
+            "name": "React.HTMLInputTypeAttribute",
+            "args": []
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'text'",
+            "computed": false
+          },
+          "description": "The HTML `type` attribute of the `<input>` element.",
+          "tags": {
+            "default": "'text'"
+          },
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "value": {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The controlled value of the input.",
+          "tags": {},
+          "parent": {
+            "name": "TextInputProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "TextInputProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "variant": {
+          "name": "variant",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "default"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "filled"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "unstyled"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "'default'",
+            "computed": false
+          },
+          "description": "Visual variant of the input.",
+          "tags": {
+            "default": "'default'"
+          },
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "withAsterisk": {
+          "name": "withAsterisk",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, an asterisk is appended to the label to indicate the field\nis required. Unlike setting `required`, this only affects the visual\ndisplay and does not set HTML validation attributes.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "InputWrapperBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputWrapperBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "wrapperProps": {
+          "name": "wrapperProps",
+          "type": {
+            "kind": "named",
+            "name": "React.HTMLAttributes",
+            "args": [
+              {
+                "kind": "named",
+                "name": "HTMLDivElement",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Props passed to the wrapper `<div>` element surrounding input and sections.",
+          "tags": {},
+          "parent": {
+            "name": "InputBaseProps",
+            "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "InputBaseProps",
+              "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": null,
+      "composes": [
+        "StylesApiProps"
+      ],
+      "tags": {},
+      "methods": []
+    }
+  },
+  "enums": {},
+  "diagnostics": [
+    {
+      "severity": "warning",
+      "message": "[ROOT]/Cannot resolve type 'MantineColor' in '/Users/gabe/Projects/oxc-react-codegen/fixtures/mantine/Button.d.ts' — it will appear as opaque",
+      "file": "[ROOT]/fixtures/mantine/Button.d.ts",
+      "line": null,
+      "column": null,
+      "help": "Check that the package is installed and its types are resolvable.",
+      "code": "UNRESOLVABLE_IMPORT"
+    },
+    {
+      "severity": "warning",
+      "message": "[ROOT]/Cannot resolve type 'MantineColor' in '/Users/gabe/Projects/oxc-react-codegen/fixtures/mantine/TextInput.d.ts' — it will appear as opaque",
+      "file": "[ROOT]/fixtures/mantine/TextInput.d.ts",
+      "line": null,
+      "column": null,
+      "help": "Check that the package is installed and its types are resolvable.",
+      "code": "UNRESOLVABLE_IMPORT"
+    }
+  ],
+  "stats": {
+    "componentsExtracted": 2,
+    "componentsSkipped": 0,
+    "filesParsed": 3,
+    "dtsFilesParsed": 0,
+    "dtsCacheHits": 0,
+    "durationMs": 0,
+    "tier1Count": 0,
+    "tier3Count": 0,
+    "opaqueCount": 0
+  }
+}

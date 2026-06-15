@@ -28,10 +28,7 @@ impl<'src> SourceDataCollector<'src> {
                             self.extract_type_name_from_type(&tp.params[0])?;
                         let base = CollectedType::Named {
                             name: base_name,
-                            args: base_args
-                                .into_iter()
-                                .map(CollectedType::Raw)
-                                .collect(),
+                            args: base_args.into_iter().map(CollectedType::Raw).collect(),
                         };
                         let omitted_keys = self.collect_string_union_keys(&tp.params[1]);
                         Some(CollectedTypeAlias::Omit { base, omitted_keys, file_path: fp })
@@ -45,10 +42,7 @@ impl<'src> SourceDataCollector<'src> {
                             self.extract_type_name_from_type(&tp.params[0])?;
                         let base = CollectedType::Named {
                             name: base_name,
-                            args: base_args
-                                .into_iter()
-                                .map(CollectedType::Raw)
-                                .collect(),
+                            args: base_args.into_iter().map(CollectedType::Raw).collect(),
                         };
                         let picked_keys = self.collect_string_union_keys(&tp.params[1]);
                         Some(CollectedTypeAlias::Pick { base, picked_keys, file_path: fp })
@@ -59,10 +53,7 @@ impl<'src> SourceDataCollector<'src> {
                             self.extract_type_name_from_type(tp.params.first()?)?;
                         let base = CollectedType::Named {
                             name: base_name,
-                            args: base_args
-                                .into_iter()
-                                .map(CollectedType::Raw)
-                                .collect(),
+                            args: base_args.into_iter().map(CollectedType::Raw).collect(),
                         };
                         Some(CollectedTypeAlias::Partial { base, file_path: fp })
                     }
@@ -72,10 +63,7 @@ impl<'src> SourceDataCollector<'src> {
                             self.extract_type_name_from_type(tp.params.first()?)?;
                         let base = CollectedType::Named {
                             name: base_name,
-                            args: base_args
-                                .into_iter()
-                                .map(CollectedType::Raw)
-                                .collect(),
+                            args: base_args.into_iter().map(CollectedType::Raw).collect(),
                         };
                         Some(CollectedTypeAlias::Required { base, file_path: fp })
                     }
@@ -114,13 +102,10 @@ impl<'src> SourceDataCollector<'src> {
                 Some(CollectedTypeAlias::Union { members, file_path: fp })
             }
             TSType::TSIntersectionType(i) => {
-                let members =
-                    i.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
+                let members = i.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
                 Some(CollectedTypeAlias::Intersection { members, file_path: fp })
             }
-            TSType::TSParenthesizedType(p) => {
-                self.classify_type_alias(_name, &p.type_annotation)
-            }
+            TSType::TSParenthesizedType(p) => self.classify_type_alias(_name, &p.type_annotation),
             _ => None,
         }
     }

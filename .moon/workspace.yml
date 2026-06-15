@@ -2,12 +2,24 @@
 $schema: "https://moonrepo.dev/schemas/workspace.json"
 
 projects:
-  - "packages/*"
-  - "apps/*"
-  - "crates/*"
+  core: "crates/core"
+  cli: "crates/cli"
+  crates-napi: "crates/napi"
+  napi: "packages/napi"
+  rolldown-plugin: "packages/rolldown-plugin"
+  validate: "packages/validate"
+  vite-plugin: "packages/vite-plugin"
 
 vcs:
-  manager: git
+  client: git
   defaultBranch: master
+  sync: true
+  hooks:
+    pre-commit:
+      - '. "$HOME/.cargo/env"'
+      - "cargo fmt --check"
+      - "cargo clippy --workspace -- -D warnings"
+      - "typos"
+      - "cargo deny check advisories"
 
 telemetry: false

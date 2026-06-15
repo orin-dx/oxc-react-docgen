@@ -1,12 +1,15 @@
 //! `impl Visit for SourceDataCollector` — the AST walker entry points.
 
 use oxc_ast::ast::*;
-use oxc_ast_visit::{Visit, walk};
+use oxc_ast_visit::{walk, Visit};
 use oxc_syntax::scope::ScopeFlags;
 
-use crate::types::{CollectedInterface, ComponentMapping, EnumEntry, EnumValue, ExtendsRef, ImportBinding, LexedExport, RawProp};
+use crate::types::{
+    CollectedInterface, ComponentMapping, EnumEntry, EnumValue, ExtendsRef, ImportBinding,
+    LexedExport, RawProp,
+};
 
-use super::{SourceDataCollector, declaration_name, is_pascal_case};
+use super::{declaration_name, is_pascal_case, SourceDataCollector};
 
 impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
     fn visit_import_declaration(&mut self, node: &ImportDeclaration<'a>) {
@@ -65,8 +68,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                     local_name: spec.exported.name().as_str().to_owned(),
                     source_name: spec.local.name().as_str().to_owned(),
                     source_specifier: src.clone(),
-                    is_type_only: node.export_kind.is_type()
-                        || spec.export_kind.is_type(),
+                    is_type_only: node.export_kind.is_type() || spec.export_kind.is_type(),
                 });
             }
         } else {
@@ -165,9 +167,9 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                 };
 
                 let value = match &member.initializer {
-                    Some(init) => self.expression_to_enum_value(init).unwrap_or_else(|| {
-                        EnumValue::String(name.clone())
-                    }),
+                    Some(init) => self
+                        .expression_to_enum_value(init)
+                        .unwrap_or_else(|| EnumValue::String(name.clone())),
                     None => EnumValue::String(name.clone()),
                 };
 
@@ -228,8 +230,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                             {
                                 let description = self.find_jsdoc(func.span.start);
                                 let tags = self.extract_jsdoc_tags(func.span.start);
-                                let param_defaults =
-                                    self.extract_param_defaults(&func.params);
+                                let param_defaults = self.extract_param_defaults(&func.params);
                                 self.data.component_mappings.push(ComponentMapping {
                                     component_name: name.to_owned(),
                                     props_type_name: props_name,

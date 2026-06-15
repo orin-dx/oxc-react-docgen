@@ -7,11 +7,11 @@ use crate::known::{resolve_known, KnownPatternResult};
 use crate::react_types;
 use crate::types::*;
 
-use super::{ResolutionContext, MAX_DEPTH};
 use super::alias::resolve_type_alias_type;
 use super::collected::resolve_collected_type;
 use super::import::resolve_to_canonical;
 use super::react::react_type_to_prop_type;
+use super::{ResolutionContext, MAX_DEPTH};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn resolve_named(
@@ -32,10 +32,7 @@ pub(super) fn resolve_named(
             help: None,
             code: DiagnosticCode::MaxDepthExceeded,
         });
-        return PropType::Opaque {
-            raw: name.to_string(),
-            reason: OpaqueReason::DepthExceeded,
-        };
+        return PropType::Opaque { raw: name.to_string(), reason: OpaqueReason::DepthExceeded };
     }
 
     // ── 1. React builtin check ────────────────────────────────────────────────
@@ -78,7 +75,7 @@ pub(super) fn resolve_named(
     if let Some(result) = resolve_known(name.as_str(), &resolved_args, &ctx.global) {
         return match result {
             KnownPatternResult::Type(pt) => pt,
-            KnownPatternResult::Alias { name: alias_name, .. } => {
+            KnownPatternResult::Alias { name: alias_name } => {
                 // Follow the alias through resolve_named.
                 let alias_ct =
                     CollectedType::Named { name: alias_name.as_str().into(), args: vec![] };
@@ -133,9 +130,7 @@ pub(super) fn resolve_named(
         file: Some(consuming_file.to_string()),
         line: None,
         column: None,
-        help: Some(
-            "Check that the package is installed and its types are resolvable.".into(),
-        ),
+        help: Some("Check that the package is installed and its types are resolvable.".into()),
         code: DiagnosticCode::UnresolvableImport,
     });
     PropType::Named { name: name.clone(), args: resolved_args }

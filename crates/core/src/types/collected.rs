@@ -164,21 +164,21 @@ impl CollectedType {
     fn to_json_value(&self) -> serde_json::Value {
         match self {
             // Primitives: serialize as short string tags
-            CollectedType::String    => serde_json::json!("str"),
-            CollectedType::Number    => serde_json::json!("num"),
-            CollectedType::Boolean   => serde_json::json!("bool"),
-            CollectedType::Null      => serde_json::json!("null"),
+            CollectedType::String => serde_json::json!("str"),
+            CollectedType::Number => serde_json::json!("num"),
+            CollectedType::Boolean => serde_json::json!("bool"),
+            CollectedType::Null => serde_json::json!("null"),
             CollectedType::Undefined => serde_json::json!("undef"),
-            CollectedType::Any       => serde_json::json!("any"),
-            CollectedType::Never     => serde_json::json!("never"),
-            CollectedType::Unknown   => serde_json::json!("unknown"),
-            CollectedType::Void      => serde_json::json!("void"),
-            CollectedType::BigInt    => serde_json::json!("bigint"),
-            CollectedType::Symbol    => serde_json::json!("symbol"),
+            CollectedType::Any => serde_json::json!("any"),
+            CollectedType::Never => serde_json::json!("never"),
+            CollectedType::Unknown => serde_json::json!("unknown"),
+            CollectedType::Void => serde_json::json!("void"),
+            CollectedType::BigInt => serde_json::json!("bigint"),
+            CollectedType::Symbol => serde_json::json!("symbol"),
             // Literals
             CollectedType::StringLiteral(s) => serde_json::json!({"sl": s.as_str()}),
             CollectedType::NumberLiteral(n) => serde_json::json!({"nl": n}),
-            CollectedType::BoolLiteral(b)   => serde_json::json!({"bl": b}),
+            CollectedType::BoolLiteral(b) => serde_json::json!({"bl": b}),
             // Named: {"n": name, "a": [args...]}
             CollectedType::Named { name, args } => serde_json::json!({
                 "n": name.as_str(),
@@ -225,14 +225,16 @@ impl CollectedType {
                 }
             }),
             // Conditional: {"cond": {c, e, t, f}}
-            CollectedType::Conditional { check, extends_type, true_type, false_type } => serde_json::json!({
-                "cond": {
-                    "c": check.to_json_value(),
-                    "e": extends_type.to_json_value(),
-                    "t": true_type.to_json_value(),
-                    "f": false_type.to_json_value(),
-                }
-            }),
+            CollectedType::Conditional { check, extends_type, true_type, false_type } => {
+                serde_json::json!({
+                    "cond": {
+                        "c": check.to_json_value(),
+                        "e": extends_type.to_json_value(),
+                        "t": true_type.to_json_value(),
+                        "f": false_type.to_json_value(),
+                    }
+                })
+            }
             // Mapped: {"mapped": {k, v}}
             CollectedType::Mapped { key_type, value_type } => serde_json::json!({
                 "mapped": {"k": key_type.to_json_value(), "v": value_type.to_json_value()}
@@ -245,18 +247,18 @@ impl CollectedType {
     fn from_json_value(v: &serde_json::Value) -> Result<Self, std::string::String> {
         match v {
             serde_json::Value::String(s) => Ok(match s.as_str() {
-                "str"     => CollectedType::String,
-                "num"     => CollectedType::Number,
-                "bool"    => CollectedType::Boolean,
-                "null"    => CollectedType::Null,
-                "undef"   => CollectedType::Undefined,
-                "any"     => CollectedType::Any,
-                "never"   => CollectedType::Never,
+                "str" => CollectedType::String,
+                "num" => CollectedType::Number,
+                "bool" => CollectedType::Boolean,
+                "null" => CollectedType::Null,
+                "undef" => CollectedType::Undefined,
+                "any" => CollectedType::Any,
+                "never" => CollectedType::Never,
                 "unknown" => CollectedType::Unknown,
-                "void"    => CollectedType::Void,
-                "bigint"  => CollectedType::BigInt,
-                "symbol"  => CollectedType::Symbol,
-                other     => CollectedType::Raw(other.to_string()),
+                "void" => CollectedType::Void,
+                "bigint" => CollectedType::BigInt,
+                "symbol" => CollectedType::Symbol,
+                other => CollectedType::Raw(other.to_string()),
             }),
             serde_json::Value::Object(map) => {
                 if let Some(s) = map.get("sl").and_then(|v| v.as_str()) {
@@ -269,20 +271,23 @@ impl CollectedType {
                     return Ok(CollectedType::BoolLiteral(b));
                 }
                 if let Some(name) = map.get("n").and_then(|v| v.as_str()) {
-                    let args = map.get("a")
+                    let args = map
+                        .get("a")
                         .and_then(|v| v.as_array())
-                        .map(|arr| arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>())
+                        .map(|arr| {
+                            arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>()
+                        })
                         .unwrap_or(Ok(vec![]))?;
                     return Ok(CollectedType::Named { name: name.into(), args });
                 }
                 if let Some(arr) = map.get("u").and_then(|v| v.as_array()) {
                     return Ok(CollectedType::Union(
-                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?,
                     ));
                 }
                 if let Some(arr) = map.get("i").and_then(|v| v.as_array()) {
                     return Ok(CollectedType::Intersection(
-                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?,
                     ));
                 }
                 if let Some(inner) = map.get("arr") {
@@ -290,46 +295,75 @@ impl CollectedType {
                 }
                 if let Some(arr) = map.get("tup").and_then(|v| v.as_array()) {
                     return Ok(CollectedType::Tuple(
-                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?,
                     ));
                 }
                 if let Some(arr) = map.get("obj").and_then(|v| v.as_array()) {
-                    let fields: Vec<CollectedObjectField> = arr.iter().map(|f| {
-                        let o = f.as_object().ok_or_else(|| "expected object for field".to_string())?;
-                        Ok(CollectedObjectField {
-                            name: o.get("name").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
-                            collected_type: Self::from_json_value(o.get("t").unwrap_or(&serde_json::Value::Null))?,
-                            required: o.get("req").and_then(|v| v.as_bool()).unwrap_or(false),
-                            description: o.get("desc").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
+                    let fields: Vec<CollectedObjectField> = arr
+                        .iter()
+                        .map(|f| {
+                            let o = f
+                                .as_object()
+                                .ok_or_else(|| "expected object for field".to_string())?;
+                            Ok(CollectedObjectField {
+                                name: o
+                                    .get("name")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_owned(),
+                                collected_type: Self::from_json_value(
+                                    o.get("t").unwrap_or(&serde_json::Value::Null),
+                                )?,
+                                required: o.get("req").and_then(|v| v.as_bool()).unwrap_or(false),
+                                description: o
+                                    .get("desc")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_owned(),
+                            })
                         })
-                    }).collect::<Result<_, std::string::String>>()?;
+                        .collect::<Result<_, std::string::String>>()?;
                     return Ok(CollectedType::Object(fields));
                 }
                 if let Some(name) = map.get("to").and_then(|v| v.as_str()) {
                     return Ok(CollectedType::TypeOf(name.into()));
                 }
                 if let Some(inner) = map.get("ia") {
-                    let obj = Self::from_json_value(inner.get("o").unwrap_or(&serde_json::Value::Null))?;
-                    let key = Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
-                    return Ok(CollectedType::IndexedAccess { obj: Box::new(obj), key: Box::new(key) });
+                    let obj =
+                        Self::from_json_value(inner.get("o").unwrap_or(&serde_json::Value::Null))?;
+                    let key =
+                        Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::IndexedAccess {
+                        obj: Box::new(obj),
+                        key: Box::new(key),
+                    });
                 }
                 if let Some(arr) = map.get("tl").and_then(|v| v.as_array()) {
                     return Ok(CollectedType::TemplateLiteral(
-                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?
+                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?,
                     ));
                 }
                 if let Some(inner) = map.get("fn") {
-                    let params = inner.get("p").and_then(|v| v.as_array())
-                        .map(|arr| arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>())
+                    let params = inner
+                        .get("p")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>()
+                        })
                         .unwrap_or(Ok(vec![]))?;
-                    let rt = Self::from_json_value(inner.get("r").unwrap_or(&serde_json::Value::Null))?;
+                    let rt =
+                        Self::from_json_value(inner.get("r").unwrap_or(&serde_json::Value::Null))?;
                     return Ok(CollectedType::Function { params, return_type: Box::new(rt) });
                 }
                 if let Some(inner) = map.get("cond") {
-                    let check = Self::from_json_value(inner.get("c").unwrap_or(&serde_json::Value::Null))?;
-                    let ext   = Self::from_json_value(inner.get("e").unwrap_or(&serde_json::Value::Null))?;
-                    let tt    = Self::from_json_value(inner.get("t").unwrap_or(&serde_json::Value::Null))?;
-                    let ft    = Self::from_json_value(inner.get("f").unwrap_or(&serde_json::Value::Null))?;
+                    let check =
+                        Self::from_json_value(inner.get("c").unwrap_or(&serde_json::Value::Null))?;
+                    let ext =
+                        Self::from_json_value(inner.get("e").unwrap_or(&serde_json::Value::Null))?;
+                    let tt =
+                        Self::from_json_value(inner.get("t").unwrap_or(&serde_json::Value::Null))?;
+                    let ft =
+                        Self::from_json_value(inner.get("f").unwrap_or(&serde_json::Value::Null))?;
                     return Ok(CollectedType::Conditional {
                         check: Box::new(check),
                         extends_type: Box::new(ext),
@@ -338,9 +372,14 @@ impl CollectedType {
                     });
                 }
                 if let Some(inner) = map.get("mapped") {
-                    let k = Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
-                    let vt = Self::from_json_value(inner.get("v").unwrap_or(&serde_json::Value::Null))?;
-                    return Ok(CollectedType::Mapped { key_type: Box::new(k), value_type: Box::new(vt) });
+                    let k =
+                        Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
+                    let vt =
+                        Self::from_json_value(inner.get("v").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::Mapped {
+                        key_type: Box::new(k),
+                        value_type: Box::new(vt),
+                    });
                 }
                 if let Some(s) = map.get("raw").and_then(|v| v.as_str()) {
                     return Ok(CollectedType::Raw(s.to_owned()));
@@ -394,7 +433,10 @@ impl<'de> serde::Deserialize<'de> for CollectedObjectField {
                 formatter.write_str("struct CollectedObjectField")
             }
 
-            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<CollectedObjectField, A::Error> {
+            fn visit_map<A: MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<CollectedObjectField, A::Error> {
                 let mut name: Option<std::string::String> = None;
                 let mut collected_type: Option<CollectedType> = None;
                 let mut required: Option<bool> = None;
@@ -402,19 +444,31 @@ impl<'de> serde::Deserialize<'de> for CollectedObjectField {
 
                 while let Some(key) = map.next_key::<std::string::String>()? {
                     match key.as_str() {
-                        "name" => { name = Some(map.next_value()?); }
-                        "collected_type" => { collected_type = Some(map.next_value()?); }
-                        "required" => { required = Some(map.next_value()?); }
-                        "description" => { description = Some(map.next_value()?); }
-                        _ => { let _ = map.next_value::<serde::de::IgnoredAny>()?; }
+                        "name" => {
+                            name = Some(map.next_value()?);
+                        }
+                        "collected_type" => {
+                            collected_type = Some(map.next_value()?);
+                        }
+                        "required" => {
+                            required = Some(map.next_value()?);
+                        }
+                        "description" => {
+                            description = Some(map.next_value()?);
+                        }
+                        _ => {
+                            let _ = map.next_value::<serde::de::IgnoredAny>()?;
+                        }
                     }
                 }
 
                 Ok(CollectedObjectField {
                     name: name.ok_or_else(|| de::Error::missing_field("name"))?,
-                    collected_type: collected_type.ok_or_else(|| de::Error::missing_field("collected_type"))?,
+                    collected_type: collected_type
+                        .ok_or_else(|| de::Error::missing_field("collected_type"))?,
                     required: required.ok_or_else(|| de::Error::missing_field("required"))?,
-                    description: description.ok_or_else(|| de::Error::missing_field("description"))?,
+                    description: description
+                        .ok_or_else(|| de::Error::missing_field("description"))?,
                 })
             }
         }
@@ -537,15 +591,41 @@ pub enum ExtendsRef {
 /// A collected type alias.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CollectedTypeAlias {
-    Omit { base: CollectedType, omitted_keys: Vec<std::string::String>, file_path: Utf8PathBuf },
-    Pick { base: CollectedType, picked_keys: Vec<std::string::String>, file_path: Utf8PathBuf },
-    Partial { base: CollectedType, file_path: Utf8PathBuf },
-    Required { base: CollectedType, file_path: Utf8PathBuf },
-    Union { members: Vec<CollectedType>, file_path: Utf8PathBuf },
-    Intersection { members: Vec<CollectedType>, file_path: Utf8PathBuf },
-    LiteralUnion { members: Vec<std::string::String>, file_path: Utf8PathBuf },
+    Omit {
+        base: CollectedType,
+        omitted_keys: Vec<std::string::String>,
+        file_path: Utf8PathBuf,
+    },
+    Pick {
+        base: CollectedType,
+        picked_keys: Vec<std::string::String>,
+        file_path: Utf8PathBuf,
+    },
+    Partial {
+        base: CollectedType,
+        file_path: Utf8PathBuf,
+    },
+    Required {
+        base: CollectedType,
+        file_path: Utf8PathBuf,
+    },
+    Union {
+        members: Vec<CollectedType>,
+        file_path: Utf8PathBuf,
+    },
+    Intersection {
+        members: Vec<CollectedType>,
+        file_path: Utf8PathBuf,
+    },
+    LiteralUnion {
+        members: Vec<std::string::String>,
+        file_path: Utf8PathBuf,
+    },
     /// e.g. type Size = SomeOtherType — transparent alias
-    Passthrough { target: CollectedType, file_path: Utf8PathBuf },
+    Passthrough {
+        target: CollectedType,
+        file_path: Utf8PathBuf,
+    },
 }
 
 /// The source of a default value.
@@ -613,18 +693,9 @@ pub enum LexedExport {
         is_type_only: bool,
     },
     /// `export * from "./types"`
-    ReExportAll {
-        source_specifier: std::string::String,
-        is_type_only: bool,
-    },
+    ReExportAll { source_specifier: std::string::String, is_type_only: bool },
     /// `export * as Ns from "./types"`
-    ReExportNamespace {
-        namespace: std::string::String,
-        source_specifier: std::string::String,
-    },
+    ReExportNamespace { namespace: std::string::String, source_specifier: std::string::String },
     /// `export interface Foo { }` / `export type Bar = ...` / `export const X`
-    LocalDeclaration {
-        name: std::string::String,
-        is_type_only: bool,
-    },
+    LocalDeclaration { name: std::string::String, is_type_only: bool },
 }

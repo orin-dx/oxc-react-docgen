@@ -4,9 +4,9 @@ use camino::Utf8Path;
 
 use crate::types::*;
 
-use super::{ResolutionContext};
 use super::collected::resolve_collected_type;
 use super::import::resolve_to_canonical;
+use super::ResolutionContext;
 
 pub(super) fn resolve_template_literal(
     parts: &[CollectedType],
@@ -39,10 +39,7 @@ pub(super) fn resolve_template_literal(
         ),
         code: DiagnosticCode::TemplateLiteralOpaque,
     });
-    PropType::Opaque {
-        raw: raw.clone(),
-        reason: OpaqueReason::TemplateLiteral { expression: raw },
-    }
+    PropType::Opaque { raw: raw.clone(), reason: OpaqueReason::TemplateLiteral { expression: raw } }
 }
 
 /// Try to fully expand a template literal into a list of concrete string values.
@@ -64,8 +61,13 @@ pub(super) fn try_expand_template_literal(
             }
             CollectedType::Named { name, .. } => {
                 // Look up in global type aliases for a LiteralUnion.
-                let resolved =
-                    resolve_named_to_string_literals(name.as_str(), consuming_file, ctx, state, depth + 1);
+                let resolved = resolve_named_to_string_literals(
+                    name.as_str(),
+                    consuming_file,
+                    ctx,
+                    state,
+                    depth + 1,
+                );
                 if let Some(strs) = resolved {
                     per_part.push(strs);
                 } else {

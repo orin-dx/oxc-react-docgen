@@ -21,11 +21,7 @@ pub fn cmd_extract(
 
     let pb = if !quiet && !json_mode {
         let pb = ProgressBar::new_spinner();
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .template("{spinner:.cyan} {msg}")
-                .unwrap(),
-        );
+        pb.set_style(ProgressStyle::default_spinner().template("{spinner:.cyan} {msg}").unwrap());
         pb.set_message("Extracting...");
         pb.enable_steady_tick(std::time::Duration::from_millis(80));
         Some(pb)
@@ -58,9 +54,9 @@ pub fn cmd_extract(
     };
 
     match args.out {
-        Some(ref path) => std::fs::write(path, &json)
-            .into_diagnostic()
-            .wrap_err(format!("Writing to {path}"))?,
+        Some(ref path) => {
+            std::fs::write(path, &json).into_diagnostic().wrap_err(format!("Writing to {path}"))?
+        }
         None => println!("{json}"),
     }
 

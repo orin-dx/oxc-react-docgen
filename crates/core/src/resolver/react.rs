@@ -5,8 +5,8 @@ use oxc_resolver::AliasValue;
 
 use crate::types::*;
 
-use super::{ResolutionContext};
 use super::collected::resolve_collected_type;
+use super::ResolutionContext;
 
 /// Map a React builtin type name to the appropriate `PropType`.
 pub(super) fn react_type_to_prop_type(
@@ -47,8 +47,7 @@ pub(super) fn react_type_to_prop_type(
         }
 
         // Ref types.
-        "Ref" | "RefObject" | "ForwardedRef" | "MutableRefObject" | "RefCallback"
-        | "LegacyRef" => {
+        "Ref" | "RefObject" | "ForwardedRef" | "MutableRefObject" | "RefCallback" | "LegacyRef" => {
             let element = args.first().map(|a| a.to_raw_string());
             PropType::Ref { element }
         }
@@ -57,13 +56,15 @@ pub(super) fn react_type_to_prop_type(
         "ElementType" => PropType::ElementType,
 
         // FC / FunctionComponent — return as Named.
-        "FC" | "FunctionComponent" | "VFC" | "VoidFunctionComponent" | "ComponentType"
+        "FC"
+        | "FunctionComponent"
+        | "VFC"
+        | "VoidFunctionComponent"
+        | "ComponentType"
         | "ForwardRefExoticComponent" => {
             let resolved_args: Vec<PropType> = args
                 .iter()
-                .map(|a| {
-                    resolve_collected_type(a, consuming_file, ctx, state, depth + 1)
-                })
+                .map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1))
                 .collect();
             PropType::Named { name: name.into(), args: resolved_args }
         }
@@ -108,9 +109,7 @@ pub(super) fn react_type_to_prop_type(
         "Context" | "Consumer" | "Provider" | "RefAttributes" => {
             let resolved_args: Vec<PropType> = args
                 .iter()
-                .map(|a| {
-                    resolve_collected_type(a, consuming_file, ctx, state, depth + 1)
-                })
+                .map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1))
                 .collect();
             PropType::Named { name: name.into(), args: resolved_args }
         }
@@ -119,9 +118,7 @@ pub(super) fn react_type_to_prop_type(
         _ => {
             let resolved_args: Vec<PropType> = args
                 .iter()
-                .map(|a| {
-                    resolve_collected_type(a, consuming_file, ctx, state, depth + 1)
-                })
+                .map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1))
                 .collect();
             PropType::Named { name: name.into(), args: resolved_args }
         }
@@ -133,9 +130,7 @@ pub(super) fn react_type_to_prop_type(
 pub(super) fn resolve_react_types_file(from_file: &Utf8Path, ctx: &ResolutionContext) -> String {
     // Try to resolve from the consuming file's directory.
     if let Some(from_dir) = from_file.parent() {
-        if let Ok(resolved) =
-            ctx.oxc_resolver.resolve(from_dir.as_std_path(), "@types/react")
-        {
+        if let Ok(resolved) = ctx.oxc_resolver.resolve(from_dir.as_std_path(), "@types/react") {
             return resolved.path().to_string_lossy().into_owned();
         }
     }
@@ -145,7 +140,9 @@ pub(super) fn resolve_react_types_file(from_file: &Utf8Path, ctx: &ResolutionCon
 
 /// Read `compilerOptions.paths` from a tsconfig.json and convert to `oxc_resolver`
 /// alias format: `Vec<(pattern, Vec<AliasValue>)>`.
-pub(super) fn read_tsconfig_paths(tsconfig: Option<&camino::Utf8Path>) -> Vec<(String, Vec<AliasValue>)> {
+pub(super) fn read_tsconfig_paths(
+    tsconfig: Option<&camino::Utf8Path>,
+) -> Vec<(String, Vec<AliasValue>)> {
     let Some(path) = tsconfig else { return vec![] };
     let Ok(content) = std::fs::read_to_string(path.as_std_path()) else { return vec![] };
     let stripped = strip_json_comments(&content);
@@ -153,9 +150,8 @@ pub(super) fn read_tsconfig_paths(tsconfig: Option<&camino::Utf8Path>) -> Vec<(S
         return vec![];
     };
 
-    let base_url = value["compilerOptions"]["baseUrl"]
-        .as_str()
-        .map(|b| path.parent().unwrap_or(path).join(b));
+    let base_url =
+        value["compilerOptions"]["baseUrl"].as_str().map(|b| path.parent().unwrap_or(path).join(b));
 
     let paths = match value["compilerOptions"]["paths"].as_object() {
         Some(p) => p,

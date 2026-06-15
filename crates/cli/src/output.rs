@@ -7,22 +7,12 @@ pub fn print_summary(output: &oxc_react_docgen_core::types::ExtractionOutput, qu
     let errors = output
         .diagnostics
         .iter()
-        .filter(|d| {
-            matches!(
-                d.severity,
-                oxc_react_docgen_core::types::DiagnosticSeverity::Error
-            )
-        })
+        .filter(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Error))
         .count();
     let warnings = output
         .diagnostics
         .iter()
-        .filter(|d| {
-            matches!(
-                d.severity,
-                oxc_react_docgen_core::types::DiagnosticSeverity::Warning
-            )
-        })
+        .filter(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Warning))
         .count();
 
     println!();

@@ -38,6 +38,7 @@ clean:
 setup:
     proto install
     pnpm install
+    moon sync vcs-hooks
 
 # Run moon commands
 moon *args:

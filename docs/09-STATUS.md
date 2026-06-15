@@ -1,8 +1,8 @@
 # oxc-react-docgen — Project Status
 
-**Last updated:** 2026-06-14  
+**Last updated:** 2026-06-15  
 **Branch:** master  
-**Tests:** 89 passing, 0 failing  
+**Tests:** 97 passing, 0 failing (90 unit + 7 snapshots)  
 **Build:** clean (cargo clippy -D warnings passes)
 
 ---
@@ -21,9 +21,24 @@
 | 3b — Pipeline | ✅ Complete | rayon parallel extract, WatchSession, DtsCache (now wired in) |
 | 4a — NAPI | ✅ Complete | All JsExtractOptions fields, session management, initializeSession |
 | 4b — CLI | ✅ Complete | 5 subcommands, comfy-table inspect, watchexec 8.x, crossterm |
+| Refactor (R1-R8, R11) | ✅ Complete | Module splits, ResolveState, IO errors, visibility, .clippy.toml |
+| Claude Code setup | ✅ Complete | CLAUDE.md, skills (rust-style/types/rustdoc), /check, /snapshot |
 | 5a — Vite plugin | ❌ Not started | Spec updated: hotUpdate, moduleType:'js', Plugin[], environment API |
 | 5b — Rolldown plugin | ❌ Not started | Rolldown 1.0 stable — native Rust plugin viable |
 | 6 — Integration tests | ❌ Not started | Needs validate/run-ours.ts once NAPI binary compiled |
+
+## Quality Improvement Queue (R12–R17)
+
+Work identified in architecture review (2026-06-15). Do before or alongside Phase 5a.
+
+| Item | Description | Effort |
+|------|-------------|--------|
+| R12 | `#![deny(unsafe_code, dead_code)]`, `cargo-deny` in CI | Small |
+| R13 | Fix `unwrap()` in `cache.rs`/`pipeline/mod.rs` test helpers | Small |
+| R14 | `Display`+`Error` on `Diagnostic`, `#[non_exhaustive]` on enums, `#[must_use]` | Small |
+| R15 | Wire `ScopedKey` into `GlobalSourceData` maps, or delete it | Medium |
+| R16 | Delete dead code in `import_map.rs` (after R12 forces it) | Small |
+| R17 | `pub use` re-exports in `lib.rs`, `PipelineOptions` builder, `ResolveState` → `pub(crate)` | Small |
 
 ---
 

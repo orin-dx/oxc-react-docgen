@@ -4,8 +4,8 @@ use camino::Utf8Path;
 
 use crate::types::*;
 
-use super::{ResolutionContext};
 use super::collected::resolve_collected_type;
+use super::ResolutionContext;
 
 pub(super) fn resolve_union(
     members: &[CollectedType],
@@ -16,12 +16,11 @@ pub(super) fn resolve_union(
 ) -> PropType {
     // Filter out `undefined` from optional unions: `string | undefined` → `string`
     // (the `required: false` on the prop already captures optionality).
-    let meaningful: Vec<&CollectedType> = members
-        .iter()
-        .filter(|m| !matches!(m, CollectedType::Undefined))
-        .collect();
+    let meaningful: Vec<&CollectedType> =
+        members.iter().filter(|m| !matches!(m, CollectedType::Undefined)).collect();
 
-    let to_resolve = if meaningful.is_empty() { members.iter().collect::<Vec<_>>() } else { meaningful };
+    let to_resolve =
+        if meaningful.is_empty() { members.iter().collect::<Vec<_>>() } else { meaningful };
 
     let resolved: Vec<PropType> = to_resolve
         .iter()
@@ -54,22 +53,14 @@ pub(super) fn resolve_intersection(
 ) -> PropType {
     // Normalize `(string & {})` → `PropType::String`.
     // `{}` is `CollectedType::Object([])` (empty object type).
-    let non_empty: Vec<&CollectedType> = members
-        .iter()
-        .filter(|m| !matches!(m, CollectedType::Object(f) if f.is_empty()))
-        .collect();
+    let non_empty: Vec<&CollectedType> =
+        members.iter().filter(|m| !matches!(m, CollectedType::Object(f) if f.is_empty())).collect();
 
     if non_empty.len() == 1 && matches!(non_empty[0], CollectedType::String) {
         return PropType::String;
     }
     if non_empty.len() == 1 {
-        return resolve_collected_type(
-            non_empty[0],
-            consuming_file,
-            ctx,
-            state,
-            depth + 1,
-        );
+        return resolve_collected_type(non_empty[0], consuming_file, ctx, state, depth + 1);
     }
 
     let resolved: Vec<PropType> = members
@@ -101,8 +92,17 @@ pub(super) fn resolve_indexed_access(
     let known = match (obj_name, key_str) {
         (
             "CSSProperties" | "React.CSSProperties",
-            "zIndex" | "opacity" | "order" | "flexGrow" | "flexShrink" | "flexBasis"
-            | "lineHeight" | "fontWeight" | "columnCount" | "tabSize" | "animationIterationCount",
+            "zIndex"
+            | "opacity"
+            | "order"
+            | "flexGrow"
+            | "flexShrink"
+            | "flexBasis"
+            | "lineHeight"
+            | "fontWeight"
+            | "columnCount"
+            | "tabSize"
+            | "animationIterationCount",
         ) => Some(PropType::Number),
         ("CSSProperties" | "React.CSSProperties", _) if !key_str.is_empty() => {
             Some(PropType::String)
@@ -138,8 +138,5 @@ pub(super) fn resolve_indexed_access(
         help: Some("Enable typescript-go to resolve indexed access types.".into()),
         code: DiagnosticCode::IndexedAccessOpaque,
     });
-    PropType::Opaque {
-        raw: expression.clone(),
-        reason: OpaqueReason::IndexedAccess { expression },
-    }
+    PropType::Opaque { raw: expression.clone(), reason: OpaqueReason::IndexedAccess { expression } }
 }

@@ -49,7 +49,6 @@ pub struct ResolutionContext {
     pub global: Arc<GlobalSourceData>,
     pub import_map: Arc<ImportResolutionMap>,
     pub oxc_resolver: Arc<Resolver>,
-    pub react_version: react_types::ReactVersion,
     pub extra_builtins: FxHashSet<CompactString>,
 }
 
@@ -65,12 +64,7 @@ impl ResolutionContext {
                 "require".into(),
                 "default".into(),
             ],
-            main_fields: vec![
-                "types".into(),
-                "typings".into(),
-                "module".into(),
-                "main".into(),
-            ],
+            main_fields: vec!["types".into(), "typings".into(), "module".into(), "main".into()],
             extensions: vec![".ts".into(), ".tsx".into(), ".d.ts".into(), ".js".into()],
             alias,
             ..ResolveOptions::default()
@@ -80,7 +74,6 @@ impl ResolutionContext {
             import_map: Arc::new(ImportResolutionMap::build(&global)),
             global,
             oxc_resolver: Arc::new(Resolver::new(resolve_options)),
-            react_version: options.react_version.clone(),
             extra_builtins: options.extra_builtins.clone(),
         }
     }
@@ -119,24 +112,31 @@ pub fn resolve_component(
         if let Some(ref element) = layer.html_element {
             let notable_attrs = react_types::notable_html_attrs(element);
             for attr_name in notable_attrs {
-                if props.contains_key(*attr_name) { continue; } // own prop wins
-                if notable_inherited.contains_key(*attr_name) { continue; } // already added
+                if props.contains_key(*attr_name) {
+                    continue;
+                } // own prop wins
+                if notable_inherited.contains_key(*attr_name) {
+                    continue;
+                } // already added
 
                 // Synthesize a minimal prop for display purposes
                 let prop_type = html::infer_html_attr_prop_type(attr_name);
-                notable_inherited.insert(attr_name.to_string(), ParsedProp {
-                    name: attr_name.to_string(),
-                    prop_type,
-                    required: false,
-                    default_value: None,
-                    description: String::new(),
-                    tags: Default::default(),
-                    parent: Some(PropParent {
-                        name: format!("{}HTMLAttributes", html::capitalize_element(element)),
-                        file_name: "node_modules/@types/react/index.d.ts".to_string(),
-                    }),
-                    declarations: vec![],
-                });
+                notable_inherited.insert(
+                    attr_name.to_string(),
+                    ParsedProp {
+                        name: attr_name.to_string(),
+                        prop_type,
+                        required: false,
+                        default_value: None,
+                        description: String::new(),
+                        tags: Default::default(),
+                        parent: Some(PropParent {
+                            name: format!("{}HTMLAttributes", html::capitalize_element(element)),
+                            file_name: "node_modules/@types/react/index.d.ts".to_string(),
+                        }),
+                        declarations: vec![],
+                    },
+                );
             }
         } else {
             // For non-HTML layers: add inherited props from chain.inherited_by_name
@@ -193,8 +193,7 @@ impl ResolvedChain {
     /// Merge a parent chain into self — own props already in `self.props` take priority.
     fn merge_parent(&mut self, parent: ResolvedChain) {
         // Collect existing prop names so we can skip duplicates.
-        let existing: FxHashSet<String> =
-            self.props.iter().map(|p| p.name.clone()).collect();
+        let existing: FxHashSet<String> = self.props.iter().map(|p| p.name.clone()).collect();
 
         for prop in parent.props {
             if !existing.contains(&prop.name) {
@@ -232,13 +231,7 @@ mod tests {
     fn resolve_type(ct: &CollectedType, ctx: &ResolutionContext) -> PropType {
         use super::collected::resolve_collected_type;
         let mut state = ResolveState::default();
-        resolve_collected_type(
-            ct,
-            Utf8Path::new("/test/button.tsx"),
-            ctx,
-            &mut state,
-            0,
-        )
+        resolve_collected_type(ct, Utf8Path::new("/test/button.tsx"), ctx, &mut state, 0)
     }
 
     // ── Test 1: Simple literal union ──────────────────────────────────────────
@@ -318,10 +311,8 @@ mod tests {
     fn test_string_and_empty_object_normalizes_to_string() {
         let ctx = empty_ctx();
         // (string & {}) → PropType::String
-        let ct = CollectedType::Intersection(vec![
-            CollectedType::String,
-            CollectedType::Object(vec![]),
-        ]);
+        let ct =
+            CollectedType::Intersection(vec![CollectedType::String, CollectedType::Object(vec![])]);
         let result = resolve_type(&ct, &ctx);
         assert_eq!(result, PropType::String, "Expected String, got {:?}", result);
     }
@@ -342,28 +333,32 @@ mod tests {
     fn test_indexed_access_css_properties_string_key() {
         let ctx = empty_ctx();
         let ct = CollectedType::IndexedAccess {
-            obj: Box::new(CollectedType::Named {
-                name: "CSSProperties".into(),
-                args: vec![],
-            }),
+            obj: Box::new(CollectedType::Named { name: "CSSProperties".into(), args: vec![] }),
             key: Box::new(CollectedType::StringLiteral("justifyContent".into())),
         };
         let result = resolve_type(&ct, &ctx);
-        assert_eq!(result, PropType::String, "Expected String for CSSProperties[string key], got {:?}", result);
+        assert_eq!(
+            result,
+            PropType::String,
+            "Expected String for CSSProperties[string key], got {:?}",
+            result
+        );
     }
 
     #[test]
     fn test_indexed_access_css_properties_numeric_key() {
         let ctx = empty_ctx();
         let ct = CollectedType::IndexedAccess {
-            obj: Box::new(CollectedType::Named {
-                name: "CSSProperties".into(),
-                args: vec![],
-            }),
+            obj: Box::new(CollectedType::Named { name: "CSSProperties".into(), args: vec![] }),
             key: Box::new(CollectedType::StringLiteral("zIndex".into())),
         };
         let result = resolve_type(&ct, &ctx);
-        assert_eq!(result, PropType::Number, "Expected Number for CSSProperties[zIndex], got {:?}", result);
+        assert_eq!(
+            result,
+            PropType::Number,
+            "Expected Number for CSSProperties[zIndex], got {:?}",
+            result
+        );
     }
 
     // ── Test 6: Primitives pass through ──────────────────────────────────────
@@ -658,7 +653,10 @@ mod tests {
             entry.composes
         );
 
-        let warnings: Vec<_> = diagnostics.iter().filter(|d| matches!(d.severity, DiagnosticSeverity::Warning)).collect();
+        let warnings: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| matches!(d.severity, DiagnosticSeverity::Warning))
+            .collect();
         assert!(warnings.is_empty(), "Expected no warnings, got {:?}", warnings);
     }
 
@@ -769,10 +767,7 @@ mod tests {
     fn test_function_type_single_param() {
         let ctx = empty_ctx();
         let ct = CollectedType::Function {
-            params: vec![CollectedType::Named {
-                name: "MouseEvent".into(),
-                args: vec![],
-            }],
+            params: vec![CollectedType::Named { name: "MouseEvent".into(), args: vec![] }],
             return_type: Box::new(CollectedType::Void),
         };
         let result = resolve_type(&ct, &ctx);
@@ -808,12 +803,14 @@ mod tests {
     fn test_union_filters_undefined() {
         let ctx = empty_ctx();
         // string | undefined → just string (undefined is filtered out from meaningful)
-        let ct = CollectedType::Union(vec![
-            CollectedType::String,
-            CollectedType::Undefined,
-        ]);
+        let ct = CollectedType::Union(vec![CollectedType::String, CollectedType::Undefined]);
         let result = resolve_type(&ct, &ctx);
         // With undefined filtered, only one meaningful member → string
-        assert_eq!(result, PropType::String, "Expected String after filtering undefined, got {:?}", result);
+        assert_eq!(
+            result,
+            PropType::String,
+            "Expected String after filtering undefined, got {:?}",
+            result
+        );
     }
 }

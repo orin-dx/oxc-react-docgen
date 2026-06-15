@@ -7,9 +7,9 @@ use rustc_hash::FxHashSet;
 
 use crate::types::*;
 
-use super::{ResolutionContext, ResolvedChain};
 use super::chain::resolve_props_chain;
 use super::collected::resolve_collected_type;
+use super::{ResolutionContext, ResolvedChain};
 
 /// Resolve a `CollectedTypeAlias` as a props chain.
 #[allow(clippy::too_many_arguments)]
@@ -22,31 +22,26 @@ pub(super) fn resolve_type_alias_chain(
     depth: u8,
 ) -> ResolvedChain {
     match alias {
-        CollectedTypeAlias::Passthrough { target, file_path } => {
-            match target {
-                CollectedType::Named { name, args } => {
-                    let raw_args: Vec<String> = args.iter().map(|a| a.to_raw_string()).collect();
-                    resolve_props_chain(
-                        name.as_str(),
-                        &raw_args,
-                        file_path,
-                        mapping,
-                        ctx,
-                        state,
-                        depth + 1,
-                    )
-                }
-                _ => ResolvedChain::default(),
+        CollectedTypeAlias::Passthrough { target, file_path } => match target {
+            CollectedType::Named { name, args } => {
+                let raw_args: Vec<String> = args.iter().map(|a| a.to_raw_string()).collect();
+                resolve_props_chain(
+                    name.as_str(),
+                    &raw_args,
+                    file_path,
+                    mapping,
+                    ctx,
+                    state,
+                    depth + 1,
+                )
             }
-        }
+            _ => ResolvedChain::default(),
+        },
 
         CollectedTypeAlias::Omit { base, omitted_keys, file_path } => {
             // Resolve the base type first, then remove omitted keys.
-            let mut chain = resolve_base_as_chain(
-                base, file_path, mapping, ctx, state, depth,
-            );
-            let omitted_set: FxHashSet<&str> =
-                omitted_keys.iter().map(|k| k.as_str()).collect();
+            let mut chain = resolve_base_as_chain(base, file_path, mapping, ctx, state, depth);
+            let omitted_set: FxHashSet<&str> = omitted_keys.iter().map(|k| k.as_str()).collect();
             chain.props.retain(|p| !omitted_set.contains(p.name.as_str()));
             // Record omitted keys in the relevant inheritance layer.
             for layer in &mut chain.inheritance {
@@ -60,19 +55,14 @@ pub(super) fn resolve_type_alias_chain(
         }
 
         CollectedTypeAlias::Pick { base, picked_keys, file_path } => {
-            let mut chain = resolve_base_as_chain(
-                base, file_path, mapping, ctx, state, depth,
-            );
-            let picked_set: FxHashSet<&str> =
-                picked_keys.iter().map(|k| k.as_str()).collect();
+            let mut chain = resolve_base_as_chain(base, file_path, mapping, ctx, state, depth);
+            let picked_set: FxHashSet<&str> = picked_keys.iter().map(|k| k.as_str()).collect();
             chain.props.retain(|p| picked_set.contains(p.name.as_str()));
             chain
         }
 
         CollectedTypeAlias::Partial { base, file_path } => {
-            let mut chain = resolve_base_as_chain(
-                base, file_path, mapping, ctx, state, depth,
-            );
+            let mut chain = resolve_base_as_chain(base, file_path, mapping, ctx, state, depth);
             // Make all props optional.
             for prop in &mut chain.props {
                 prop.required = false;
@@ -81,9 +71,7 @@ pub(super) fn resolve_type_alias_chain(
         }
 
         CollectedTypeAlias::Required { base, file_path } => {
-            let mut chain = resolve_base_as_chain(
-                base, file_path, mapping, ctx, state, depth,
-            );
+            let mut chain = resolve_base_as_chain(base, file_path, mapping, ctx, state, depth);
             // Make all props required.
             for prop in &mut chain.props {
                 prop.required = true;
@@ -100,9 +88,8 @@ pub(super) fn resolve_type_alias_chain(
             // Merge all members' props.
             let mut chain = ResolvedChain::default();
             for member in members {
-                let member_chain = resolve_base_as_chain(
-                    member, file_path, mapping, ctx, state, depth,
-                );
+                let member_chain =
+                    resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
                 chain.merge_parent(member_chain);
             }
             chain
@@ -132,8 +119,7 @@ pub(super) fn resolve_base_as_chain(
         CollectedType::Intersection(members) => {
             let mut chain = ResolvedChain::default();
             for member in members {
-                let sub =
-                    resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
+                let sub = resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
                 chain.merge_parent(sub);
             }
             chain
@@ -143,13 +129,8 @@ pub(super) fn resolve_base_as_chain(
             // Expand the object fields directly as own props.
             let mut chain = ResolvedChain::default();
             for field in fields {
-                let prop_type = resolve_collected_type(
-                    &field.collected_type,
-                    file_path,
-                    ctx,
-                    state,
-                    depth,
-                );
+                let prop_type =
+                    resolve_collected_type(&field.collected_type, file_path, ctx, state, depth);
                 chain.props.push(ParsedProp {
                     name: field.name.clone(),
                     prop_type,
@@ -184,10 +165,8 @@ pub(super) fn resolve_union_alias(
         .iter()
         .filter_map(|m| {
             if let CollectedType::Named { name, .. } = m {
-                let mut branch_state = ResolveState {
-                    visited: state.visited.clone(),
-                    diagnostics: vec![],
-                };
+                let mut branch_state =
+                    ResolveState { visited: state.visited.clone(), diagnostics: vec![] };
                 let chain = resolve_props_chain(
                     name.as_str(),
                     &[],
@@ -209,8 +188,7 @@ pub(super) fn resolve_union_alias(
         // Not a discriminated union — just merge all.
         let mut chain = ResolvedChain::default();
         for member in members {
-            let sub =
-                resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
+            let sub = resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
             chain.merge_parent(sub);
         }
         return chain;
@@ -282,23 +260,18 @@ pub(super) fn resolve_type_alias_type(
         CollectedTypeAlias::Union { members, .. } => {
             let resolved: Vec<PropType> = members
                 .iter()
-                .map(|m| {
-                    resolve_collected_type(m, consuming_file, ctx, state, depth + 1)
-                })
+                .map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1))
                 .collect();
             PropType::Union(resolved)
         }
         CollectedTypeAlias::Intersection { members, .. } => {
             let resolved: Vec<PropType> = members
                 .iter()
-                .map(|m| {
-                    resolve_collected_type(m, consuming_file, ctx, state, depth + 1)
-                })
+                .map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1))
                 .collect();
             PropType::Intersection(resolved)
         }
-        CollectedTypeAlias::Partial { base, .. }
-        | CollectedTypeAlias::Required { base, .. } => {
+        CollectedTypeAlias::Partial { base, .. } | CollectedTypeAlias::Required { base, .. } => {
             resolve_collected_type(base, consuming_file, ctx, state, depth + 1)
         }
         CollectedTypeAlias::Omit { base, .. } | CollectedTypeAlias::Pick { base, .. } => {

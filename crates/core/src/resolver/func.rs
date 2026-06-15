@@ -5,8 +5,8 @@ use compact_str::CompactString;
 
 use crate::types::*;
 
-use super::{ResolutionContext};
 use super::collected::resolve_collected_type;
+use super::ResolutionContext;
 
 pub(super) fn resolve_function_type(
     params: &[CollectedType],
@@ -48,8 +48,7 @@ pub(super) fn resolve_function_type(
     }
 
     // Multi-param function — describe as opaque.
-    let param_strs: Vec<String> =
-        params.iter().map(|p| p.to_raw_string()).collect();
+    let param_strs: Vec<String> = params.iter().map(|p| p.to_raw_string()).collect();
     let raw = format!("({}) => {}", param_strs.join(", "), return_type.to_raw_string());
 
     // Resolve the return type to see if it's ReactNode.
@@ -65,9 +64,11 @@ pub(super) fn resolve_typeof(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> PropType {
     // `typeof X` — look for X in global.enums (for cva() results).
-    let found_enum = ctx.global.enums.iter().find(|(key, _)| {
-        key.ends_with(&format!(":{}", name)) || key.as_str() == name.as_str()
-    });
+    let found_enum = ctx
+        .global
+        .enums
+        .iter()
+        .find(|(key, _)| key.ends_with(&format!(":{}", name)) || key.as_str() == name.as_str());
 
     if found_enum.is_some() {
         // Has cva-like enum entries — the VariantProps<typeof X> pattern handles this.

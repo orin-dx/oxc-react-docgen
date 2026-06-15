@@ -4,7 +4,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 
 use crate::types::*;
 
-use super::{ResolutionContext};
+use super::ResolutionContext;
 
 /// Resolve `name` to its canonical `(file_path, name)` pair.
 /// Returns `None` if `name` is a local declaration (not imported).

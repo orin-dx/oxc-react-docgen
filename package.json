@@ -13,9 +13,18 @@
     "lint": "moon run :lint"
   },
   "devDependencies": {
+    "@chakra-ui/react": "^3.36.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^9.1.1",
+    "@radix-ui/react-accordion": "^1.2.13",
+    "@radix-ui/react-checkbox": "^1.3.4",
+    "@radix-ui/react-dialog": "^1.1.16",
+    "@radix-ui/react-dropdown-menu": "^2.1.17",
+    "@radix-ui/react-select": "^2.3.0",
+    "@radix-ui/react-slot": "^1.0.0",
     "@types/react": "^19.0.0",
     "class-variance-authority": "^0.7.0",
-    "react": "^19.0.0",
-    "@radix-ui/react-slot": "^1.0.0"
+    "react": "^19.0.0"
   }
 }

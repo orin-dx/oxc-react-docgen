@@ -20,17 +20,16 @@ pub struct ImportRef {
     /// The exported name in the source module (original name before `as` rename).
     pub exported_name: CompactString,
     /// `true` for `import type { ... }` bindings.
+    #[allow(dead_code)]
     pub is_type_only: bool,
 }
 
 /// Result of walking one step of a re-export chain.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ReExportStep {
     /// Found a named re-export — caller resolves `source_specifier` to a file and recurses.
-    Named {
-        source_specifier: String,
-        source_name: String,
-    },
+    Named { source_specifier: String, source_name: String },
     /// Found one or more `export * from "..."` entries — caller checks each.
     Wildcards(Vec<String>),
 }
@@ -46,6 +45,7 @@ pub struct ImportResolutionMap {
     bindings: FxHashMap<(Utf8PathBuf, CompactString), ImportRef>,
 
     /// `barrel_file` → specifiers it wildcard-re-exports from (`export * from "..."`).
+    #[allow(dead_code)]
     wildcard_sources: FxHashMap<Utf8PathBuf, Vec<String>>,
 }
 
@@ -55,8 +55,7 @@ impl ImportResolutionMap {
     ///
     /// No I/O — pure data transformation.
     pub fn build(global: &GlobalSourceData) -> Self {
-        let mut bindings: FxHashMap<(Utf8PathBuf, CompactString), ImportRef> =
-            FxHashMap::default();
+        let mut bindings: FxHashMap<(Utf8PathBuf, CompactString), ImportRef> = FxHashMap::default();
         let mut wildcard_sources: FxHashMap<Utf8PathBuf, Vec<String>> = FxHashMap::default();
 
         // ── Populate bindings from import_map ──────────────────────────────
@@ -102,6 +101,7 @@ impl ImportResolutionMap {
     /// - If a `ReExportNamed` entry matches `exported_name`, returns `Named { .. }`.
     /// - If no named match is found but there are `ReExportAll` entries, returns `Wildcards(..)`.
     /// - Returns `None` if the barrel file has no relevant re-exports.
+    #[allow(dead_code)]
     pub fn resolve_reexport_chain(
         &self,
         barrel_file: &Utf8Path,
@@ -114,7 +114,9 @@ impl ImportResolutionMap {
 
         for export in exports {
             match export {
-                LexedExport::ReExportNamed { local_name, source_name, source_specifier, .. } => {
+                LexedExport::ReExportNamed {
+                    local_name, source_name, source_specifier, ..
+                } => {
                     if local_name == exported_name {
                         return Some(ReExportStep::Named {
                             source_specifier: source_specifier.clone(),
@@ -140,11 +142,9 @@ impl ImportResolutionMap {
     /// Return the list of specifiers wildcard-re-exported from `barrel_file`.
     ///
     /// Returns an empty slice if the file has no `export * from "..."` entries.
+    #[allow(dead_code)]
     pub fn wildcard_sources_for(&self, barrel_file: &Utf8Path) -> &[String] {
-        self.wildcard_sources
-            .get(barrel_file)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
+        self.wildcard_sources.get(barrel_file).map(|v| v.as_slice()).unwrap_or(&[])
     }
 }
 

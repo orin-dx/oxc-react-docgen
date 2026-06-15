@@ -249,8 +249,7 @@ impl PropType {
             }
             PropType::Named { name, args } if args.is_empty() => name.to_string(),
             PropType::Named { name, args } => {
-                let args_str =
-                    args.iter().map(|a| a.raw_string()).collect::<Vec<_>>().join(", ");
+                let args_str = args.iter().map(|a| a.raw_string()).collect::<Vec<_>>().join(", ");
                 format!("{}<{}>", name, args_str)
             }
             PropType::ReactNode => "ReactNode".into(),
@@ -288,23 +287,23 @@ impl PropType {
     fn to_tagged_value(&self) -> serde_json::Value {
         match self {
             // Unit variants (primitives)
-            PropType::String    => serde_json::json!({"kind": "string"}),
-            PropType::Number    => serde_json::json!({"kind": "number"}),
-            PropType::Boolean   => serde_json::json!({"kind": "boolean"}),
-            PropType::Null      => serde_json::json!({"kind": "null"}),
+            PropType::String => serde_json::json!({"kind": "string"}),
+            PropType::Number => serde_json::json!({"kind": "number"}),
+            PropType::Boolean => serde_json::json!({"kind": "boolean"}),
+            PropType::Null => serde_json::json!({"kind": "null"}),
             PropType::Undefined => serde_json::json!({"kind": "undefined"}),
-            PropType::Any       => serde_json::json!({"kind": "any"}),
-            PropType::Never     => serde_json::json!({"kind": "never"}),
-            PropType::Unknown   => serde_json::json!({"kind": "unknown"}),
-            PropType::Void      => serde_json::json!({"kind": "void"}),
-            PropType::ReactNode    => serde_json::json!({"kind": "reactNode"}),
+            PropType::Any => serde_json::json!({"kind": "any"}),
+            PropType::Never => serde_json::json!({"kind": "never"}),
+            PropType::Unknown => serde_json::json!({"kind": "unknown"}),
+            PropType::Void => serde_json::json!({"kind": "void"}),
+            PropType::ReactNode => serde_json::json!({"kind": "reactNode"}),
             PropType::CssProperties => serde_json::json!({"kind": "cssProperties"}),
-            PropType::ElementType  => serde_json::json!({"kind": "elementType"}),
-            PropType::SxProps      => serde_json::json!({"kind": "sxProps"}),
+            PropType::ElementType => serde_json::json!({"kind": "elementType"}),
+            PropType::SxProps => serde_json::json!({"kind": "sxProps"}),
             // Newtype/tuple variants — inner is not a map, so wrap as "0"
             PropType::StringLiteral(s) => serde_json::json!({"kind": "stringLiteral", "0": s}),
             PropType::NumberLiteral(n) => serde_json::json!({"kind": "numberLiteral", "0": n}),
-            PropType::BoolLiteral(b)   => serde_json::json!({"kind": "boolLiteral", "0": b}),
+            PropType::BoolLiteral(b) => serde_json::json!({"kind": "boolLiteral", "0": b}),
             PropType::Union(members) => serde_json::json!({
                 "kind": "union",
                 "0": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
@@ -358,13 +357,25 @@ impl PropType {
                 let reason_val = match reason {
                     OpaqueReason::ConditionalType => serde_json::json!({"type": "conditionalType"}),
                     OpaqueReason::MappedType => serde_json::json!({"type": "mappedType"}),
-                    OpaqueReason::ModuleAugmentation => serde_json::json!({"type": "moduleAugmentation"}),
-                    OpaqueReason::RuntimeDependent { function_name } => serde_json::json!({"type": "runtimeDependent", "functionName": function_name}),
-                    OpaqueReason::UnresolvableImport { specifier } => serde_json::json!({"type": "unresolvableImport", "specifier": specifier}),
-                    OpaqueReason::PandaCodegenMissing => serde_json::json!({"type": "pandaCodegenMissing"}),
+                    OpaqueReason::ModuleAugmentation => {
+                        serde_json::json!({"type": "moduleAugmentation"})
+                    }
+                    OpaqueReason::RuntimeDependent { function_name } => {
+                        serde_json::json!({"type": "runtimeDependent", "functionName": function_name})
+                    }
+                    OpaqueReason::UnresolvableImport { specifier } => {
+                        serde_json::json!({"type": "unresolvableImport", "specifier": specifier})
+                    }
+                    OpaqueReason::PandaCodegenMissing => {
+                        serde_json::json!({"type": "pandaCodegenMissing"})
+                    }
                     OpaqueReason::DepthExceeded => serde_json::json!({"type": "depthExceeded"}),
-                    OpaqueReason::IndexedAccess { expression } => serde_json::json!({"type": "indexedAccess", "expression": expression}),
-                    OpaqueReason::TemplateLiteral { expression } => serde_json::json!({"type": "templateLiteral", "expression": expression}),
+                    OpaqueReason::IndexedAccess { expression } => {
+                        serde_json::json!({"type": "indexedAccess", "expression": expression})
+                    }
+                    OpaqueReason::TemplateLiteral { expression } => {
+                        serde_json::json!({"type": "templateLiteral", "expression": expression})
+                    }
                 };
                 serde_json::json!({"kind": "opaque", "raw": raw, "reason": reason_val})
             }
@@ -372,18 +383,20 @@ impl PropType {
     }
 
     fn from_tagged_value(v: &serde_json::Value) -> Result<Self, std::string::String> {
-        let kind = v.get("kind").and_then(|k| k.as_str())
+        let kind = v
+            .get("kind")
+            .and_then(|k| k.as_str())
             .ok_or_else(|| "missing 'kind' field in PropType JSON".to_string())?;
         match kind {
-            "string"    => Ok(PropType::String),
-            "number"    => Ok(PropType::Number),
-            "boolean"   => Ok(PropType::Boolean),
-            "null"      => Ok(PropType::Null),
+            "string" => Ok(PropType::String),
+            "number" => Ok(PropType::Number),
+            "boolean" => Ok(PropType::Boolean),
+            "null" => Ok(PropType::Null),
             "undefined" => Ok(PropType::Undefined),
-            "any"       => Ok(PropType::Any),
-            "never"     => Ok(PropType::Never),
-            "unknown"   => Ok(PropType::Unknown),
-            "void"      => Ok(PropType::Void),
+            "any" => Ok(PropType::Any),
+            "never" => Ok(PropType::Never),
+            "unknown" => Ok(PropType::Unknown),
+            "void" => Ok(PropType::Void),
             "reactNode" | "react_node" => Ok(PropType::ReactNode),
             "cssProperties" | "css_properties" => Ok(PropType::CssProperties),
             "elementType" | "element_type" => Ok(PropType::ElementType),
@@ -401,13 +414,15 @@ impl PropType {
                 Ok(PropType::BoolLiteral(b))
             }
             "union" => {
-                let members = v["0"].as_array()
+                let members = v["0"]
+                    .as_array()
                     .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
                     .unwrap_or(Ok(vec![]))?;
                 Ok(PropType::Union(members))
             }
             "intersection" => {
-                let members = v["0"].as_array()
+                let members = v["0"]
+                    .as_array()
                     .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
                     .unwrap_or(Ok(vec![]))?;
                 Ok(PropType::Intersection(members))
@@ -417,35 +432,44 @@ impl PropType {
                 Ok(PropType::Array(Box::new(inner)))
             }
             "tuple" => {
-                let members = v["0"].as_array()
+                let members = v["0"]
+                    .as_array()
                     .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
                     .unwrap_or(Ok(vec![]))?;
                 Ok(PropType::Tuple(members))
             }
             "object" => {
-                let fields = v["0"].as_array()
-                    .map(|a| a.iter().map(|f| {
-                        Ok(ObjectField {
-                            name: f["name"].as_str().unwrap_or("").to_owned(),
-                            prop_type: Self::from_tagged_value(&f["propType"])?,
-                            required: f["required"].as_bool().unwrap_or(false),
-                            description: f["description"].as_str().unwrap_or("").to_owned(),
-                        })
-                    }).collect::<Result<Vec<_>, std::string::String>>())
+                let fields = v["0"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .map(|f| {
+                                Ok(ObjectField {
+                                    name: f["name"].as_str().unwrap_or("").to_owned(),
+                                    prop_type: Self::from_tagged_value(&f["propType"])?,
+                                    required: f["required"].as_bool().unwrap_or(false),
+                                    description: f["description"].as_str().unwrap_or("").to_owned(),
+                                })
+                            })
+                            .collect::<Result<Vec<_>, std::string::String>>()
+                    })
                     .unwrap_or(Ok(vec![]))?;
                 Ok(PropType::Object(fields))
             }
             "named" => {
                 let name = v["name"].as_str().unwrap_or("").into();
-                let args = v["args"].as_array()
+                let args = v["args"]
+                    .as_array()
                     .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
                     .unwrap_or(Ok(vec![]))?;
                 Ok(PropType::Named { name, args })
             }
             "eventHandler" | "event_handler" => {
-                let event_type = v["eventType"].as_str()
+                let event_type = v["eventType"]
+                    .as_str()
                     .or_else(|| v["event_type"].as_str())
-                    .unwrap_or("").to_owned();
+                    .unwrap_or("")
+                    .to_owned();
                 Ok(PropType::EventHandler { event_type })
             }
             "ref" => {
@@ -454,16 +478,19 @@ impl PropType {
             }
             "htmlAttributes" | "html_attributes" => {
                 let element = v["element"].as_str().unwrap_or("div").to_owned();
-                let omitted = v["omitted"].as_array()
+                let omitted = v["omitted"]
+                    .as_array()
                     .map(|a| a.iter().filter_map(|v| v.as_str()).map(|s| s.to_owned()).collect())
                     .unwrap_or_default();
                 Ok(PropType::HtmlAttributes { element, omitted })
             }
             "literalUnion" | "literal_union" => {
-                let members = v["members"].as_array()
+                let members = v["members"]
+                    .as_array()
                     .map(|a| a.iter().filter_map(|v| v.as_str()).map(|s| s.to_owned()).collect())
                     .unwrap_or_default();
-                let has_default = v["hasDefault"].as_bool()
+                let has_default = v["hasDefault"]
+                    .as_bool()
                     .or_else(|| v["has_default"].as_bool())
                     .unwrap_or(false);
                 Ok(PropType::LiteralUnion { members, has_default })
@@ -475,7 +502,10 @@ impl PropType {
                     "mappedType" => OpaqueReason::MappedType,
                     "moduleAugmentation" => OpaqueReason::ModuleAugmentation,
                     "runtimeDependent" => OpaqueReason::RuntimeDependent {
-                        function_name: v["reason"]["functionName"].as_str().unwrap_or("").to_owned(),
+                        function_name: v["reason"]["functionName"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_owned(),
                     },
                     "unresolvableImport" => OpaqueReason::UnresolvableImport {
                         specifier: v["reason"]["specifier"].as_str().unwrap_or("").to_owned(),

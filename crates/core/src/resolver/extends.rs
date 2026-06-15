@@ -4,10 +4,10 @@ use camino::Utf8Path;
 
 use crate::types::*;
 
-use super::{ResolutionContext, ResolvedChain};
 use super::chain::resolve_props_chain;
 use super::import::resolve_import_specifier;
 use super::react::resolve_react_types_file;
+use super::{ResolutionContext, ResolvedChain};
 
 /// Resolve a single `ExtendsRef` and return `(chain, Option<InheritedLayer>)`.
 #[allow(clippy::too_many_arguments)]
@@ -36,7 +36,10 @@ pub(super) fn resolve_extends_ref(
                 // Non-HTML-element builtins. ComponentPropsWithoutRef/ComponentProps:
                 // expand directly to HtmlAttributes based on the first type arg.
                 let bare = name.as_str().strip_prefix("React.").unwrap_or(name.as_str());
-                if matches!(bare, "ComponentPropsWithoutRef" | "ComponentPropsWithRef" | "ComponentProps") {
+                if matches!(
+                    bare,
+                    "ComponentPropsWithoutRef" | "ComponentPropsWithRef" | "ComponentProps"
+                ) {
                     if let Some(raw_arg) = type_args.first() {
                         let inner = raw_arg.trim().trim_matches('"').trim_matches('\'');
                         if !inner.is_empty() {
@@ -48,7 +51,10 @@ pub(super) fn resolve_extends_ref(
                                 total_props: 0,
                             };
                             return (
-                                ResolvedChain { inheritance: vec![layer.clone()], ..Default::default() },
+                                ResolvedChain {
+                                    inheritance: vec![layer.clone()],
+                                    ..Default::default()
+                                },
                                 Some(layer),
                             );
                         }

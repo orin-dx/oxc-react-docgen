@@ -15,7 +15,7 @@ pub enum KnownPatternResult {
     /// Pattern is opaque — use this PropType directly
     Type(PropType),
     /// Pattern transparently delegates to another type name
-    Alias { name: String, args: Vec<PropType> },
+    Alias { name: String },
 }
 
 /// Attempt to resolve a named generic type as a known pattern.
@@ -75,25 +75,19 @@ pub fn resolve_known(
 
         // ── Chakra / Ark / Styled System ────────────────────────────────────
         // HTMLChakraProps<'button'> → same as ComponentPropsWithoutRef<'button'>
-        "HTMLChakraProps" | "HTMLArkProps" | "HTMLStyledProps" => {
-            html_attrs_from_first_arg(args)
-        }
+        "HTMLChakraProps" | "HTMLArkProps" | "HTMLStyledProps" => html_attrs_from_first_arg(args),
 
         // ThemingProps is runtime-dependent on the chakra theme
         "ThemingProps" => Some(KnownPatternResult::Type(PropType::Opaque {
             raw: "ThemingProps".into(),
-            reason: OpaqueReason::RuntimeDependent {
-                function_name: "chakra".into(),
-            },
+            reason: OpaqueReason::RuntimeDependent { function_name: "chakra".into() },
         })),
 
         // ── Mantine ─────────────────────────────────────────────────────────
         // StylesApiProps is runtime-dependent on createStyles
         "StylesApiProps" => Some(KnownPatternResult::Type(PropType::Opaque {
             raw: "StylesApiProps".into(),
-            reason: OpaqueReason::RuntimeDependent {
-                function_name: "createStyles".into(),
-            },
+            reason: OpaqueReason::RuntimeDependent { function_name: "createStyles".into() },
         })),
 
         // MantineColor/Size/Radius are string aliases — let resolver handle as Named
@@ -138,8 +132,7 @@ fn resolve_cva_variant_props(
             // Since we don't know the file here, search by name suffix.
             let name_str = name.as_str();
             let found = global.enums.iter().find(|(key, _)| {
-                key.ends_with(&format!(":{}", name_str))
-                    || key.as_str() == name_str
+                key.ends_with(&format!(":{}", name_str)) || key.as_str() == name_str
             });
 
             match found {
@@ -157,18 +150,13 @@ fn resolve_cva_variant_props(
                             EnumValue::Number(n) => n.to_string(),
                             EnumValue::Bool(b) => b.to_string(),
                         };
-                        variant_map
-                            .entry(entry.name.clone())
-                            .or_default()
-                            .push(variant_value);
+                        variant_map.entry(entry.name.clone()).or_default().push(variant_value);
                     }
 
                     if variant_map.is_empty() {
                         return Some(KnownPatternResult::Type(PropType::Opaque {
                             raw: format!("VariantProps<typeof {}>", name_str),
-                            reason: OpaqueReason::RuntimeDependent {
-                                function_name: "cva".into(),
-                            },
+                            reason: OpaqueReason::RuntimeDependent { function_name: "cva".into() },
                         }));
                     }
 
@@ -181,10 +169,7 @@ fn resolve_cva_variant_props(
                             simple_prop(
                                 &variant_key,
                                 PropType::Union(vec![
-                                    PropType::LiteralUnion {
-                                        members: values,
-                                        has_default: false,
-                                    },
+                                    PropType::LiteralUnion { members: values, has_default: false },
                                     PropType::Null,
                                 ]),
                                 false,
@@ -199,18 +184,14 @@ fn resolve_cva_variant_props(
                     // Variants not found in global data — degrade to opaque
                     Some(KnownPatternResult::Type(PropType::Opaque {
                         raw: format!("VariantProps<typeof {}>", name_str),
-                        reason: OpaqueReason::RuntimeDependent {
-                            function_name: "cva".into(),
-                        },
+                        reason: OpaqueReason::RuntimeDependent { function_name: "cva".into() },
                     }))
                 }
             }
         }
         _ => Some(KnownPatternResult::Type(PropType::Opaque {
             raw: "VariantProps<...>".into(),
-            reason: OpaqueReason::RuntimeDependent {
-                function_name: "cva".into(),
-            },
+            reason: OpaqueReason::RuntimeDependent { function_name: "cva".into() },
         })),
     }
 }
@@ -246,17 +227,11 @@ fn slot_prop() -> ParsedProp {
 fn props_with_children(args: &[PropType]) -> Option<KnownPatternResult> {
     // PropsWithChildren<T> = T & { children?: ReactNode }
     // Delegate to T (first arg), children prop comes from resolver's HTML table
-    args.first().map(|inner| KnownPatternResult::Alias {
-        name: inner.raw_string(),
-        args: vec![],
-    })
+    args.first().map(|inner| KnownPatternResult::Alias { name: inner.raw_string() })
 }
 
 fn props_with_ref(args: &[PropType]) -> Option<KnownPatternResult> {
-    args.first().map(|inner| KnownPatternResult::Alias {
-        name: inner.raw_string(),
-        args: vec![],
-    })
+    args.first().map(|inner| KnownPatternResult::Alias { name: inner.raw_string() })
 }
 
 fn html_attrs_from_first_arg(args: &[PropType]) -> Option<KnownPatternResult> {
@@ -283,10 +258,7 @@ fn component_props(args: &[PropType], _include_ref: bool) -> Option<KnownPattern
         }
         Some(PropType::Named { name, .. }) => {
             // ComponentPropsWithoutRef<typeof X> — delegate to X's props
-            Some(KnownPatternResult::Alias {
-                name: name.to_string(),
-                args: vec![],
-            })
+            Some(KnownPatternResult::Alias { name: name.to_string() })
         }
         _ => None,
     }
@@ -318,8 +290,7 @@ mod tests {
     #[test]
     fn test_component_props_without_ref_string_literal() {
         let args = vec![PropType::StringLiteral("button".into())];
-        let result =
-            resolve_known("ComponentPropsWithoutRef", &args, &GlobalSourceData::default());
+        let result = resolve_known("ComponentPropsWithoutRef", &args, &GlobalSourceData::default());
         assert!(
             matches!(result, Some(KnownPatternResult::Type(PropType::HtmlAttributes { ref element, .. })) if element == "button")
         );
@@ -336,10 +307,7 @@ mod tests {
 
     #[test]
     fn test_props_with_children_aliases() {
-        let args = vec![PropType::Named {
-            name: "ButtonProps".into(),
-            args: vec![],
-        }];
+        let args = vec![PropType::Named { name: "ButtonProps".into(), args: vec![] }];
         let result = resolve_known("PropsWithChildren", &args, &GlobalSourceData::default());
         assert!(
             matches!(result, Some(KnownPatternResult::Alias { ref name, .. }) if name == "ButtonProps")
@@ -469,10 +437,7 @@ mod tests {
 
     #[test]
     fn test_props_with_ref_aliases() {
-        let args = vec![PropType::Named {
-            name: "InputProps".into(),
-            args: vec![],
-        }];
+        let args = vec![PropType::Named { name: "InputProps".into(), args: vec![] }];
         let result = resolve_known("PropsWithRef", &args, &GlobalSourceData::default());
         assert!(
             matches!(result, Some(KnownPatternResult::Alias { ref name, .. }) if name == "InputProps")
@@ -481,12 +446,8 @@ mod tests {
 
     #[test]
     fn test_component_props_without_ref_named_type() {
-        let args = vec![PropType::Named {
-            name: "MyComponent".into(),
-            args: vec![],
-        }];
-        let result =
-            resolve_known("ComponentPropsWithoutRef", &args, &GlobalSourceData::default());
+        let args = vec![PropType::Named { name: "MyComponent".into(), args: vec![] }];
+        let result = resolve_known("ComponentPropsWithoutRef", &args, &GlobalSourceData::default());
         assert!(
             matches!(result, Some(KnownPatternResult::Alias { ref name, .. }) if name == "MyComponent")
         );
@@ -504,10 +465,7 @@ mod tests {
     #[test]
     fn test_element_ref_returns_ref() {
         let result = resolve_known("ElementRef", &[], &GlobalSourceData::default());
-        assert!(matches!(
-            result,
-            Some(KnownPatternResult::Type(PropType::Ref { element: None }))
-        ));
+        assert!(matches!(result, Some(KnownPatternResult::Type(PropType::Ref { element: None }))));
     }
 
     #[test]
@@ -560,10 +518,7 @@ mod tests {
 
     #[test]
     fn test_variant_props_named_not_in_global_is_opaque() {
-        let args = vec![PropType::Named {
-            name: "buttonVariants".into(),
-            args: vec![],
-        }];
+        let args = vec![PropType::Named { name: "buttonVariants".into(), args: vec![] }];
         let result = resolve_known("VariantProps", &args, &GlobalSourceData::default());
         assert!(matches!(
             result,
@@ -600,15 +555,9 @@ mod tests {
             ],
         );
 
-        let global = GlobalSourceData {
-            enums,
-            ..Default::default()
-        };
+        let global = GlobalSourceData { enums, ..Default::default() };
 
-        let args = vec![PropType::Named {
-            name: "buttonVariants".into(),
-            args: vec![],
-        }];
+        let args = vec![PropType::Named { name: "buttonVariants".into(), args: vec![] }];
         let result = resolve_known("VariantProps", &args, &global);
         let Some(KnownPatternResult::Props(props)) = result else {
             panic!("expected Props result, got something else")

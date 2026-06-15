@@ -55,12 +55,8 @@ impl From<JsExtractOptions> for PipelineOptions {
     fn from(js: JsExtractOptions) -> Self {
         use compact_str::CompactString;
 
-        let extra_builtins: rustc_hash::FxHashSet<CompactString> = js
-            .extra_builtins
-            .unwrap_or_default()
-            .into_iter()
-            .map(CompactString::from)
-            .collect();
+        let extra_builtins: rustc_hash::FxHashSet<CompactString> =
+            js.extra_builtins.unwrap_or_default().into_iter().map(CompactString::from).collect();
 
         let extra_paths: rustc_hash::FxHashMap<String, Vec<camino::Utf8PathBuf>> = js
             .extra_paths_json
@@ -100,12 +96,7 @@ impl From<JsExtractOptions> for PipelineOptions {
             cross_package: js.cross_package.unwrap_or(true),
             pandacss_outdir: js.pandacss_outdir.map(Into::into),
             variant_functions: js.variant_functions.unwrap_or_else(|| {
-                vec![
-                    "cva".into(),
-                    "tv".into(),
-                    "defineRecipe".into(),
-                    "recipe".into(),
-                ]
+                vec!["cva".into(), "tv".into(), "defineRecipe".into(), "recipe".into()]
             }),
             skip_html_props: js.skip_html_props.unwrap_or(false),
             tsconfig_path: js.tsconfig_path.map(Into::into),

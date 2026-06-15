@@ -4,11 +4,11 @@ use camino::Utf8Path;
 
 use crate::types::*;
 
-use super::{ResolutionContext, MAX_DEPTH};
 use super::func::{resolve_function_type, resolve_typeof};
 use super::named::resolve_named;
-use super::primitives::{resolve_union, resolve_intersection, resolve_indexed_access};
+use super::primitives::{resolve_indexed_access, resolve_intersection, resolve_union};
 use super::template::resolve_template_literal;
+use super::{ResolutionContext, MAX_DEPTH};
 
 /// Central dispatch: convert a `CollectedType` to a `PropType`.
 /// Never re-parses strings — everything is already structured.
@@ -23,17 +23,17 @@ pub fn resolve_collected_type(
     if depth > MAX_DEPTH {
         state.diagnostics.push(Diagnostic {
             severity: DiagnosticSeverity::Warning,
-            message: format!("Max resolution depth exceeded resolving type: {}", ct.to_raw_string()),
+            message: format!(
+                "Max resolution depth exceeded resolving type: {}",
+                ct.to_raw_string()
+            ),
             file: Some(consuming_file.to_string()),
             line: None,
             column: None,
             help: None,
             code: DiagnosticCode::MaxDepthExceeded,
         });
-        return PropType::Opaque {
-            raw: ct.to_raw_string(),
-            reason: OpaqueReason::DepthExceeded,
-        };
+        return PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::DepthExceeded };
     }
 
     match ct {
@@ -57,9 +57,7 @@ pub fn resolve_collected_type(
         CollectedType::BoolLiteral(b) => PropType::BoolLiteral(*b),
 
         // ── Composites ───────────────────────────────────────────────────────
-        CollectedType::Union(members) => {
-            resolve_union(members, consuming_file, ctx, state, depth)
-        }
+        CollectedType::Union(members) => resolve_union(members, consuming_file, ctx, state, depth),
         CollectedType::Intersection(members) => {
             resolve_intersection(members, consuming_file, ctx, state, depth)
         }
@@ -73,9 +71,7 @@ pub fn resolve_collected_type(
         CollectedType::Tuple(members) => PropType::Tuple(
             members
                 .iter()
-                .map(|m| {
-                    resolve_collected_type(m, consuming_file, ctx, state, depth + 1)
-                })
+                .map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1))
                 .collect(),
         ),
         CollectedType::Object(fields) => PropType::Object(
@@ -122,14 +118,12 @@ pub fn resolve_collected_type(
         }
 
         // ── Opaque (needs type checker) ───────────────────────────────────────
-        CollectedType::Conditional { .. } => PropType::Opaque {
-            raw: ct.to_raw_string(),
-            reason: OpaqueReason::ConditionalType,
-        },
-        CollectedType::Mapped { .. } => PropType::Opaque {
-            raw: ct.to_raw_string(),
-            reason: OpaqueReason::MappedType,
-        },
+        CollectedType::Conditional { .. } => {
+            PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::ConditionalType }
+        }
+        CollectedType::Mapped { .. } => {
+            PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::MappedType }
+        }
 
         // ── Raw fallback ─────────────────────────────────────────────────────
         CollectedType::Raw(s) => {
@@ -140,11 +134,11 @@ pub fn resolve_collected_type(
             }
             // Double-quoted string literal: `"button"` → StringLiteral.
             if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
-                return PropType::StringLiteral(trimmed[1..trimmed.len()-1].to_owned());
+                return PropType::StringLiteral(trimmed[1..trimmed.len() - 1].to_owned());
             }
             // Single-quoted string literal: `'button'` → StringLiteral.
             if trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2 {
-                return PropType::StringLiteral(trimmed[1..trimmed.len()-1].to_owned());
+                return PropType::StringLiteral(trimmed[1..trimmed.len() - 1].to_owned());
             }
             // Simple identifier → Named type reference.
             if !trimmed.is_empty()
@@ -155,10 +149,7 @@ pub fn resolve_collected_type(
             {
                 PropType::Named { name: trimmed.into(), args: vec![] }
             } else {
-                PropType::Opaque {
-                    raw: s.clone(),
-                    reason: OpaqueReason::DepthExceeded,
-                }
+                PropType::Opaque { raw: s.clone(), reason: OpaqueReason::DepthExceeded }
             }
         }
     }

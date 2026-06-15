@@ -128,12 +128,8 @@ impl ReverseDeps {
                         let target = parent.join(&import.specifier);
                         // Approximate extension normalization without I/O.
                         for ext in &[".ts", ".tsx", "/index.ts", "/index.tsx"] {
-                            let candidate =
-                                Utf8PathBuf::from(format!("{}{}", target, ext));
-                            inner
-                                .entry(candidate)
-                                .or_default()
-                                .push(consumer_file.clone());
+                            let candidate = Utf8PathBuf::from(format!("{}{}", target, ext));
+                            inner.entry(candidate).or_default().push(consumer_file.clone());
                         }
                     }
                 }
@@ -234,7 +230,9 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
     // Phase 3: Merge into GlobalSourceData (sequential — fast hash-map insertions).
     let mut global = GlobalSourceData::default();
     for (path, data, io_diag) in source_data_vec {
-        if let Some(d) = io_diag { diagnostics.push(d); }
+        if let Some(d) = io_diag {
+            diagnostics.push(d);
+        }
         global.merge(&path, data);
     }
     let global = Arc::new(global);
@@ -248,10 +246,8 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
         .collect();
 
     let ctx = Arc::new(ResolutionContext::new(global.clone(), options));
-    let results: Vec<(ComponentEntry, Vec<Diagnostic>)> = mappings
-        .par_iter()
-        .map(|mapping| resolve_component(mapping, &ctx))
-        .collect();
+    let results: Vec<(ComponentEntry, Vec<Diagnostic>)> =
+        mappings.par_iter().map(|mapping| resolve_component(mapping, &ctx)).collect();
 
     // Phase 5: Collect output.
     let mut components = std::collections::BTreeMap::new();
@@ -266,10 +262,7 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
             base_name
         } else {
             // Suffix with file stem to make unique
-            let file_stem = entry
-                .file_path
-                .file_stem()
-                .unwrap_or("unknown");
+            let file_stem = entry.file_path.file_stem().unwrap_or("unknown");
             format!("{} ({})", base_name, file_stem)
         };
 
@@ -400,9 +393,7 @@ mod tests {
 
         let options = PipelineOptions {
             src_dirs: vec![dir],
-            cache_dir: Some(
-                Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap(),
-            ),
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
             ..Default::default()
         };
 
@@ -427,10 +418,7 @@ mod tests {
             fns.contains(&"defineRecipe".to_string()),
             "defineRecipe should be a default variant function"
         );
-        assert!(
-            fns.contains(&"recipe".to_string()),
-            "recipe should be a default variant function"
-        );
+        assert!(fns.contains(&"recipe".to_string()), "recipe should be a default variant function");
     }
 
     // ── test_reverse_deps_bfs ─────────────────────────────────────────────────
@@ -468,9 +456,7 @@ mod tests {
         let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
         let options = PipelineOptions {
             src_dirs: vec![dir],
-            cache_dir: Some(
-                Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap(),
-            ),
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
             ..Default::default()
         };
 
@@ -478,8 +464,7 @@ mod tests {
         session.initialize();
 
         // Modify the file and trigger an incremental update.
-        let button_path =
-            Utf8PathBuf::from_path_buf(tmp.path().join("Button.tsx")).unwrap();
+        let button_path = Utf8PathBuf::from_path_buf(tmp.path().join("Button.tsx")).unwrap();
         write_file(
             &tmp,
             "Button.tsx",

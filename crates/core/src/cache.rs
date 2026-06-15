@@ -37,21 +37,13 @@ struct SerializableCacheKey {
 
 impl From<&CacheKey> for SerializableCacheKey {
     fn from(k: &CacheKey) -> Self {
-        Self {
-            path: k.path.to_string(),
-            size: k.size,
-            mtime_ns: k.mtime_ns as u64,
-        }
+        Self { path: k.path.to_string(), size: k.size, mtime_ns: k.mtime_ns as u64 }
     }
 }
 
 impl From<SerializableCacheKey> for CacheKey {
     fn from(k: SerializableCacheKey) -> Self {
-        Self {
-            path: Utf8PathBuf::from(k.path),
-            size: k.size,
-            mtime_ns: k.mtime_ns as u128,
-        }
+        Self { path: Utf8PathBuf::from(k.path), size: k.size, mtime_ns: k.mtime_ns as u128 }
     }
 }
 
@@ -191,10 +183,7 @@ mod tests {
     /// Create a unique temp directory under std::env::temp_dir().
     fn temp_dir(suffix: &str) -> Utf8PathBuf {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
+        let ts = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
         let base = std::env::temp_dir();
         let dir = base.join(format!("oxc-docgen-cache-test-{}-{}", suffix, ts));
         std::fs::create_dir_all(&dir).unwrap();

@@ -7,12 +7,12 @@ use crate::known::{resolve_known, KnownPatternResult};
 use crate::react_types;
 use crate::types::*;
 
-use super::{ResolutionContext, ResolvedChain, MAX_DEPTH};
 use super::alias::resolve_type_alias_chain;
 use super::collected::resolve_collected_type;
 use super::extends::resolve_extends_ref;
 use super::import::resolve_to_canonical;
 use super::react::resolve_react_types_file;
+use super::{ResolutionContext, ResolvedChain, MAX_DEPTH};
 
 /// Resolve a named type to a chain of props.
 /// This is the recursive core — handles interfaces, aliases, known patterns, etc.
@@ -50,10 +50,23 @@ pub(super) fn resolve_props_chain(
 
     // ── Step 1: TypeScript built-in utility types — silent no-op ─────────────
     // Not prop providers; suppress false "unresolvable" warnings.
-    if matches!(type_name_bare,
-        "Omit" | "Pick" | "Partial" | "Required" | "Readonly" | "NonNullable"
-        | "ReturnType" | "Parameters" | "Awaited" | "Extract" | "Exclude"
-        | "Record" | "ReadonlyArray" | "Array" | "Promise"
+    if matches!(
+        type_name_bare,
+        "Omit"
+            | "Pick"
+            | "Partial"
+            | "Required"
+            | "Readonly"
+            | "NonNullable"
+            | "ReturnType"
+            | "Parameters"
+            | "Awaited"
+            | "Extract"
+            | "Exclude"
+            | "Record"
+            | "ReadonlyArray"
+            | "Array"
+            | "Promise"
     ) {
         return ResolvedChain::default();
     }
@@ -88,18 +101,10 @@ pub(super) fn resolve_props_chain(
                     };
                     ResolvedChain { inheritance: vec![layer], ..Default::default() }
                 }
-                KnownPatternResult::Type(pt) => {
-                    ResolvedChain::empty_with_compose(pt.raw_string())
+                KnownPatternResult::Type(pt) => ResolvedChain::empty_with_compose(pt.raw_string()),
+                KnownPatternResult::Alias { name } => {
+                    resolve_props_chain(&name, &[], consuming_file, mapping, ctx, state, depth + 1)
                 }
-                KnownPatternResult::Alias { name, .. } => resolve_props_chain(
-                    &name,
-                    &[],
-                    consuming_file,
-                    mapping,
-                    ctx,
-                    state,
-                    depth + 1,
-                ),
             };
         }
     }
@@ -120,14 +125,7 @@ pub(super) fn resolve_props_chain(
 
     // ── Step 4: Type alias (Omit, Pick, Partial, Union, etc.) ────────────────
     if let Some(alias) = ctx.global.type_aliases.get(&scoped_key).cloned() {
-        return resolve_type_alias_chain(
-            &alias,
-            consuming_file,
-            mapping,
-            ctx,
-            state,
-            depth,
-        );
+        return resolve_type_alias_chain(&alias, consuming_file, mapping, ctx, state, depth);
     }
 
     // ── Step 5: Interface ─────────────────────────────────────────────────────
@@ -177,14 +175,8 @@ pub(super) fn resolve_interface_chain(
 
     // ── Resolve extends first — parent props come before own props ────────────
     for extends_ref in &iface.extends {
-        let (parent_chain, maybe_layer) = resolve_extends_ref(
-            extends_ref,
-            &iface.file_path,
-            mapping,
-            ctx,
-            state,
-            depth + 1,
-        );
+        let (parent_chain, maybe_layer) =
+            resolve_extends_ref(extends_ref, &iface.file_path, mapping, ctx, state, depth + 1);
         if let Some(layer) = maybe_layer {
             chain.inheritance.push(layer);
         }
@@ -192,19 +184,12 @@ pub(super) fn resolve_interface_chain(
     }
 
     // ── Resolve own props ────────────────────────────────────────────────────
-    let parent_ref = Some(PropParent {
-        name: iface.name.to_string(),
-        file_name: iface.file_path.to_string(),
-    });
+    let parent_ref =
+        Some(PropParent { name: iface.name.to_string(), file_name: iface.file_path.to_string() });
 
     for raw_prop in &iface.props {
-        let prop_type = resolve_collected_type(
-            &raw_prop.collected_type,
-            &iface.file_path,
-            ctx,
-            state,
-            depth,
-        );
+        let prop_type =
+            resolve_collected_type(&raw_prop.collected_type, &iface.file_path, ctx, state, depth);
 
         // Default value: code default takes precedence over JSDoc @default.
         let code_default = mapping.param_defaults.get(&raw_prop.name);
@@ -237,9 +222,7 @@ pub(super) fn resolve_interface_chain(
             (Some(code), _) => {
                 Some(DefaultValue { value: code.value.clone(), computed: code.computed })
             }
-            (None, Some(jsdoc)) => {
-                Some(DefaultValue { value: jsdoc.to_owned(), computed: false })
-            }
+            (None, Some(jsdoc)) => Some(DefaultValue { value: jsdoc.to_owned(), computed: false }),
             (None, None) => None,
         };
 

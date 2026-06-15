@@ -15,9 +15,7 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 use rustc_hash::FxHashSet;
 
-use crate::types::{
-    CollectedObjectField, CollectedType, ExtendsRef, RawProp, SourceData,
-};
+use crate::types::{CollectedObjectField, CollectedType, ExtendsRef, RawProp, SourceData};
 #[cfg(test)]
 use crate::types::{CollectedTypeAlias, LexedExport};
 
@@ -192,8 +190,7 @@ impl<'src> SourceDataCollector<'src> {
                 TSLiteral::BooleanLiteral(b) => CollectedType::BoolLiteral(b.value),
                 TSLiteral::UnaryExpression(u) => {
                     // Handle negative numbers: -1
-                    let raw =
-                        self.source[u.span.start as usize..u.span.end as usize].to_owned();
+                    let raw = self.source[u.span.start as usize..u.span.end as usize].to_owned();
                     CollectedType::Raw(raw)
                 }
                 _ => CollectedType::Raw(
@@ -264,12 +261,8 @@ impl<'src> SourceDataCollector<'src> {
                     })
                     .collect();
                 // return_type on TSFunctionType is Box<TSTypeAnnotation> (not Option)
-                let return_type =
-                    self.ts_type_to_collected(&f.return_type.type_annotation);
-                CollectedType::Function {
-                    params,
-                    return_type: Box::new(return_type),
-                }
+                let return_type = self.ts_type_to_collected(&f.return_type.type_annotation);
+                CollectedType::Function { params, return_type: Box::new(return_type) }
             }
 
             TSType::TSIndexedAccessType(ia) => CollectedType::IndexedAccess {
@@ -320,14 +313,12 @@ impl<'src> SourceDataCollector<'src> {
 
             // TSTypeOperatorType covers keyof, unique, readonly
             TSType::TSTypeOperatorType(op) => {
-                let raw =
-                    self.source[op.span.start as usize..op.span.end as usize].to_owned();
+                let raw = self.source[op.span.start as usize..op.span.end as usize].to_owned();
                 CollectedType::Raw(raw)
             }
 
             TSType::TSInferType(i) => {
-                let raw =
-                    self.source[i.span.start as usize..i.span.end as usize].to_owned();
+                let raw = self.source[i.span.start as usize..i.span.end as usize].to_owned();
                 CollectedType::Raw(raw)
             }
 
@@ -335,8 +326,7 @@ impl<'src> SourceDataCollector<'src> {
             _ => {
                 use oxc_span::GetSpan;
                 let span = ty.span();
-                let raw =
-                    self.source[span.start as usize..span.end as usize].to_owned();
+                let raw = self.source[span.start as usize..span.end as usize].to_owned();
                 CollectedType::Raw(raw)
             }
         }
@@ -345,7 +335,10 @@ impl<'src> SourceDataCollector<'src> {
     /// Convert a `TSTupleElement` (which is a superset of `TSType`) to a `CollectedType`.
     ///
     /// TSTupleElement inherits all TSType variants and adds TSOptionalType and TSRestType.
-    pub(super) fn ts_tuple_element_to_collected<'a>(&self, el: &TSTupleElement<'a>) -> CollectedType {
+    pub(super) fn ts_tuple_element_to_collected<'a>(
+        &self,
+        el: &TSTupleElement<'a>,
+    ) -> CollectedType {
         match el {
             TSTupleElement::TSOptionalType(o) => {
                 // T? in tuple → Union([T, Undefined])
@@ -479,9 +472,7 @@ impl<'src> SourceDataCollector<'src> {
                 let args = self.extract_type_args(&tr.type_arguments);
                 Some((name.into(), args))
             }
-            TSType::TSParenthesizedType(p) => {
-                self.extract_type_name_from_type(&p.type_annotation)
-            }
+            TSType::TSParenthesizedType(p) => self.extract_type_name_from_type(&p.type_annotation),
             _ => None,
         }
     }
@@ -566,12 +557,10 @@ pub(super) fn is_pascal_case(s: &str) -> bool {
 /// Get the declared name from a Declaration node.
 pub(super) fn declaration_name<'a>(decl: &Declaration<'a>) -> Option<&'a str> {
     match decl {
-        Declaration::VariableDeclaration(vd) => {
-            vd.declarations.first().and_then(|d| match &d.id {
-                BindingPattern::BindingIdentifier(id) => Some(id.name.as_str()),
-                _ => None,
-            })
-        }
+        Declaration::VariableDeclaration(vd) => vd.declarations.first().and_then(|d| match &d.id {
+            BindingPattern::BindingIdentifier(id) => Some(id.name.as_str()),
+            _ => None,
+        }),
         Declaration::FunctionDeclaration(f) => f.id.as_ref().map(|id| id.name.as_str()),
         Declaration::ClassDeclaration(c) => c.id.as_ref().map(|id| id.name.as_str()),
         Declaration::TSTypeAliasDeclaration(ta) => Some(ta.id.name.as_str()),
@@ -757,8 +746,11 @@ mod tests {
 
         // After displayName assignment, the component should be renamed
         let btn = data.component_mappings.iter().find(|m| m.component_name == "Button");
-        assert!(btn.is_some(), "Button (renamed via displayName) not found; mappings: {:?}",
-            data.component_mappings.iter().map(|m| &m.component_name).collect::<Vec<_>>());
+        assert!(
+            btn.is_some(),
+            "Button (renamed via displayName) not found; mappings: {:?}",
+            data.component_mappings.iter().map(|m| &m.component_name).collect::<Vec<_>>()
+        );
     }
 
     #[test]

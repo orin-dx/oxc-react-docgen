@@ -10,22 +10,12 @@ pub fn cmd_check(args: crate::CheckArgs, quiet: bool, config_path: Option<&str>)
     let errors: Vec<_> = output
         .diagnostics
         .iter()
-        .filter(|d| {
-            matches!(
-                d.severity,
-                oxc_react_docgen_core::types::DiagnosticSeverity::Error
-            )
-        })
+        .filter(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Error))
         .collect();
     let warnings: Vec<_> = output
         .diagnostics
         .iter()
-        .filter(|d| {
-            matches!(
-                d.severity,
-                oxc_react_docgen_core::types::DiagnosticSeverity::Warning
-            )
-        })
+        .filter(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Warning))
         .collect();
 
     if !quiet {

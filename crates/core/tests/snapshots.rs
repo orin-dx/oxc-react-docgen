@@ -16,11 +16,7 @@ use oxc_react_docgen_core::pipeline::{extract, PipelineOptions};
 fn workspace_root() -> Utf8PathBuf {
     let manifest = env!("CARGO_MANIFEST_DIR");
     // crates/core → workspace root is two levels up
-    let root = std::path::Path::new(manifest)
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
+    let root = std::path::Path::new(manifest).parent().unwrap().parent().unwrap();
     Utf8PathBuf::from_path_buf(root.to_owned()).unwrap()
 }
 
@@ -52,10 +48,7 @@ fn redact_paths(value: &mut serde_json::Value, workspace: &str) {
         serde_json::Value::String(s) => {
             if s.contains(workspace) || s.starts_with('/') {
                 // Keep the filename portion so snapshots are still readable.
-                let trimmed = s
-                    .trim_start_matches(workspace)
-                    .trim_start_matches('/')
-                    .to_owned();
+                let trimmed = s.trim_start_matches(workspace).trim_start_matches('/').to_owned();
                 *s = format!("[ROOT]/{trimmed}");
             }
         }

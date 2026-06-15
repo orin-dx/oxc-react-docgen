@@ -11,3 +11,28 @@ fileGroups:
   configs:
     - "*.config.*"
     - "*.json"
+
+tasks:
+  fmt-check:
+    command: cargo fmt --check
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  lint:
+    command: cargo clippy --workspace --all-targets -- -D warnings
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  typos:
+    command: typos
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+
+  deny:
+    command: cargo deny check advisories
+    options:
+      runFromWorkspaceRoot: true
+      cache: false

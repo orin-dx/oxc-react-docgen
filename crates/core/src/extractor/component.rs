@@ -6,7 +6,7 @@ use oxc_ast::ast::*;
 
 use crate::types::ComponentMapping;
 
-use super::{SourceDataCollector, is_pascal_case};
+use super::{is_pascal_case, SourceDataCollector};
 
 impl<'src> SourceDataCollector<'src> {
     // ─── Component detection helpers ──────────────────────────────────────────
@@ -33,7 +33,12 @@ impl<'src> SourceDataCollector<'src> {
         name: &str,
     ) -> Option<ComponentMapping> {
         let type_ann = decl.type_annotation.as_ref()?;
-        self.extract_props_from_type_annotation(&type_ann.type_annotation, name, decl.span.start, decl.span.end)
+        self.extract_props_from_type_annotation(
+            &type_ann.type_annotation,
+            name,
+            decl.span.start,
+            decl.span.end,
+        )
     }
 
     pub(super) fn extract_props_from_type_annotation<'a>(
@@ -50,11 +55,7 @@ impl<'src> SourceDataCollector<'src> {
                 let bare_name = type_name.strip_prefix("React.").unwrap_or(&type_name);
                 if !matches!(
                     bare_name,
-                    "FC"
-                        | "FunctionComponent"
-                        | "ComponentType"
-                        | "VFC"
-                        | "VoidFunctionComponent"
+                    "FC" | "FunctionComponent" | "ComponentType" | "VFC" | "VoidFunctionComponent"
                 ) {
                     return None;
                 }
@@ -71,9 +72,12 @@ impl<'src> SourceDataCollector<'src> {
                     param_defaults: Default::default(),
                 })
             }
-            TSType::TSParenthesizedType(p) => {
-                self.extract_props_from_type_annotation(&p.type_annotation, name, span_start, span_end)
-            }
+            TSType::TSParenthesizedType(p) => self.extract_props_from_type_annotation(
+                &p.type_annotation,
+                name,
+                span_start,
+                span_end,
+            ),
             _ => None,
         }
     }
@@ -210,10 +214,7 @@ impl<'src> SourceDataCollector<'src> {
             _ => return None,
         };
 
-        if !matches!(
-            type_name,
-            "ForwardRefExoticComponent" | "React.ForwardRefExoticComponent"
-        ) {
+        if !matches!(type_name, "ForwardRefExoticComponent" | "React.ForwardRefExoticComponent") {
             return None;
         }
 
@@ -240,8 +241,7 @@ impl<'src> SourceDataCollector<'src> {
         };
 
         // Convert args to strings for ComponentMapping (resolver will re-parse)
-        let props_type_args: Vec<String> =
-            props_args.iter().map(|a| a.to_raw_string()).collect();
+        let props_type_args: Vec<String> = props_args.iter().map(|a| a.to_raw_string()).collect();
 
         Some(ComponentMapping {
             component_name: name.to_owned(),

@@ -9,10 +9,10 @@ use rayon::prelude::*;
 use crate::resolver::{resolve_component, ResolutionContext};
 use crate::types::*;
 
-use super::{extract, IncrementalUpdate, PipelineOptions};
 use super::super::types::{ComponentMapping, GlobalSourceData};
 use super::discover::discover_files;
 use super::ReverseDeps;
+use super::{extract, IncrementalUpdate, PipelineOptions};
 
 /// Stateful session for incremental watch-mode extraction.
 ///
@@ -51,8 +51,7 @@ impl WatchSession {
         let mut output = extract(&self.options);
 
         // Rebuild GlobalSourceData locally so we can populate our own caches.
-        let src_files =
-            discover_files(&self.options.src_dirs, &self.options.exclude_patterns);
+        let src_files = discover_files(&self.options.src_dirs, &self.options.exclude_patterns);
         let mut global = GlobalSourceData::default();
 
         for path in &src_files {
@@ -93,11 +92,8 @@ impl WatchSession {
     /// Return the current full extraction state from the in-memory caches.
     /// Suitable for writing to `--out` after each incremental update.
     pub fn snapshot(&self) -> ExtractionOutput {
-        let components: std::collections::BTreeMap<String, ComponentEntry> = self
-            .component_cache
-            .iter()
-            .map(|r| (r.key().clone(), r.value().clone()))
-            .collect();
+        let components: std::collections::BTreeMap<String, ComponentEntry> =
+            self.component_cache.iter().map(|r| (r.key().clone(), r.value().clone())).collect();
         let global = self.global.load();
         let enums: std::collections::BTreeMap<String, Vec<EnumEntry>> =
             global.enums.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -155,17 +151,14 @@ impl WatchSession {
             .collect();
 
         let ctx = ResolutionContext::new(new_global.clone(), &self.options);
-        let results: Vec<(ComponentEntry, Vec<Diagnostic>)> = affected_mappings
-            .par_iter()
-            .map(|m| resolve_component(m, &ctx))
-            .collect();
+        let results: Vec<(ComponentEntry, Vec<Diagnostic>)> =
+            affected_mappings.par_iter().map(|m| resolve_component(m, &ctx)).collect();
 
         let mut updated_components = Vec::new();
         let mut diagnostics: Vec<Diagnostic> = io_diagnostic.into_iter().collect();
 
         for (entry, diags) in results {
-            self.component_cache
-                .insert(entry.display_name.clone(), entry.clone());
+            self.component_cache.insert(entry.display_name.clone(), entry.clone());
             updated_components.push(entry);
             diagnostics.extend(diags);
         }

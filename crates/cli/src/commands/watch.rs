@@ -15,13 +15,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
             "  {}  {} watching {}  {}",
             "⚡".yellow(),
             "oxc-react-docgen".bold(),
-            options
-                .src_dirs
-                .iter()
-                .map(|d| d.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-                .cyan(),
+            options.src_dirs.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(", ").cyan(),
             "(press q to quit, r to re-extract)".dimmed()
         );
         println!();
@@ -29,11 +23,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
 
     let pb = if !quiet {
         let pb = ProgressBar::new_spinner();
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .template("{spinner:.cyan} {msg}")
-                .unwrap(),
-        );
+        pb.set_style(ProgressStyle::default_spinner().template("{spinner:.cyan} {msg}").unwrap());
         pb.set_message("Extracting...");
         pb.enable_steady_tick(std::time::Duration::from_millis(80));
         Some(pb)
@@ -41,9 +31,8 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
         None
     };
 
-    let session = std::sync::Arc::new(oxc_react_docgen_core::pipeline::WatchSession::new(
-        options.clone(),
-    ));
+    let session =
+        std::sync::Arc::new(oxc_react_docgen_core::pipeline::WatchSession::new(options.clone()));
     let first = session.initialize();
 
     if let Some(ref pb) = pb {
@@ -79,11 +68,8 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
     });
 
     // File watcher using watchexec 8.x (synchronous constructor, async main)
-    let src_dirs: Vec<std::path::PathBuf> = options
-        .src_dirs
-        .iter()
-        .map(|p| p.as_std_path().to_owned())
-        .collect();
+    let src_dirs: Vec<std::path::PathBuf> =
+        options.src_dirs.iter().map(|p| p.as_std_path().to_owned()).collect();
 
     let rt = tokio::runtime::Runtime::new().into_diagnostic()?;
     rt.block_on(async move {
@@ -96,10 +82,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
         let wx = Watchexec::new(move |action| {
             for event in action.events.iter() {
                 for (path, _) in event.paths() {
-                    let ext = path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("");
+                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
                     if !matches!(ext, "ts" | "tsx") {
                         continue;
                     }

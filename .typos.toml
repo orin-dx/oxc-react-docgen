@@ -1,0 +1,9 @@
+[files]
+extend-exclude = ["apps/validate/baselines/"]
+
+[default.extend-words]
+# variable abbreviations used in pattern bindings
+afe = "afe"
+sme = "sme"
+# ratatui is a real Rust TUI library
+ratatui = "ratatui"

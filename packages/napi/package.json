@@ -1,0 +1,20 @@
+{
+  "name": "@oxc-react-docgen/napi",
+  "version": "0.1.0",
+  "description": "Native Node.js bindings for oxc-react-docgen",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "type": "commonjs",
+  "napi": {
+    "binaryName": "oxc_react_docgen_napi",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc",
+      "aarch64-unknown-linux-gnu"
+    ]
+  },
+  "files": ["index.js", "index.d.ts", "*.node"],
+  "license": "MIT"
+}

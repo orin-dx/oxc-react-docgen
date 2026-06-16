@@ -56,9 +56,9 @@ Root cause: The Radix pattern uses an **intersection type alias** (`type Primiti
 3. `resolve_props_chain` Step 2: `KnownPatternResult::Type(PropType::HtmlAttributes)` now creates `InheritedLayer` instead of `empty_with_compose`
 4. Regression test added: `test_component_props_without_ref_in_intersection_alias`
 
-### 🟡 Medium: WatchSession::update_file race condition (open)
+### ✅ Fixed: WatchSession::update_file race condition
 
-Concurrent file changes can cause lost updates. `ArcSwap` provides atomic pointer swaps but not compare-and-swap. Fix: wrap the read-modify-write in `ArcSwap::rcu` or a Mutex.
+`ArcSwap::rcu` is used in `update_file` — retries if a concurrent call swaps the pointer, preventing lost-update races.
 
 ### 🟡 Medium: Mantine/React Aria Button collision in fixture dedup
 

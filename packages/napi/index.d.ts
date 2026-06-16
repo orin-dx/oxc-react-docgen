@@ -152,17 +152,17 @@ export interface IncrementalUpdate {
 }
 
 /** Cold extraction — returns JSON string of ExtractionOutput */
-export declare function extractAll(options: ExtractOptions): string
+export declare function extractAll(options: ExtractOptions): Promise<string>
 
 /** Initialize a watch session with full cold extraction. Returns JSON string of ExtractionOutput. */
-export declare function initializeSession(sessionId: number, options: ExtractOptions): string
+export declare function initializeSession(sessionId: number, options: ExtractOptions): Promise<string>
 
 /** Incremental extraction for HMR — returns JSON string of IncrementalUpdate */
 export declare function extractFileIncremental(
   filePath: string,
   sessionId: number,
   options: ExtractOptions
-): string
+): Promise<string>
 
 /** Create a persistent watch session, returns session ID */
 export declare function createSession(options: ExtractOptions): number

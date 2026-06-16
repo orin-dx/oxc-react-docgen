@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use arc_swap::ArcSwap;
@@ -29,6 +29,8 @@ pub struct WatchSession {
     pub source_cache: DashMap<Utf8PathBuf, SourceData>,
     /// Latest resolved component entries, keyed by display name.
     pub component_cache: DashMap<String, ComponentEntry>,
+    /// Guards initialize() so concurrent callers don't race to build caches.
+    initialized: Mutex<bool>,
 }
 
 impl WatchSession {
@@ -40,13 +42,20 @@ impl WatchSession {
             reverse_deps: Arc::new(ReverseDeps { inner: Default::default() }),
             source_cache: DashMap::new(),
             component_cache: DashMap::new(),
+            initialized: Mutex::new(false),
         }
     }
 
     /// Run a full cold extraction to populate this session's caches.
     ///
-    /// Must be called once before `update_file()`.
+    /// Idempotent — concurrent or repeated calls return the existing snapshot
+    /// without re-running extraction.
     pub fn initialize(&self) -> ExtractionOutput {
+        let mut guard = self.initialized.lock().expect("init lock poisoned");
+        if *guard {
+            return self.snapshot();
+        }
+
         // Cold extraction for the public-facing output.
         let mut output = extract(&self.options);
 
@@ -86,6 +95,7 @@ impl WatchSession {
             self.component_cache.insert(name.clone(), entry.clone());
         }
 
+        *guard = true;
         output
     }
 
@@ -169,5 +179,58 @@ impl WatchSession {
             diagnostics,
             duration_ms: start.elapsed().as_millis() as u64,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+
+    use super::WatchSession;
+    use crate::pipeline::PipelineOptions;
+
+    fn empty_options() -> PipelineOptions {
+        PipelineOptions { src_dirs: vec![], ..Default::default() }
+    }
+
+    #[test]
+    fn initialize_is_idempotent() {
+        let session = WatchSession::new(empty_options());
+        let first = session.initialize();
+        let second = session.initialize();
+        assert_eq!(first.components.len(), second.components.len());
+        assert_eq!(first.enums.len(), second.enums.len());
+    }
+
+    #[test]
+    fn concurrent_initialize_no_double_init() {
+        // Barrier ensures all 8 threads reach initialize() simultaneously,
+        // maximising the race window for the Mutex<bool> guard.
+        let session = Arc::new(WatchSession::new(empty_options()));
+        let barrier = Arc::new(Barrier::new(8));
+
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let s = Arc::clone(&session);
+                let b = Arc::clone(&barrier);
+                thread::spawn(move || {
+                    b.wait();
+                    s.initialize()
+                })
+            })
+            .collect();
+
+        let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let expected = results[0].components.len();
+        assert!(results.iter().all(|r| r.components.len() == expected));
+    }
+
+    #[test]
+    fn snapshot_after_initialize_has_no_diagnostics() {
+        let session = WatchSession::new(empty_options());
+        session.initialize();
+        let snap = session.snapshot();
+        assert!(snap.diagnostics.is_empty());
     }
 }

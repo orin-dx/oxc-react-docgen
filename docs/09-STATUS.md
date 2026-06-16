@@ -25,8 +25,8 @@
 | Quality (R12-R17) | ✅ Complete | deny(unsafe_code), Display+Error on Diagnostic, non_exhaustive, must_use, ScopedKey deleted, pub use at crate root, ResolveState pub(crate) |
 | Claude Code setup | ✅ Complete | CLAUDE.md, skills (rust-style/types/rustdoc), /check, /snapshot |
 | Pre-commit hooks | ✅ Complete | moon native vcs hooks: fmt, clippy --all-targets, typos, cargo-deny |
-| 5a — Vite plugin | ❌ Not started | Spec updated: hotUpdate, moduleType:'js', Plugin[], environment API |
-| 5b — Rolldown plugin | ❌ Not started | Rolldown 1.0 stable — native Rust plugin viable |
+| 5a — Vite plugin | ❌ Not started | Single Plugin, Vite 7+, hotUpdate + environment.hot.send(), virtual module |
+| 5b — Rolldown plugin | 🚫 Dropped | No external native Rust plugin mechanism in Rolldown 1.x; JS/NAPI bridge adds no value over Vite plugin |
 | 6 — Integration tests | ❌ Not started | Needs validate/run-ours.ts once NAPI binary compiled |
 
 ## Quality Improvement Queue (R12–R17) — ✅ Complete
@@ -125,9 +125,9 @@ Both `CollectedType` and `PropType` are deeply recursive enums. Using serde deri
 `node_modules/.cache/oxc-react-docgen/` (CI-friendly, cleaned with node_modules). NOT `~/.cache/`.
 
 ### Plugin architecture
-- `packages/napi/` — compiled native binary + TypeScript types
-- `packages/vite-plugin/` — TypeScript wrapper, returns `Plugin[]`, uses `hotUpdate` not `handleHotUpdate`
-- Rolldown plugin — native Rust (Rolldown 1.0 stable)
+- `packages/napi/` — compiled native binary + TypeScript types (`@oxc-react-docgen/napi`)
+- `packages/vite-plugin/` — single `Plugin` (not `Plugin[]`), Vite `^7.0.0 || ^8.0.0`, `hotUpdate` hook + `environment.hot.send()`, `\0virtual:oxc-react-docgen` module (`@oxc-react-docgen/vite-plugin`)
+- Phase 5b (Rolldown plugin) — dropped: Rolldown 1.x has no external native Rust plugin mechanism
 - Config file — `docgen.config.ts`, discovered by walking up to workspace root
 
 ### OXC 0.135 API notes (vs spec written for 0.60)
@@ -161,8 +161,7 @@ Completed refactor sequence:
 All 97 tests (90 unit + 7 snapshot) green throughout.
 
 After refactor:
-- Phase 5a — Vite plugin
-- Phase 5b — Rolldown native Rust plugin
+- Phase 5a — Vite plugin (spec: `docs/10-PLUGIN-SPEC.md`)
 - Phase 6 — Integration tests + benchmarks
 - Wire config file loading
 - Add preset system

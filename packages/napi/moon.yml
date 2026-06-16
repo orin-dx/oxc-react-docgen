@@ -1,0 +1,12 @@
+language: typescript
+
+tasks:
+  build:
+    command: cargo build -p oxc-react-docgen-napi
+    options:
+      runFromWorkspaceRoot: true
+    inputs:
+      - "../../crates/binding/src/**/*"
+      - "../../crates/binding/Cargo.toml"
+    outputs:
+      - "../../target/debug/oxc_react_docgen_napi.node"

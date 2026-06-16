@@ -1,9 +1,8 @@
 [workspace]
 members = [
     "crates/core",
-    "crates/napi",
+    "crates/binding",
     "crates/cli",
-    "packages/rolldown-plugin",
 ]
 resolver = "2"
 

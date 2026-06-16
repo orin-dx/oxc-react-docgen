@@ -34,4 +34,4 @@ No reverse dependencies. `pub(crate)` for implementation modules; `pub` only for
 
 - `crates/core` — pure extraction logic; @crates/core/CLAUDE.md
 - `crates/cli` — clap CLI, no logic; @crates/cli/CLAUDE.md
-- `crates/napi` — thin NAPI wrapper, delegates to core
+- `crates/binding` — thin NAPI wrapper, delegates to core

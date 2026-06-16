@@ -4,10 +4,9 @@ $schema: "https://moonrepo.dev/schemas/workspace.json"
 projects:
   core: "crates/core"
   cli: "crates/cli"
-  crates-napi: "crates/napi"
+  crates-binding: "crates/binding"
   napi: "packages/napi"
-  rolldown-plugin: "packages/rolldown-plugin"
-  validate: "packages/validate"
+  validate: "apps/validate"
   vite-plugin: "packages/vite-plugin"
 
 vcs:

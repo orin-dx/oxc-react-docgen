@@ -7,7 +7,7 @@ A Rust-powered React prop extraction tool that replaces `react-docgen-typescript
 - **Cross-package monorepo support** via import graph + .d.ts parsing
 - **Drop-in RDT output** for existing Storybook setups
 - **World-class CLI** with miette diagnostics
-- **Vite + Rolldown plugins** — primary delivery mechanism
+- **Vite plugin** — primary delivery mechanism
 
 ## Repository Structure
 
@@ -20,8 +20,7 @@ oxc-react-docgen/
 │   └── cli/                   # clap + miette + indicatif
 ├── packages/
 │   ├── napi/                  # npm: @oxc-react-docgen/napi (TS types + native bindings)
-│   ├── vite-plugin/           # npm: @oxc-react-docgen/vite
-│   └── rolldown-plugin/       # Rust-native rolldown plugin (no NAPI)
+│   └── vite-plugin/           # npm: @oxc-react-docgen/vite
 ├── fixtures/                  # real library test fixtures
 │   ├── radix/
 │   ├── shadcn/
@@ -41,7 +40,7 @@ Phase 0: Repository Setup (1 agent, must finish first)
             └─► Phase 2: Extractor + ImportMap + Known (3 agents, parallel)
                     └─► Phase 3: Resolver + Pipeline (2 agents, parallel)
                             └─► Phase 4: NAPI + CLI (2 agents, parallel)
-                                    └─► Phase 5: Vite Plugin + Rolldown Plugin (2 agents, parallel)
+                                    └─► Phase 5: Vite Plugin (1 agent)
                                             └─► Phase 6: Integration + Tests (1 agent)
 ```
 
@@ -59,8 +58,7 @@ Phase 0: Repository Setup (1 agent, must finish first)
 | 3b | Pipeline | Phase 2 | Rayon orchestration + GlobalSourceData |
 | 4a | NAPI | Phase 3 | napi crate + TS types |
 | 4b | CLI | Phase 3 | clap/miette CLI |
-| 5a | Vite Plugin | Phase 4a | @oxc-react-docgen/vite |
-| 5b | Rolldown Plugin | Phase 3 | Native Rust plugin |
+| 5 | Vite Plugin | Phase 4a | @oxc-react-docgen/vite |
 | 6 | Integration | Phase 5 | E2E tests, benchmarks, docs |
 
 ## Non-Negotiable Constraints (All Agents Must Respect)

@@ -72,7 +72,7 @@ When running `--src fixtures/` (all libraries), multiple `Button` components fro
 
 Config file is read and evaluated via node+tsx but the result is discarded (returns `None`). The JSON → PipelineOptions mapping needs to be implemented.
 
-### 🟢 Minor: `run-ours.ts` missing in packages/validate
+### 🟢 Minor: `run-ours.ts` missing in apps/validate
 
 The validation harness has `run-react-docgen.ts` and `run-react-docgen-typescript.ts` but no `run-ours.ts` to compare against. Can only be written after the NAPI binary is compiled.
 
@@ -212,7 +212,7 @@ After refactor:
 | `crates/napi/src/lib.rs` | NAPI bindings: extractAll, createSession, initializeSession, closeSession |
 | `crates/cli/src/main.rs` | CLI: extract, inspect, watch, check, completions |
 | `packages/napi/index.d.ts` | TypeScript types for the NAPI package |
-| `packages/validate/` | Comparison harness: react-docgen + react-docgen-typescript baselines |
+| `apps/validate/` | Comparison harness: react-docgen + react-docgen-typescript baselines |
 | `fixtures/` | Real-world .d.ts and .tsx fixtures from shadcn, MUI, Chakra, Mantine, etc. |
 | `docs/08-OPEN-QUESTIONS.md` | Architecture decisions log |
 | `docs/09-STATUS.md` | This file |

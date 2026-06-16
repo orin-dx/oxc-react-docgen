@@ -1432,15 +1432,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "oxc-react-docgen-rolldown"
-version = "0.1.0"
-dependencies = [
- "camino",
- "dashmap",
- "oxc-react-docgen-core",
-]
-
-[[package]]
 name = "oxc_allocator"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -10,6 +10,7 @@ use super::diagnostic::Diagnostic;
 // ─── Top-level output ─────────────────────────────────────────────────────────
 
 /// The complete extraction output — top-level return type of the pipeline.
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractionOutput {

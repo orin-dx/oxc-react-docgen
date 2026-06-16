@@ -45,6 +45,7 @@ pub fn print_diagnostics(diagnostics: &[oxc_react_docgen_core::types::Diagnostic
                 "warn".yellow().to_string()
             }
             oxc_react_docgen_core::types::DiagnosticSeverity::Info => "info".dimmed().to_string(),
+            _ => "info".dimmed().to_string(),
         };
         if let Some(ref file) = d.file {
             println!("  [{prefix}] {file}:{}", d.message);

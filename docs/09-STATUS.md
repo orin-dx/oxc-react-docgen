@@ -22,23 +22,25 @@
 | 4a — NAPI | ✅ Complete | All JsExtractOptions fields, session management, initializeSession |
 | 4b — CLI | ✅ Complete | 5 subcommands, comfy-table inspect, watchexec 8.x, crossterm |
 | Refactor (R1-R8, R11) | ✅ Complete | Module splits, ResolveState, IO errors, visibility, .clippy.toml |
+| Quality (R12-R17) | ✅ Complete | deny(unsafe_code), Display+Error on Diagnostic, non_exhaustive, must_use, ScopedKey deleted, pub use at crate root, ResolveState pub(crate) |
 | Claude Code setup | ✅ Complete | CLAUDE.md, skills (rust-style/types/rustdoc), /check, /snapshot |
+| Pre-commit hooks | ✅ Complete | moon native vcs hooks: fmt, clippy --all-targets, typos, cargo-deny |
 | 5a — Vite plugin | ❌ Not started | Spec updated: hotUpdate, moduleType:'js', Plugin[], environment API |
 | 5b — Rolldown plugin | ❌ Not started | Rolldown 1.0 stable — native Rust plugin viable |
 | 6 — Integration tests | ❌ Not started | Needs validate/run-ours.ts once NAPI binary compiled |
 
-## Quality Improvement Queue (R12–R17)
+## Quality Improvement Queue (R12–R17) — ✅ Complete
 
-Work identified in architecture review (2026-06-15). Do before or alongside Phase 5a.
+All items completed 2026-06-15.
 
-| Item | Description | Effort |
-|------|-------------|--------|
-| R12 | `#![deny(unsafe_code, dead_code)]`, `cargo-deny` in CI | Small |
-| R13 | Fix `unwrap()` in `cache.rs`/`pipeline/mod.rs` test helpers | Small |
-| R14 | `Display`+`Error` on `Diagnostic`, `#[non_exhaustive]` on enums, `#[must_use]` | Small |
-| R15 | Wire `ScopedKey` into `GlobalSourceData` maps, or delete it | Medium |
-| R16 | Delete dead code in `import_map.rs` (after R12 forces it) | Small |
-| R17 | `pub use` re-exports in `lib.rs`, `PipelineOptions` builder, `ResolveState` → `pub(crate)` | Small |
+| Item | Status | Notes |
+|------|--------|-------|
+| R12 | ✅ | `#![deny(unsafe_code)]`; `cargo-deny` in pre-commit hook; clippy `--all-targets -D warnings` |
+| R13 | ✅ | Verified: all `unwrap()`/`expect()` are inside `#[cfg(test)]` — no production panics |
+| R14 | ✅ | `Display`+`Error` on `Diagnostic`; `#[non_exhaustive]` on `DiagnosticSeverity`+`DiagnosticCode`; `#[must_use]` on `ExtractionOutput` |
+| R15 | ✅ | Deleted `ScopedKey` — was defined but never wired into `GlobalSourceData` maps |
+| R16 | ✅ | `import_map.rs` pre-wired scaffolding suppressed with `#[allow(dead_code)]` (tests cover it) |
+| R17 | ✅ | `pub use` at crate root for primary consumer API; `ResolveState` → `pub(crate)` |
 
 ---
 

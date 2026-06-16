@@ -13,31 +13,14 @@ use super::diagnostic::Diagnostic;
 // ─── ResolveState ─────────────────────────────────────────────────────────────
 
 /// Mutable resolution state threaded through all resolver functions.
-/// Bundles the three params that every recursive resolver function needs,
-/// eliminating 8-arg signatures.
+/// Bundles the two fields that every recursive resolver function needs,
+/// eliminating long argument signatures.
 #[derive(Default)]
-pub struct ResolveState {
+pub(crate) struct ResolveState {
     /// Cycle-detection set: "${file}:${type_name}" keys.
-    pub visited: FxHashSet<CompactString>,
+    pub(crate) visited: FxHashSet<CompactString>,
     /// Accumulated non-fatal issues.
-    pub diagnostics: Vec<Diagnostic>,
-}
-
-// ─── ScopedKey ────────────────────────────────────────────────────────────────
-
-/// Type-checked map key for `"${file_path}:${name}"` strings.
-/// Prevents raw string keys from being confused with plain names.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct ScopedKey(CompactString);
-
-impl ScopedKey {
-    pub fn new(file: &Utf8Path, name: &str) -> Self {
-        Self(format!("{}:{}", file, name).into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
+    pub(crate) diagnostics: Vec<Diagnostic>,
 }
 
 // ─── GlobalSourceData ─────────────────────────────────────────────────────────

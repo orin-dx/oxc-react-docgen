@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 /// A non-fatal issue discovered during extraction.
@@ -13,6 +15,18 @@ pub struct Diagnostic {
     pub code: DiagnosticCode,
 }
 
+impl fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(file) = &self.file {
+            write!(f, "{file}: ")?;
+        }
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for Diagnostic {}
+
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DiagnosticSeverity {
@@ -22,6 +36,7 @@ pub enum DiagnosticSeverity {
 }
 
 /// Machine-readable diagnostic codes for programmatic consumers.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DiagnosticCode {

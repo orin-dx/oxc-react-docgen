@@ -11,7 +11,7 @@
 //! - `collected` — raw AST-level types produced by the extractor
 //! - `output`    — semantic output types produced by the resolver
 //! - `diagnostic`— Diagnostic, DiagnosticSeverity, DiagnosticCode
-//! - `global`    — GlobalSourceData + ScopedKey (the shared resolution context)
+//! - `global`    — GlobalSourceData + ResolveState (the shared resolution context)
 
 pub mod collected;
 pub mod diagnostic;

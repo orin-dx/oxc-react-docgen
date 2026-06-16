@@ -58,7 +58,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
                         std::process::exit(0);
                     }
                     KeyCode::Char('r') => {
-                        session_clone.initialize();
+                        let _ = session_clone.initialize();
                     }
                     _ => {}
                 }

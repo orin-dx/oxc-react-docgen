@@ -16,11 +16,13 @@ oxc-react-docgen/
 ├── Cargo.toml                 # workspace root
 ├── crates/
 │   ├── core/                  # extraction logic — ZERO terminal/NAPI deps
-│   ├── napi/                  # thin NAPI wrapper over core
+│   ├── binding/               # thin NAPI wrapper over core (was crates/napi/)
 │   └── cli/                   # clap + miette + indicatif
 ├── packages/
-│   ├── napi/                  # npm: @oxc-react-docgen/napi (TS types + native bindings)
-│   └── vite-plugin/           # npm: @oxc-react-docgen/vite
+│   ├── napi/                  # npm: @oxc-react-docgen/napi (TS types + dev binary loader)
+│   └── vite-plugin/           # npm: @oxc-react-docgen/vite-plugin
+├── apps/
+│   └── validate/              # comparison harness vs react-docgen + react-docgen-typescript
 ├── fixtures/                  # real library test fixtures
 │   ├── radix/
 │   ├── shadcn/

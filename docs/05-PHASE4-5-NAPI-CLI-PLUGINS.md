@@ -628,7 +628,9 @@ The `find_config_file` helper walks from `root` upward, stopping at a workspace 
 # Runs: After Phase 4a (NAPI) complete
 # Owns: packages/vite-plugin/
 
-## Mission
+> **⚠️ SUPERSEDED** — The architecture below (Plugin[], transform hook, __docgenInfo injection, lazy NAPI load) was revised during implementation. The actual implementation uses a single `Plugin`, virtual module pattern, and `configureServer`+`hotUpdate` hooks. See `docs/10-PLUGIN-SPEC.md` for the canonical spec and `packages/vite-plugin/src/index.ts` for the implementation. The package name is `@oxc-react-docgen/vite-plugin` (not `@oxc-react-docgen/vite`).
+
+## Mission (original)
 
 Thin TypeScript wrapper over the NAPI binary. Follows Vite plugin best practices.
 Zero re-implementation of extraction logic.

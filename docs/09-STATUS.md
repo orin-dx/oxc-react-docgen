@@ -1,8 +1,8 @@
 # oxc-react-docgen — Project Status
 
-**Last updated:** 2026-06-15  
+**Last updated:** 2026-06-24  
 **Branch:** master  
-**Tests:** 97 passing, 0 failing (90 unit + 7 snapshots)  
+**Tests:** 114 passing, 0 failing (100 Rust unit/snapshot + 14 TypeScript)  
 **Build:** clean (cargo clippy -D warnings passes)
 
 ---
@@ -25,9 +25,9 @@
 | Quality (R12-R17) | ✅ Complete | deny(unsafe_code), Display+Error on Diagnostic, non_exhaustive, must_use, ScopedKey deleted, pub use at crate root, ResolveState pub(crate) |
 | Claude Code setup | ✅ Complete | CLAUDE.md, skills (rust-style/types/rustdoc), /check, /snapshot |
 | Pre-commit hooks | ✅ Complete | moon native vcs hooks: fmt, clippy --all-targets, typos, cargo-deny |
-| 5a — Vite plugin | ❌ Not started | Single Plugin, Vite 7+, hotUpdate + environment.hot.send(), virtual module |
+| 5a — Vite plugin | ✅ Complete | @oxc-react-docgen/vite-plugin, 14 unit tests, crates/binding rename, apps/validate move |
 | 5b — Rolldown plugin | 🚫 Dropped | No external native Rust plugin mechanism in Rolldown 1.x; JS/NAPI bridge adds no value over Vite plugin |
-| 6 — Integration tests | ❌ Not started | Needs validate/run-ours.ts once NAPI binary compiled |
+| 6 — Integration tests | 🟡 Partially ready | run-ours.ts exists in apps/validate/; needs compare.ts, baseline command, and moon wiring |
 
 ## Quality Improvement Queue (R12–R17) — ✅ Complete
 
@@ -142,29 +142,11 @@ Both `CollectedType` and `PropType` are deeply recursive enums. Using serde deri
 
 ## Immediate Next Steps (priority order)
 
-**Refactor phase COMPLETE (R1-R8, R11). Ready for Phase 5+.**
+**Phase 5a COMPLETE. Ready for Phase 6 + config loading.**
 
-Completed refactor sequence:
-
-1. **R1** ✅ — `insta` snapshot tests across all 7 fixtures (safety net)
-2. **R2** ✅ — Split `types.rs` → `types/{collected,output,diagnostic,global}.rs`; added `ScopedKey`, `ResolveState` types
-3. **R3** ✅ — `ResolveState` wired into all 17 resolver functions; `visited/diagnostics` threaded as one struct
-4. **R4** ✅ — Split `resolver.rs` (2,482 lines) → `resolver/` (12 sub-modules: chain, extends, alias, collected, named, primitives, template, func, react, import, html)
-5. **R5** ✅ — Split `extractor.rs` (1,867 lines) → `extractor/` (7 sub-modules: component, interface, alias, jsdoc, visit, defaults)
-6. **R6** ✅ — Split `pipeline.rs` → `pipeline/{discover,watch}.rs`; fixed 3 silent IO failures to emit `Diagnostic::IoError`
-7. **R7** ✅ — Split `cli/main.rs` (760 lines) → `commands/{extract,watch,inspect,check,completions}.rs` + `config.rs` + `output.rs`
-8. **R8** ✅ — Visibility: `cache`, `extractor`, `import_map`, `known`, `resolver` → `pub(crate)`; `pipeline`, `types`, `react_types` remain `pub`
-9. **R9** — Skipped: PropType derive requires breaking JSON format (tuple variants can't use `#[serde(tag)]` cleanly)
-10. **R10** — Deferred: cross-package resolution is a new feature, not refactor
-11. **R11** ✅ — `.clippy.toml` with `too-many-arguments-threshold = 6`, `too-many-lines-threshold = 100`
-
-All 97 tests (90 unit + 7 snapshot) green throughout.
-
-After refactor:
-- Phase 5a — Vite plugin (spec: `docs/10-PLUGIN-SPEC.md`)
-- Phase 6 — Integration tests + benchmarks
-- Wire config file loading
-- Add preset system
+1. **Phase 6 — Integration tests** (`apps/validate/`) — `run-ours.ts` exists; need `compare.ts`, baseline snapshot, and `moon run validate:compare`
+2. **Config file loading** — `crates/cli/src/config.rs` parses `docgen.config.ts` but discards the result (returns `None`); wire the JSON → `PipelineOptions` mapping
+3. **Preset system** — named `OxcDocgenOptions` bundles in a `@oxc-react-docgen/presets` package (config-side only, no Rust changes)
 
 ---
 
@@ -201,18 +183,21 @@ After refactor:
 
 | File | Purpose |
 |------|---------|
-| `crates/core/src/types.rs` | All shared data types — the contract |
-| `crates/core/src/extractor.rs` | OXC AST → SourceData |
-| `crates/core/src/resolver.rs` | SourceData → ComponentEntry (prop type resolution) |
-| `crates/core/src/pipeline.rs` | Orchestration: discover → parse → merge → resolve → output |
+| `crates/core/src/types/` | All shared data types — the contract (split from types.rs) |
+| `crates/core/src/extractor/` | OXC AST → SourceData (split from extractor.rs) |
+| `crates/core/src/resolver/` | SourceData → ComponentEntry (split from resolver.rs) |
+| `crates/core/src/pipeline/` | Orchestration: discover → parse → merge → resolve → output |
 | `crates/core/src/known.rs` | Library-specific type shortcuts (SxProps, VariantProps, etc.) |
 | `crates/core/src/react_types.rs` | React builtin recognition + notable HTML attrs table |
 | `crates/core/src/import_map.rs` | Import resolution map |
 | `crates/core/src/cache.rs` | DTS parse cache (mtime+size invalidation, msgpack+atomic write) |
-| `crates/napi/src/lib.rs` | NAPI bindings: extractAll, createSession, initializeSession, closeSession |
-| `crates/cli/src/main.rs` | CLI: extract, inspect, watch, check, completions |
-| `packages/napi/index.d.ts` | TypeScript types for the NAPI package |
-| `apps/validate/` | Comparison harness: react-docgen + react-docgen-typescript baselines |
+| `crates/binding/src/lib.rs` | NAPI bindings: extractAll, createSession, initializeSession, closeSession, extractFileIncremental |
+| `crates/cli/src/main.rs` | CLI entry point; commands in `crates/cli/src/commands/` |
+| `packages/napi/index.d.ts` | TypeScript types for the NAPI package (hand-written, rich PropType discriminated unions) |
+| `packages/napi/index.js` | Dev binary loader — finds .node from target/ or NAPI_RS_NATIVE_LIBRARY_PATH |
+| `packages/vite-plugin/src/index.ts` | Vite plugin: single Plugin, configureServer+hotUpdate+virtual module |
+| `apps/validate/` | Comparison harness: react-docgen + react-docgen-typescript + run-ours.ts |
 | `fixtures/` | Real-world .d.ts and .tsx fixtures from shadcn, MUI, Chakra, Mantine, etc. |
 | `docs/08-OPEN-QUESTIONS.md` | Architecture decisions log |
+| `docs/10-PLUGIN-SPEC.md` | Vite plugin spec (supersedes Phase 5 section of docs/05) |
 | `docs/09-STATUS.md` | This file |

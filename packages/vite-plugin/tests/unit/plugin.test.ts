@@ -77,7 +77,11 @@ describe('oxcReactDocgen', () => {
       const mockServer = {
         environments: { client: { hot: { send: vi.fn() } } },
       } as any
-      await (plugin.configureServer as Function)(mockServer)
+      // configureServer returns a teardown fn; initializeSession is async internally.
+      // Flush the microtask queue so the .then() callback runs before asserting.
+      ;(plugin.configureServer as Function)(mockServer)
+      await vi.waitUntil(() => (napi.initializeSession as any).mock.calls.length > 0)
+      await (napi.initializeSession as any).mock.results[0].value
       expect(napi.initializeSession).toHaveBeenCalledWith(
         42,
         expect.objectContaining({ srcDirs: ['/project/src'] })
@@ -141,6 +145,12 @@ describe('oxcReactDocgen', () => {
     it('skips non-ts/tsx files inside srcDirs', async () => {
       const ctx = clientEnv()
       await (plugin.hotUpdate as Function).call(ctx, makeOpts('/project/src/styles.css'))
+      expect(napi.extractFileIncremental).not.toHaveBeenCalled()
+    })
+
+    it('skips files in a sibling directory that shares the srcDir prefix', async () => {
+      const ctx = clientEnv()
+      await (plugin.hotUpdate as Function).call(ctx, makeOpts('/project/src-generated/Button.tsx'))
       expect(napi.extractFileIncremental).not.toHaveBeenCalled()
     })
   })

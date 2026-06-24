@@ -17,5 +17,3 @@ tasks:
       - "vitest.config.ts"
       - "package.json"
       - "tsconfig.json"
-    deps:
-      - "~:build"

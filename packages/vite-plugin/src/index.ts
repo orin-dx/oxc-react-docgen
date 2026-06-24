@@ -46,7 +46,7 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
   function isSrcFile(file: string): boolean {
     return (
       (file.endsWith('.tsx') || file.endsWith('.ts')) &&
-      resolvedSrcDirs.some(dir => file.startsWith(dir))
+      resolvedSrcDirs.some(dir => file.startsWith(dir + '/'))
     )
   }
 
@@ -69,9 +69,8 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
             currentOutput = JSON.parse(json) as ExtractionOutput
           } catch (err) {
             console.error('[oxc-react-docgen] Failed to parse initializeSession output:', err)
-            return // leave currentOutput as the zero-value
+            return
           }
-          // Notify client that initial extraction is ready
           // environments.client.hot is Vite 6+ API; cast avoids typing fight across patch versions
           ;(server as any).environments?.client?.hot?.send('oxc-react-docgen:ready', {
             components: currentOutput.components,
@@ -79,8 +78,13 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
         })
         .catch((err: unknown) => {
           console.error('[oxc-react-docgen] initializeSession failed:', err)
-          // Do NOT re-throw — keep initPromise fulfilled so hotUpdate doesn't reject silently
         })
+
+      // Return a teardown function — Vite calls this on dev-server close.
+      // buildEnd is not called in dev mode, so this is the only reliable cleanup hook.
+      return () => {
+        napi.closeSession(sessionId)
+      }
     },
 
     async hotUpdate(opts: HotUpdateOptions) {

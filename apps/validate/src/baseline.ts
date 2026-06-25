@@ -21,4 +21,8 @@ console.log('Running react-docgen-typescript baseline...')
 writeFileSync('./baselines/react-docgen-typescript.json', runScript('run-react-docgen-typescript.ts'))
 console.log('✅ react-docgen-typescript baseline saved')
 
+console.log('Running oxc-react-docgen baseline...')
+writeFileSync('./baselines/oxc-react-docgen.json', runScript('run-ours.ts'))
+console.log('✅ oxc-react-docgen baseline saved')
+
 console.log('\nBaselines saved to ./baselines/')

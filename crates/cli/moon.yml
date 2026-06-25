@@ -1,8 +1,8 @@
-language: typescript
+language: rust
 
 tasks:
   build:
-    command: cargo build -p oxc-react-docgen-napi
+    command: cargo build -p oxc-react-docgen
     options:
       runFromWorkspaceRoot: true
     inputs:

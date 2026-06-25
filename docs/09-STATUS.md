@@ -1,6 +1,6 @@
 # oxc-react-docgen — Project Status
 
-**Last updated:** 2026-06-24  
+**Last updated:** 2026-06-25  
 **Branch:** master  
 **Tests:** 114 passing, 0 failing (100 Rust unit/snapshot + 14 TypeScript)  
 **Build:** clean (cargo clippy -D warnings passes)
@@ -27,7 +27,7 @@
 | Pre-commit hooks | ✅ Complete | moon native vcs hooks: fmt, clippy --all-targets, typos, cargo-deny |
 | 5a — Vite plugin | ✅ Complete | @oxc-react-docgen/vite-plugin, 14 unit tests, crates/binding rename, apps/validate move |
 | 5b — Rolldown plugin | 🚫 Dropped | No external native Rust plugin mechanism in Rolldown 1.x; JS/NAPI bridge adds no value over Vite plugin |
-| 6 — Integration tests | 🟡 Partially ready | run-ours.ts exists in apps/validate/; needs compare.ts, baseline command, and moon wiring |
+| 6 — Integration tests | ✅ Complete | moon run validate:compare — rdg + rdt + ours baselines → prop-diff comparison |
 
 ## Quality Improvement Queue (R12–R17) — ✅ Complete
 
@@ -71,10 +71,6 @@ When running `--src fixtures/` (all libraries), multiple `Button` components fro
 ### 🟢 Minor: CLI `--config docgen.config.ts` is stubbed
 
 Config file is read and evaluated via node+tsx but the result is discarded (returns `None`). The JSON → PipelineOptions mapping needs to be implemented.
-
-### 🟢 Minor: `run-ours.ts` missing in apps/validate
-
-The validation harness has `run-react-docgen.ts` and `run-react-docgen-typescript.ts` but no `run-ours.ts` to compare against. Can only be written after the NAPI binary is compiled.
 
 ---
 
@@ -142,11 +138,12 @@ Both `CollectedType` and `PropType` are deeply recursive enums. Using serde deri
 
 ## Immediate Next Steps (priority order)
 
-**Phase 5a COMPLETE. Ready for Phase 6 + config loading.**
+**Phase 6 COMPLETE. Ready for config loading.**
 
-1. **Phase 6 — Integration tests** (`apps/validate/`) — `run-ours.ts` exists; need `compare.ts`, baseline snapshot, and `moon run validate:compare`
-2. **Config file loading** — `crates/cli/src/config.rs` parses `docgen.config.ts` but discards the result (returns `None`); wire the JSON → `PipelineOptions` mapping
-3. **Preset system** — named `OxcDocgenOptions` bundles in a `@oxc-react-docgen/presets` package (config-side only, no Rust changes)
+1. **Config file loading** — `crates/cli/src/config.rs` parses `docgen.config.ts` but discards the result (returns `None`); wire the JSON → `PipelineOptions` mapping
+2. **Preset system** — named `OxcDocgenOptions` bundles in a `@oxc-react-docgen/presets` package (config-side only, no Rust changes)
+
+> `moon run validate:compare` is an informational developer tool — it exits 0 regardless of coverage gaps. It is not wired into CI as a blocking gate by design.
 
 ---
 

@@ -1,0 +1,11 @@
+language: typescript
+
+tasks:
+  compare:
+    command: pnpm compare:all
+    deps:
+      - "cli:build"
+    inputs:
+      - "src/**/*"
+    options:
+      cache: false

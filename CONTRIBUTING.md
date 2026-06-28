@@ -1,0 +1,98 @@
+# Contributing
+
+## Prerequisites
+
+| Tool | Min version | Notes |
+|------|------------|-------|
+| Rust | 1.94 | `rustup update stable` |
+| proto | latest | manages Node/pnpm versions from `.prototools` |
+| pnpm | 9 | via proto, or `npm i -g pnpm` |
+
+After installing proto, run `moon setup` once to pull the pinned Node version and any other tool versions declared in `.prototools`.
+
+## Build & test
+
+```bash
+# Rust
+cargo build                                            # dev build
+cargo test -p oxc-react-docgen-core                   # 100 unit + snapshot tests
+cargo clippy -p oxc-react-docgen-core -- -D warnings
+cargo fmt --all
+
+# TypeScript
+pnpm --filter @oxc-react-docgen/vite-plugin test      # 14 vitest tests
+
+# Accuracy comparison (informational — exits 0 regardless of gaps)
+moon run validate:compare
+```
+
+The pre-commit hook runs `cargo fmt`, `cargo clippy --all-targets -D warnings`, `typos`, and `cargo deny` on every commit. If you're on a machine where the hook fires on every `git commit`, the hook is fast enough that it's not worth bypassing.
+
+## Snapshot tests
+
+Snapshot tests use [insta](https://insta.rs). Each fixture (shadcn, MUI, Chakra, etc.) has a snapshot of the full extraction output. If your change touches extraction output, insta will flag it:
+
+```bash
+cargo test -p oxc-react-docgen-core    # fails with "snapshot mismatch"
+cargo insta review                     # review diffs, accept or reject
+```
+
+Accept any snapshot change that is intentional (i.e., the output got more accurate). Reject regressions.
+
+## Where code goes
+
+**`crates/core`** — everything that understands TypeScript ASTs and React component patterns. No I/O, no async, no terminal output. Every function here must be `Send + Sync` so rayon can parallelize it.
+
+**`crates/cli`** — user-facing output only. No extraction logic. Commands parse args and delegate to `core::pipeline`. Error formatting uses `miette`; progress uses `indicatif`; table output uses `comfy-table`.
+
+**`crates/binding`** — thin NAPI wrapper. Owns the async runtime (tokio) and exposes the five NAPI functions (`extractAll`, `createSession`, `initializeSession`, `extractFileIncremental`, `closeSession`). No business logic.
+
+**`packages/napi`** — `@oxc-react-docgen/napi`. TypeScript types (`index.d.ts`) and the dev binary loader (`index.js`) that finds the `.node` file from `target/` or `NAPI_RS_NATIVE_LIBRARY_PATH`. No logic.
+
+**`packages/vite-plugin`** — `@oxc-react-docgen/vite-plugin`. Single Vite `Plugin` object. No extraction logic — calls NAPI and manages HMR.
+
+## Code style
+
+The authoritative reference is `.claude/skills/rust-style/SKILL.md`. Highlights:
+
+**Maps:** `FxHashMap` for internal maps (hot path, no DoS surface). `BTreeMap` for anything that ends up in JSON output (key ordering must be deterministic and stable across runs).
+
+**Strings:** `CompactString` for type names and prop names. Most are ≤24 bytes (`string`, `boolean`, `ReactNode`, `MouseEvent`) and fit inline without heap allocation.
+
+**Control flow:** `let...else` keeps the happy path flat:
+
+```rust
+let Some(entry) = map.get(key) else { return None };
+```
+
+**Matching on project-local enums:** no wildcards. `match status { Ok => .., Err => .. }` gives a compile error when new variants are added. `match status { Ok => .., _ => .. }` silently ignores them.
+
+**No `unwrap()` outside tests.** Use `?` or emit a `Diagnostic` and return a safe default. The `Diagnostic` type has constructors for common error shapes.
+
+**Comments:** only when the WHY is non-obvious. Not what the code does.
+
+## Commits
+
+- GPG-signed, `Signed-off-by` trailer (both configured in `.git/config`)
+- `feat:` / `fix:` / `refactor:` / `chore:` / `docs:` prefix
+- No line wrapping at any column
+- Subject line says it all — skip the body if it adds nothing
+
+```
+# good
+feat: resolve ComponentPropsWithoutRef in intersection type aliases
+
+# bad
+Updated the resolver to also handle the case where ComponentPropsWithoutRef
+appears inside an intersection type alias, which was causing it to be
+treated as opaque when it should expand the HTML attributes.
+```
+
+## Pull requests
+
+1. Branch from `main`
+2. Keep the pre-commit hook passing
+3. Update snapshots if extraction output changes (`cargo insta review`)
+4. One logical change per PR — squash fixup commits before merging
+
+> `moon run validate:compare` is a developer tool for checking accuracy against real libraries. It exits 0 regardless of coverage gaps and is not a CI gate.

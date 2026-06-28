@@ -9,15 +9,14 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  test:
+  rust:
+    name: Rust
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@master
         with:
-          node-version: '22'
-      - uses: dtolnay/rust-toolchain@stable
-        with:
+          toolchain: "1.96.0"
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
@@ -25,12 +24,79 @@ jobs:
       - run: cargo test --workspace --exclude oxc-react-docgen-napi
       - run: cargo bench --workspace --exclude oxc-react-docgen-napi --no-run
 
+  typescript:
+    name: TypeScript / Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["24", "26"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @oxc-react-docgen/vite-plugin test
+
+  # Verifies that npm and pnpm users can install the published package and that
+  # @oxc-react-docgen/napi arrives as a transitive dependency (not requiring
+  # a separate install step).
+  install:
+    name: Install / Node ${{ matrix.node }} / ${{ matrix.pm }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["24", "26"]
+        pm: [npm, pnpm]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @oxc-react-docgen/vite-plugin build
+      - run: pnpm --filter @oxc-react-docgen/vite-plugin pack --out-dir /tmp/packed
+
+      - name: Install via ${{ matrix.pm }}
+        run: |
+          mkdir /tmp/install-test && cd /tmp/install-test
+          if [ "${{ matrix.pm }}" = "npm" ]; then
+            npm install /tmp/packed/*.tgz
+          else
+            pnpm add /tmp/packed/*.tgz
+          fi
+
+      - name: Verify napi is a transitive dependency
+        run: |
+          node -e "
+            const fs = require('fs');
+            const base = '/tmp/install-test/node_modules';
+            if (!fs.existsSync(base + '/@oxc-react-docgen/vite-plugin/package.json'))
+              throw new Error('vite-plugin not installed');
+            if (!fs.existsSync(base + '/@oxc-react-docgen/napi/package.json'))
+              throw new Error('@oxc-react-docgen/napi not installed as transitive dep');
+            console.log('OK — napi present as transitive dep');
+          "
+
   bench:
+    name: Benchmarks
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
       - uses: Swatinem/rust-cache@v2
       - run: cargo bench --workspace --exclude oxc-react-docgen-napi 2>&1 | tee bench-results.txt
       - uses: actions/upload-artifact@v4

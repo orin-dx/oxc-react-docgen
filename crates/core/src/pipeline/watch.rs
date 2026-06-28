@@ -107,12 +107,7 @@ impl WatchSession {
         let global = self.global.load();
         let enums: std::collections::BTreeMap<String, Vec<EnumEntry>> =
             global.enums.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        ExtractionOutput {
-            components,
-            enums,
-            diagnostics: vec![],
-            stats: ExtractionStats::default(),
-        }
+        ExtractionOutput { components, enums, diagnostics: vec![], stats: ExtractionStats::default() }
     }
 
     /// Handle a single file change — re-resolve only affected components.
@@ -153,12 +148,8 @@ impl WatchSession {
         let affected = self.reverse_deps.affected(changed);
 
         // 4. Re-resolve affected components.
-        let affected_mappings: Vec<ComponentMapping> = new_global
-            .component_mappings
-            .iter()
-            .filter(|m| affected.contains(&m.file_path))
-            .cloned()
-            .collect();
+        let affected_mappings: Vec<ComponentMapping> =
+            new_global.component_mappings.iter().filter(|m| affected.contains(&m.file_path)).cloned().collect();
 
         let ctx = ResolutionContext::new(new_global.clone(), &self.options);
         let results: Vec<(ComponentEntry, Vec<Diagnostic>)> =

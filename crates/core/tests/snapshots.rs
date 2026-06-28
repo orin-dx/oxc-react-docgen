@@ -28,11 +28,7 @@ fn run_fixture(library: &str) -> serde_json::Value {
     let dir = fixture_dir(library);
     let tsconfig = workspace_root().join("fixtures").join("tsconfig.json");
 
-    let options = PipelineOptions {
-        src_dirs: vec![dir],
-        tsconfig_path: Some(tsconfig),
-        ..Default::default()
-    };
+    let options = PipelineOptions { src_dirs: vec![dir], tsconfig_path: Some(tsconfig), ..Default::default() };
 
     let output = extract(&options);
 

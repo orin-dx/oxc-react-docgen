@@ -42,10 +42,8 @@ pub(super) fn resolve_named(
     }
 
     // Resolve type arguments eagerly — needed for both source lookups and known patterns.
-    let resolved_args: Vec<PropType> = args
-        .iter()
-        .map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1))
-        .collect();
+    let resolved_args: Vec<PropType> =
+        args.iter().map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1)).collect();
 
     // ── 2. Import resolution → canonical (file, name) ─────────────────────────
     // Check source-defined types BEFORE known library patterns so that user-defined
@@ -77,8 +75,7 @@ pub(super) fn resolve_named(
             KnownPatternResult::Type(pt) => pt,
             KnownPatternResult::Alias { name: alias_name } => {
                 // Follow the alias through resolve_named.
-                let alias_ct =
-                    CollectedType::Named { name: alias_name.as_str().into(), args: vec![] };
+                let alias_ct = CollectedType::Named { name: alias_name.as_str().into(), args: vec![] };
                 resolve_collected_type(&alias_ct, consuming_file, ctx, state, depth + 1)
             }
             KnownPatternResult::Props(_) => {
@@ -123,10 +120,7 @@ pub(super) fn resolve_named(
     // ── 7. Unresolvable — emit diagnostic, return Named ───────────────────────
     state.diagnostics.push(Diagnostic {
         severity: DiagnosticSeverity::Warning,
-        message: format!(
-            "Cannot resolve type '{}' in '{}' — it will appear as opaque",
-            name, consuming_file
-        ),
+        message: format!("Cannot resolve type '{}' in '{}' — it will appear as opaque", name, consuming_file),
         file: Some(consuming_file.to_string()),
         line: None,
         column: None,

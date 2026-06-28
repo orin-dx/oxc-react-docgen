@@ -36,10 +36,7 @@ pub(super) fn resolve_extends_ref(
                 // Non-HTML-element builtins. ComponentPropsWithoutRef/ComponentProps:
                 // expand directly to HtmlAttributes based on the first type arg.
                 let bare = name.as_str().strip_prefix("React.").unwrap_or(name.as_str());
-                if matches!(
-                    bare,
-                    "ComponentPropsWithoutRef" | "ComponentPropsWithRef" | "ComponentProps"
-                ) {
+                if matches!(bare, "ComponentPropsWithoutRef" | "ComponentPropsWithRef" | "ComponentProps") {
                     if let Some(raw_arg) = type_args.first() {
                         let inner = raw_arg.trim().trim_matches('"').trim_matches('\'');
                         if !inner.is_empty() {
@@ -51,10 +48,7 @@ pub(super) fn resolve_extends_ref(
                                 total_props: 0,
                             };
                             return (
-                                ResolvedChain {
-                                    inheritance: vec![layer.clone()],
-                                    ..Default::default()
-                                },
+                                ResolvedChain { inheritance: vec![layer.clone()], ..Default::default() },
                                 Some(layer),
                             );
                         }
@@ -62,49 +56,23 @@ pub(super) fn resolve_extends_ref(
                 }
                 // Other non-HTML builtins (PropsWithChildren, ElementRef, etc.)
                 // — resolve through the chain so resolve_known can handle them.
-                let chain = resolve_props_chain(
-                    name.as_str(),
-                    type_args,
-                    iface_file,
-                    mapping,
-                    ctx,
-                    state,
-                    depth,
-                );
+                let chain = resolve_props_chain(name.as_str(), type_args, iface_file, mapping, ctx, state, depth);
                 (chain, None)
             }
         }
 
         ExtendsRef::SameFile { name, type_args } => {
-            let chain = resolve_props_chain(
-                name.as_str(),
-                type_args,
-                iface_file,
-                mapping,
-                ctx,
-                state,
-                depth,
-            );
+            let chain = resolve_props_chain(name.as_str(), type_args, iface_file, mapping, ctx, state, depth);
             (chain, None)
         }
 
         ExtendsRef::Imported { local_name, type_args, source_specifier } => {
             let resolved_file = source_specifier
                 .as_deref()
-                .and_then(|spec| {
-                    resolve_import_specifier(spec, iface_file, ctx, &mut state.diagnostics)
-                })
+                .and_then(|spec| resolve_import_specifier(spec, iface_file, ctx, &mut state.diagnostics))
                 .unwrap_or_else(|| iface_file.to_owned());
 
-            let chain = resolve_props_chain(
-                local_name.as_str(),
-                type_args,
-                &resolved_file,
-                mapping,
-                ctx,
-                state,
-                depth,
-            );
+            let chain = resolve_props_chain(local_name.as_str(), type_args, &resolved_file, mapping, ctx, state, depth);
             (chain, None)
         }
     }

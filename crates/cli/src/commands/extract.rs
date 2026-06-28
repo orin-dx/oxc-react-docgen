@@ -3,12 +3,7 @@ use miette::{IntoDiagnostic, Result, WrapErr};
 use crate::config::build_options;
 use crate::output::{print_diagnostics, print_summary};
 
-pub fn cmd_extract(
-    args: crate::ExtractArgs,
-    json_mode: bool,
-    quiet: bool,
-    config_path: Option<&str>,
-) -> Result<()> {
+pub fn cmd_extract(args: crate::ExtractArgs, json_mode: bool, quiet: bool, config_path: Option<&str>) -> Result<()> {
     use indicatif::{ProgressBar, ProgressStyle};
 
     let options = build_options(
@@ -46,24 +41,17 @@ pub fn cmd_extract(
     }
 
     let json = match args.format {
-        crate::OutputFormat::Canonical => {
-            serde_json::to_string_pretty(&output).into_diagnostic()?
-        }
+        crate::OutputFormat::Canonical => serde_json::to_string_pretty(&output).into_diagnostic()?,
         crate::OutputFormat::Rdt => serialize_rdt(&output),
         crate::OutputFormat::Storybook => serialize_storybook(&output),
     };
 
     match args.out {
-        Some(ref path) => {
-            std::fs::write(path, &json).into_diagnostic().wrap_err(format!("Writing to {path}"))?
-        }
+        Some(ref path) => std::fs::write(path, &json).into_diagnostic().wrap_err(format!("Writing to {path}"))?,
         None => println!("{json}"),
     }
 
-    if output
-        .diagnostics
-        .iter()
-        .any(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Error))
+    if output.diagnostics.iter().any(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Error))
     {
         std::process::exit(2);
     }

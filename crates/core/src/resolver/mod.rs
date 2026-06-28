@@ -54,16 +54,10 @@ pub struct ResolutionContext {
 
 impl ResolutionContext {
     pub fn new(global: Arc<GlobalSourceData>, options: &PipelineOptions) -> Self {
-        let alias: Vec<(String, Vec<AliasValue>)> =
-            react::read_tsconfig_paths(options.tsconfig_path.as_deref());
+        let alias: Vec<(String, Vec<AliasValue>)> = react::read_tsconfig_paths(options.tsconfig_path.as_deref());
 
         let resolve_options = ResolveOptions {
-            condition_names: vec![
-                "types".into(),
-                "import".into(),
-                "require".into(),
-                "default".into(),
-            ],
+            condition_names: vec!["types".into(), "import".into(), "require".into(), "default".into()],
             main_fields: vec!["types".into(), "typings".into(), "module".into(), "main".into()],
             extensions: vec![".ts".into(), ".tsx".into(), ".d.ts".into(), ".js".into()],
             alias,
@@ -84,10 +78,7 @@ impl ResolutionContext {
 /// Resolve a `ComponentMapping` to a complete `ComponentEntry`.
 ///
 /// Called in parallel via rayon — must be `Send + Sync` (all data is owned/Arc'd).
-pub fn resolve_component(
-    mapping: &ComponentMapping,
-    ctx: &ResolutionContext,
-) -> (ComponentEntry, Vec<Diagnostic>) {
+pub fn resolve_component(mapping: &ComponentMapping, ctx: &ResolutionContext) -> (ComponentEntry, Vec<Diagnostic>) {
     let mut state = ResolveState::default();
 
     let chain = chain::resolve_props_chain(
@@ -311,8 +302,7 @@ mod tests {
     fn test_string_and_empty_object_normalizes_to_string() {
         let ctx = empty_ctx();
         // (string & {}) → PropType::String
-        let ct =
-            CollectedType::Intersection(vec![CollectedType::String, CollectedType::Object(vec![])]);
+        let ct = CollectedType::Intersection(vec![CollectedType::String, CollectedType::Object(vec![])]);
         let result = resolve_type(&ct, &ctx);
         assert_eq!(result, PropType::String, "Expected String, got {:?}", result);
     }
@@ -337,12 +327,7 @@ mod tests {
             key: Box::new(CollectedType::StringLiteral("justifyContent".into())),
         };
         let result = resolve_type(&ct, &ctx);
-        assert_eq!(
-            result,
-            PropType::String,
-            "Expected String for CSSProperties[string key], got {:?}",
-            result
-        );
+        assert_eq!(result, PropType::String, "Expected String for CSSProperties[string key], got {:?}", result);
     }
 
     #[test]
@@ -353,12 +338,7 @@ mod tests {
             key: Box::new(CollectedType::StringLiteral("zIndex".into())),
         };
         let result = resolve_type(&ct, &ctx);
-        assert_eq!(
-            result,
-            PropType::Number,
-            "Expected Number for CSSProperties[zIndex], got {:?}",
-            result
-        );
+        assert_eq!(result, PropType::Number, "Expected Number for CSSProperties[zIndex], got {:?}", result);
     }
 
     // ── Test 6: Primitives pass through ──────────────────────────────────────
@@ -452,11 +432,7 @@ mod tests {
         let mut param_defaults = FxHashMap::default();
         param_defaults.insert(
             "variant".to_string(),
-            RawDefault {
-                value: "\"default\"".into(),
-                computed: false,
-                source: DefaultSource::Destructuring,
-            },
+            RawDefault { value: "\"default\"".into(), computed: false, source: DefaultSource::Destructuring },
         );
 
         let mapping = ComponentMapping {
@@ -474,10 +450,7 @@ mod tests {
         let (entry, diagnostics) = resolve_component(&mapping, &ctx);
         let variant_prop = entry.props.get("variant").expect("variant prop");
         // Code default should win.
-        assert_eq!(
-            variant_prop.default_value.as_ref().map(|d| d.value.as_str()),
-            Some("\"default\"")
-        );
+        assert_eq!(variant_prop.default_value.as_ref().map(|d| d.value.as_str()), Some("\"default\""));
         // A JsDocDefaultMismatch diagnostic should have been emitted.
         assert!(
             diagnostics.iter().any(|d| d.code == DiagnosticCode::JsDocDefaultMismatch),
@@ -608,10 +581,7 @@ mod tests {
                 name: "ButtonProps".into(),
                 file_path: file_path.clone(),
                 props: vec![],
-                extends: vec![ExtendsRef::SameFile {
-                    name: "PrimitiveButtonProps".into(),
-                    type_args: vec![],
-                }],
+                extends: vec![ExtendsRef::SameFile { name: "PrimitiveButtonProps".into(), type_args: vec![] }],
                 description: String::new(),
                 tags: BTreeMap::new(),
             },
@@ -653,10 +623,8 @@ mod tests {
             entry.composes
         );
 
-        let warnings: Vec<_> = diagnostics
-            .iter()
-            .filter(|d| matches!(d.severity, DiagnosticSeverity::Warning))
-            .collect();
+        let warnings: Vec<_> =
+            diagnostics.iter().filter(|d| matches!(d.severity, DiagnosticSeverity::Warning)).collect();
         assert!(warnings.is_empty(), "Expected no warnings, got {:?}", warnings);
     }
 
@@ -711,17 +679,9 @@ mod tests {
         // the resolve_to_canonical will return None (not imported), so we won't find the alias.
         // This is expected — cross-file resolution requires imports to be present.
         // Instead test with a raw string literal union.
-        let parts = vec![
-            CollectedType::StringLiteral("compact-".into()),
-            CollectedType::StringLiteral("sm".into()),
-        ];
-        let result = template::try_expand_template_literal(
-            &parts,
-            Utf8Path::new("/test/types.ts"),
-            &ctx,
-            &mut state,
-            0,
-        );
+        let parts = vec![CollectedType::StringLiteral("compact-".into()), CollectedType::StringLiteral("sm".into())];
+        let result =
+            template::try_expand_template_literal(&parts, Utf8Path::new("/test/types.ts"), &ctx, &mut state, 0);
         assert_eq!(result, Some(vec!["compact-sm".to_string()]));
     }
 
@@ -806,11 +766,6 @@ mod tests {
         let ct = CollectedType::Union(vec![CollectedType::String, CollectedType::Undefined]);
         let result = resolve_type(&ct, &ctx);
         // With undefined filtered, only one meaningful member → string
-        assert_eq!(
-            result,
-            PropType::String,
-            "Expected String after filtering undefined, got {:?}",
-            result
-        );
+        assert_eq!(result, PropType::String, "Expected String after filtering undefined, got {:?}", result);
     }
 }

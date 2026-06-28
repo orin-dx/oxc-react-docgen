@@ -27,18 +27,9 @@ impl<'src> SourceDataCollector<'src> {
     }
 
     /// Try to detect: `const Button: FC<ButtonProps> = ...`
-    pub(super) fn try_fc_annotation<'a>(
-        &self,
-        decl: &VariableDeclarator<'a>,
-        name: &str,
-    ) -> Option<ComponentMapping> {
+    pub(super) fn try_fc_annotation<'a>(&self, decl: &VariableDeclarator<'a>, name: &str) -> Option<ComponentMapping> {
         let type_ann = decl.type_annotation.as_ref()?;
-        self.extract_props_from_type_annotation(
-            &type_ann.type_annotation,
-            name,
-            decl.span.start,
-            decl.span.end,
-        )
+        self.extract_props_from_type_annotation(&type_ann.type_annotation, name, decl.span.start, decl.span.end)
     }
 
     pub(super) fn extract_props_from_type_annotation<'a>(
@@ -53,10 +44,8 @@ impl<'src> SourceDataCollector<'src> {
                 let type_name = self.extract_type_ref_name(tr);
                 // Strip React. prefix for matching
                 let bare_name = type_name.strip_prefix("React.").unwrap_or(&type_name);
-                if !matches!(
-                    bare_name,
-                    "FC" | "FunctionComponent" | "ComponentType" | "VFC" | "VoidFunctionComponent"
-                ) {
+                if !matches!(bare_name, "FC" | "FunctionComponent" | "ComponentType" | "VFC" | "VoidFunctionComponent")
+                {
                     return None;
                 }
                 let (props_name, type_args) = self.extract_props_arg(&tr.type_arguments)?;
@@ -72,22 +61,15 @@ impl<'src> SourceDataCollector<'src> {
                     param_defaults: Default::default(),
                 })
             }
-            TSType::TSParenthesizedType(p) => self.extract_props_from_type_annotation(
-                &p.type_annotation,
-                name,
-                span_start,
-                span_end,
-            ),
+            TSType::TSParenthesizedType(p) => {
+                self.extract_props_from_type_annotation(&p.type_annotation, name, span_start, span_end)
+            }
             _ => None,
         }
     }
 
     /// Try to detect: `const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(...)`
-    pub(super) fn try_forward_ref<'a>(
-        &self,
-        decl: &VariableDeclarator<'a>,
-        name: &str,
-    ) -> Option<ComponentMapping> {
+    pub(super) fn try_forward_ref<'a>(&self, decl: &VariableDeclarator<'a>, name: &str) -> Option<ComponentMapping> {
         let init = decl.init.as_ref()?;
         let call = match init {
             Expression::CallExpression(ce) => ce,
@@ -121,11 +103,7 @@ impl<'src> SourceDataCollector<'src> {
     }
 
     /// Try to detect: `const Button = anyHOC(function Button(props: ButtonProps) {...})`
-    pub(super) fn try_hoc_wrapped<'a>(
-        &self,
-        decl: &VariableDeclarator<'a>,
-        name: &str,
-    ) -> Option<ComponentMapping> {
+    pub(super) fn try_hoc_wrapped<'a>(&self, decl: &VariableDeclarator<'a>, name: &str) -> Option<ComponentMapping> {
         let init = decl.init.as_ref()?;
         let call = match init {
             Expression::CallExpression(ce) => ce,
@@ -141,8 +119,7 @@ impl<'src> SourceDataCollector<'src> {
                 if matches!(inner_name.as_str(), "forwardRef" | "React.forwardRef") {
                     let type_params = inner.type_arguments.as_ref()?;
                     if type_params.params.len() >= 2 {
-                        let (props_name, type_args) =
-                            self.extract_type_name_from_type(&type_params.params[1])?;
+                        let (props_name, type_args) = self.extract_type_name_from_type(&type_params.params[1])?;
                         return Some(ComponentMapping {
                             component_name: name.to_owned(),
                             props_type_name: props_name,
@@ -161,9 +138,7 @@ impl<'src> SourceDataCollector<'src> {
         }
 
         let (fn_name, params) = match first_arg {
-            Argument::FunctionExpression(fe) => {
-                (fe.id.as_ref().map(|id| id.name.as_str()), &fe.params)
-            }
+            Argument::FunctionExpression(fe) => (fe.id.as_ref().map(|id| id.name.as_str()), &fe.params),
             Argument::ArrowFunctionExpression(afe) => (None, &afe.params),
             _ => return None,
         };
@@ -178,8 +153,7 @@ impl<'src> SourceDataCollector<'src> {
         // Extract props type from first parameter annotation
         let first_param = params.items.first()?;
         let type_ann = first_param.type_annotation.as_ref()?;
-        let (props_name, type_args) =
-            self.extract_type_name_from_type(&type_ann.type_annotation)?;
+        let (props_name, type_args) = self.extract_type_name_from_type(&type_ann.type_annotation)?;
 
         let param_defaults = self.extract_param_defaults(params);
 
@@ -260,11 +234,9 @@ impl<'src> SourceDataCollector<'src> {
     pub(super) fn extract_callee_name<'a>(&self, call: &CallExpression<'a>) -> Option<String> {
         match &call.callee {
             Expression::Identifier(id) => Some(id.name.as_str().to_owned()),
-            Expression::StaticMemberExpression(me) => Some(format!(
-                "{}.{}",
-                self.expression_to_ident_name(&me.object),
-                me.property.name.as_str()
-            )),
+            Expression::StaticMemberExpression(me) => {
+                Some(format!("{}.{}", self.expression_to_ident_name(&me.object), me.property.name.as_str()))
+            }
             _ => None,
         }
     }

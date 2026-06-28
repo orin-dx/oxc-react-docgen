@@ -69,10 +69,7 @@ impl<'src> SourceDataCollector<'src> {
             _ => return,
         };
 
-        if !matches!(
-            callee_name.as_str(),
-            "cva" | "tv" | "defineRecipe" | "recipe" | "defineSlotRecipe"
-        ) {
+        if !matches!(callee_name.as_str(), "cva" | "tv" | "defineRecipe" | "recipe" | "defineSlotRecipe") {
             return;
         }
 
@@ -151,12 +148,10 @@ impl<'src> SourceDataCollector<'src> {
             Expression::StringLiteral(s) => Some(EnumValue::String(s.value.as_str().to_owned())),
             Expression::NumericLiteral(n) => Some(EnumValue::Number(n.value)),
             Expression::BooleanLiteral(b) => Some(EnumValue::Bool(b.value)),
-            Expression::UnaryExpression(u) if u.operator == UnaryOperator::UnaryNegation => {
-                match &u.argument {
-                    Expression::NumericLiteral(n) => Some(EnumValue::Number(-n.value)),
-                    _ => None,
-                }
-            }
+            Expression::UnaryExpression(u) if u.operator == UnaryOperator::UnaryNegation => match &u.argument {
+                Expression::NumericLiteral(n) => Some(EnumValue::Number(-n.value)),
+                _ => None,
+            },
             _ => None,
         }
     }

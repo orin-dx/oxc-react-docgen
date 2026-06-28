@@ -25,26 +25,18 @@ pub enum KnownPatternResult {
 ///
 /// Returns `None` if this type is not recognized — caller should continue
 /// with normal resolution.
-pub fn resolve_known(
-    name: &str,
-    args: &[PropType],
-    global: &GlobalSourceData,
-) -> Option<KnownPatternResult> {
+pub fn resolve_known(name: &str, args: &[PropType], global: &GlobalSourceData) -> Option<KnownPatternResult> {
     match name {
         // ── Variant systems ──────────────────────────────────────────────────
         // class-variance-authority: VariantProps<typeof buttonVariants>
         // PandaCSS: RecipeVariantProps<typeof buttonStyle>
         // vanilla-extract: RecipeVariants<typeof buttonRecipe>
         // tailwind-variants: VariantProps<typeof tv(...)>
-        "VariantProps" | "RecipeVariantProps" | "RecipeVariants" => {
-            resolve_cva_variant_props(args, global)
-        }
+        "VariantProps" | "RecipeVariantProps" | "RecipeVariants" => resolve_cva_variant_props(args, global),
 
         // ── MUI styling ─────────────────────────────────────────────────────
         // SxProps is a massive conditional type — surface as opaque
-        "SxProps" | "SystemStyleObject" | "SystemCssProperties" => {
-            Some(KnownPatternResult::Type(PropType::SxProps))
-        }
+        "SxProps" | "SystemStyleObject" | "SystemCssProperties" => Some(KnownPatternResult::Type(PropType::SxProps)),
 
         // ── MUI-specific ─────────────────────────────────────────────────────
         // OverridableStringUnion requires type checker — degrade gracefully
@@ -114,10 +106,7 @@ pub fn resolve_known(
     }
 }
 
-fn resolve_cva_variant_props(
-    args: &[PropType],
-    global: &GlobalSourceData,
-) -> Option<KnownPatternResult> {
+fn resolve_cva_variant_props(args: &[PropType], global: &GlobalSourceData) -> Option<KnownPatternResult> {
     // The arg is typeof buttonVariants — a Named type reference to a cva() call result.
     // We stored the cva() call variants in global.enums during extraction.
     // Look them up and return as individual props.
@@ -131,9 +120,10 @@ fn resolve_cva_variant_props(
             // The scoped key format is "${file_path}:${name}".
             // Since we don't know the file here, search by name suffix.
             let name_str = name.as_str();
-            let found = global.enums.iter().find(|(key, _)| {
-                key.ends_with(&format!(":{}", name_str)) || key.as_str() == name_str
-            });
+            let found = global
+                .enums
+                .iter()
+                .find(|(key, _)| key.ends_with(&format!(":{}", name_str)) || key.as_str() == name_str);
 
             match found {
                 Some((_key, enum_entries)) => {
@@ -200,12 +190,7 @@ fn render_props() -> Vec<ParsedProp> {
     // React Aria RenderProps<T> → simplify to these two props
     // Omit the function overload — noise for docgen
     vec![
-        simple_prop(
-            "className",
-            PropType::String,
-            false,
-            "CSS class name. Accepts a function receiving render state.",
-        ),
+        simple_prop("className", PropType::String, false, "CSS class name. Accepts a function receiving render state."),
         simple_prop(
             "style",
             PropType::CssProperties,
@@ -237,12 +222,10 @@ fn props_with_ref(args: &[PropType]) -> Option<KnownPatternResult> {
 fn html_attrs_from_first_arg(args: &[PropType]) -> Option<KnownPatternResult> {
     // HTMLChakraProps<'button'> → HtmlAttributes { element: "button" }
     match args.first() {
-        Some(PropType::StringLiteral(element)) => {
-            Some(KnownPatternResult::Type(PropType::HtmlAttributes {
-                element: element.to_lowercase(),
-                omitted: vec![],
-            }))
-        }
+        Some(PropType::StringLiteral(element)) => Some(KnownPatternResult::Type(PropType::HtmlAttributes {
+            element: element.to_lowercase(),
+            omitted: vec![],
+        })),
         _ => None,
     }
 }
@@ -309,9 +292,7 @@ mod tests {
     fn test_props_with_children_aliases() {
         let args = vec![PropType::Named { name: "ButtonProps".into(), args: vec![] }];
         let result = resolve_known("PropsWithChildren", &args, &GlobalSourceData::default());
-        assert!(
-            matches!(result, Some(KnownPatternResult::Alias { ref name, .. }) if name == "ButtonProps")
-        );
+        assert!(matches!(result, Some(KnownPatternResult::Alias { ref name, .. }) if name == "ButtonProps"));
     }
 
     #[test]
@@ -323,9 +304,7 @@ mod tests {
     #[test]
     fn test_render_props_returns_two_props() {
         let result = resolve_known("RenderProps", &[], &GlobalSourceData::default());
-        let Some(KnownPatternResult::Props(props)) = result else {
-            panic!("expected Props result")
-        };
+        let Some(KnownPatternResult::Props(props)) = result else { panic!("expected Props result") };
         assert!(props.iter().any(|p| p.name == "className"));
         assert!(props.iter().any(|p| p.name == "style"));
     }
@@ -357,19 +336,14 @@ mod tests {
         let result = resolve_known("OverridableStringUnion", &[], &GlobalSourceData::default());
         assert!(matches!(
             result,
-            Some(KnownPatternResult::Type(PropType::Opaque {
-                reason: OpaqueReason::ModuleAugmentation,
-                ..
-            }))
+            Some(KnownPatternResult::Type(PropType::Opaque { reason: OpaqueReason::ModuleAugmentation, .. }))
         ));
     }
 
     #[test]
     fn test_slot_props_returns_slot_prop() {
         let result = resolve_known("SlotProps", &[], &GlobalSourceData::default());
-        let Some(KnownPatternResult::Props(props)) = result else {
-            panic!("expected Props result")
-        };
+        let Some(KnownPatternResult::Props(props)) = result else { panic!("expected Props result") };
         assert_eq!(props.len(), 1);
         assert_eq!(props[0].name, "slot");
         assert!(!props[0].required);
@@ -398,10 +372,7 @@ mod tests {
         let result = resolve_known("ThemingProps", &[], &GlobalSourceData::default());
         assert!(matches!(
             result,
-            Some(KnownPatternResult::Type(PropType::Opaque {
-                reason: OpaqueReason::RuntimeDependent { .. },
-                ..
-            }))
+            Some(KnownPatternResult::Type(PropType::Opaque { reason: OpaqueReason::RuntimeDependent { .. }, .. }))
         ));
     }
 
@@ -410,10 +381,7 @@ mod tests {
         let result = resolve_known("StylesApiProps", &[], &GlobalSourceData::default());
         assert!(matches!(
             result,
-            Some(KnownPatternResult::Type(PropType::Opaque {
-                reason: OpaqueReason::RuntimeDependent { .. },
-                ..
-            }))
+            Some(KnownPatternResult::Type(PropType::Opaque { reason: OpaqueReason::RuntimeDependent { .. }, .. }))
         ));
     }
 
@@ -439,18 +407,14 @@ mod tests {
     fn test_props_with_ref_aliases() {
         let args = vec![PropType::Named { name: "InputProps".into(), args: vec![] }];
         let result = resolve_known("PropsWithRef", &args, &GlobalSourceData::default());
-        assert!(
-            matches!(result, Some(KnownPatternResult::Alias { ref name, .. }) if name == "InputProps")
-        );
+        assert!(matches!(result, Some(KnownPatternResult::Alias { ref name, .. }) if name == "InputProps"));
     }
 
     #[test]
     fn test_component_props_without_ref_named_type() {
         let args = vec![PropType::Named { name: "MyComponent".into(), args: vec![] }];
         let result = resolve_known("ComponentPropsWithoutRef", &args, &GlobalSourceData::default());
-        assert!(
-            matches!(result, Some(KnownPatternResult::Alias { ref name, .. }) if name == "MyComponent")
-        );
+        assert!(matches!(result, Some(KnownPatternResult::Alias { ref name, .. }) if name == "MyComponent"));
     }
 
     #[test]
@@ -509,10 +473,7 @@ mod tests {
         let result = resolve_known("RecipeVariantProps", &[], &GlobalSourceData::default());
         assert!(matches!(
             result,
-            Some(KnownPatternResult::Type(PropType::Opaque {
-                reason: OpaqueReason::RuntimeDependent { .. },
-                ..
-            }))
+            Some(KnownPatternResult::Type(PropType::Opaque { reason: OpaqueReason::RuntimeDependent { .. }, .. }))
         ));
     }
 
@@ -522,10 +483,7 @@ mod tests {
         let result = resolve_known("VariantProps", &args, &GlobalSourceData::default());
         assert!(matches!(
             result,
-            Some(KnownPatternResult::Type(PropType::Opaque {
-                reason: OpaqueReason::RuntimeDependent { .. },
-                ..
-            }))
+            Some(KnownPatternResult::Type(PropType::Opaque { reason: OpaqueReason::RuntimeDependent { .. }, .. }))
         ));
     }
 
@@ -547,11 +505,7 @@ mod tests {
                     value: EnumValue::String("destructive".into()),
                     description: String::new(),
                 },
-                EnumEntry {
-                    name: "size".into(),
-                    value: EnumValue::String("sm".into()),
-                    description: String::new(),
-                },
+                EnumEntry { name: "size".into(), value: EnumValue::String("sm".into()), description: String::new() },
             ],
         );
 

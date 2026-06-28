@@ -79,12 +79,7 @@ impl Default for PipelineOptions {
             react_version: crate::react_types::REACT_19,
             cross_package: true,
             pandacss_outdir: None,
-            variant_functions: vec![
-                "cva".into(),
-                "tv".into(),
-                "defineRecipe".into(),
-                "recipe".into(),
-            ],
+            variant_functions: vec!["cva".into(), "tv".into(), "defineRecipe".into(), "recipe".into()],
             skip_html_props: false,
             tsconfig_path: None,
             extra_paths: Default::default(),
@@ -300,9 +295,7 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
 // ─── Helper functions ─────────────────────────────────────────────────────────
 
 /// Collect enum entries that are exported from their source files.
-fn collect_public_enums(
-    global: &GlobalSourceData,
-) -> std::collections::BTreeMap<String, Vec<EnumEntry>> {
+fn collect_public_enums(global: &GlobalSourceData) -> std::collections::BTreeMap<String, Vec<EnumEntry>> {
     let mut result = std::collections::BTreeMap::new();
 
     for (scoped_key, entries) in &global.enums {
@@ -414,10 +407,7 @@ mod tests {
         let fns = &opts.variant_functions;
         assert!(fns.contains(&"cva".to_string()), "cva should be a default variant function");
         assert!(fns.contains(&"tv".to_string()), "tv should be a default variant function");
-        assert!(
-            fns.contains(&"defineRecipe".to_string()),
-            "defineRecipe should be a default variant function"
-        );
+        assert!(fns.contains(&"defineRecipe".to_string()), "defineRecipe should be a default variant function");
         assert!(fns.contains(&"recipe".to_string()), "recipe should be a default variant function");
     }
 
@@ -465,11 +455,7 @@ mod tests {
 
         // Modify the file and trigger an incremental update.
         let button_path = Utf8PathBuf::from_path_buf(tmp.path().join("Button.tsx")).unwrap();
-        write_file(
-            &tmp,
-            "Button.tsx",
-            "export const Button = ({ label }: { label: string }) => null;",
-        );
+        write_file(&tmp, "Button.tsx", "export const Button = ({ label }: { label: string }) => null;");
 
         let update = session.update_file(&button_path);
 
@@ -477,9 +463,6 @@ mod tests {
         // empty for a simple stub file), but the call must complete without panic.
         assert!(update.duration_ms < 5_000, "update should complete quickly");
         // The changed file itself must appear in affected_files.
-        assert!(
-            update.affected_files.contains(&button_path),
-            "changed file should always appear in affected_files"
-        );
+        assert!(update.affected_files.contains(&button_path), "changed file should always appear in affected_files");
     }
 }

@@ -109,19 +109,15 @@ impl CollectedType {
             CollectedType::StringLiteral(s) => format!("\"{}\"", s),
             CollectedType::NumberLiteral(n) => n.to_string(),
             CollectedType::BoolLiteral(b) => b.to_string(),
-            CollectedType::Union(members) => {
-                members.iter().map(|m| m.to_raw_string()).collect::<Vec<_>>().join(" | ")
-            }
+            CollectedType::Union(members) => members.iter().map(|m| m.to_raw_string()).collect::<Vec<_>>().join(" | "),
             CollectedType::Intersection(members) => {
                 members.iter().map(|m| m.to_raw_string()).collect::<Vec<_>>().join(" & ")
             }
             CollectedType::Array(inner) => format!("{}[]", inner.to_raw_string()),
             CollectedType::Named { name, args } if args.is_empty() => name.to_string(),
-            CollectedType::Named { name, args } => format!(
-                "{}<{}>",
-                name,
-                args.iter().map(|a| a.to_raw_string()).collect::<Vec<_>>().join(", ")
-            ),
+            CollectedType::Named { name, args } => {
+                format!("{}<{}>", name, args.iter().map(|a| a.to_raw_string()).collect::<Vec<_>>().join(", "))
+            }
             CollectedType::TypeOf(name) => format!("typeof {}", name),
             CollectedType::IndexedAccess { obj, key } => {
                 format!("{}[{}]", obj.to_raw_string(), key.to_raw_string())
@@ -152,10 +148,9 @@ impl CollectedType {
             CollectedType::Mapped { key_type, value_type } => {
                 format!("{{ [K in {}]: {} }}", key_type.to_raw_string(), value_type.to_raw_string())
             }
-            CollectedType::Tuple(members) => format!(
-                "[{}]",
-                members.iter().map(|m| m.to_raw_string()).collect::<Vec<_>>().join(", ")
-            ),
+            CollectedType::Tuple(members) => {
+                format!("[{}]", members.iter().map(|m| m.to_raw_string()).collect::<Vec<_>>().join(", "))
+            }
             CollectedType::Object(_) => "{ ... }".into(),
             CollectedType::Raw(s) => s.clone(),
         }
@@ -274,16 +269,12 @@ impl CollectedType {
                     let args = map
                         .get("a")
                         .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>()
-                        })
+                        .map(|arr| arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>())
                         .unwrap_or(Ok(vec![]))?;
                     return Ok(CollectedType::Named { name: name.into(), args });
                 }
                 if let Some(arr) = map.get("u").and_then(|v| v.as_array()) {
-                    return Ok(CollectedType::Union(
-                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?,
-                    ));
+                    return Ok(CollectedType::Union(arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?));
                 }
                 if let Some(arr) = map.get("i").and_then(|v| v.as_array()) {
                     return Ok(CollectedType::Intersection(
@@ -294,32 +285,18 @@ impl CollectedType {
                     return Ok(CollectedType::Array(Box::new(Self::from_json_value(inner)?)));
                 }
                 if let Some(arr) = map.get("tup").and_then(|v| v.as_array()) {
-                    return Ok(CollectedType::Tuple(
-                        arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?,
-                    ));
+                    return Ok(CollectedType::Tuple(arr.iter().map(Self::from_json_value).collect::<Result<_, _>>()?));
                 }
                 if let Some(arr) = map.get("obj").and_then(|v| v.as_array()) {
                     let fields: Vec<CollectedObjectField> = arr
                         .iter()
                         .map(|f| {
-                            let o = f
-                                .as_object()
-                                .ok_or_else(|| "expected object for field".to_string())?;
+                            let o = f.as_object().ok_or_else(|| "expected object for field".to_string())?;
                             Ok(CollectedObjectField {
-                                name: o
-                                    .get("name")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_owned(),
-                                collected_type: Self::from_json_value(
-                                    o.get("t").unwrap_or(&serde_json::Value::Null),
-                                )?,
+                                name: o.get("name").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
+                                collected_type: Self::from_json_value(o.get("t").unwrap_or(&serde_json::Value::Null))?,
                                 required: o.get("req").and_then(|v| v.as_bool()).unwrap_or(false),
-                                description: o
-                                    .get("desc")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_owned(),
+                                description: o.get("desc").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
                             })
                         })
                         .collect::<Result<_, std::string::String>>()?;
@@ -329,14 +306,9 @@ impl CollectedType {
                     return Ok(CollectedType::TypeOf(name.into()));
                 }
                 if let Some(inner) = map.get("ia") {
-                    let obj =
-                        Self::from_json_value(inner.get("o").unwrap_or(&serde_json::Value::Null))?;
-                    let key =
-                        Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
-                    return Ok(CollectedType::IndexedAccess {
-                        obj: Box::new(obj),
-                        key: Box::new(key),
-                    });
+                    let obj = Self::from_json_value(inner.get("o").unwrap_or(&serde_json::Value::Null))?;
+                    let key = Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::IndexedAccess { obj: Box::new(obj), key: Box::new(key) });
                 }
                 if let Some(arr) = map.get("tl").and_then(|v| v.as_array()) {
                     return Ok(CollectedType::TemplateLiteral(
@@ -347,23 +319,16 @@ impl CollectedType {
                     let params = inner
                         .get("p")
                         .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>()
-                        })
+                        .map(|arr| arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>())
                         .unwrap_or(Ok(vec![]))?;
-                    let rt =
-                        Self::from_json_value(inner.get("r").unwrap_or(&serde_json::Value::Null))?;
+                    let rt = Self::from_json_value(inner.get("r").unwrap_or(&serde_json::Value::Null))?;
                     return Ok(CollectedType::Function { params, return_type: Box::new(rt) });
                 }
                 if let Some(inner) = map.get("cond") {
-                    let check =
-                        Self::from_json_value(inner.get("c").unwrap_or(&serde_json::Value::Null))?;
-                    let ext =
-                        Self::from_json_value(inner.get("e").unwrap_or(&serde_json::Value::Null))?;
-                    let tt =
-                        Self::from_json_value(inner.get("t").unwrap_or(&serde_json::Value::Null))?;
-                    let ft =
-                        Self::from_json_value(inner.get("f").unwrap_or(&serde_json::Value::Null))?;
+                    let check = Self::from_json_value(inner.get("c").unwrap_or(&serde_json::Value::Null))?;
+                    let ext = Self::from_json_value(inner.get("e").unwrap_or(&serde_json::Value::Null))?;
+                    let tt = Self::from_json_value(inner.get("t").unwrap_or(&serde_json::Value::Null))?;
+                    let ft = Self::from_json_value(inner.get("f").unwrap_or(&serde_json::Value::Null))?;
                     return Ok(CollectedType::Conditional {
                         check: Box::new(check),
                         extends_type: Box::new(ext),
@@ -372,14 +337,9 @@ impl CollectedType {
                     });
                 }
                 if let Some(inner) = map.get("mapped") {
-                    let k =
-                        Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
-                    let vt =
-                        Self::from_json_value(inner.get("v").unwrap_or(&serde_json::Value::Null))?;
-                    return Ok(CollectedType::Mapped {
-                        key_type: Box::new(k),
-                        value_type: Box::new(vt),
-                    });
+                    let k = Self::from_json_value(inner.get("k").unwrap_or(&serde_json::Value::Null))?;
+                    let vt = Self::from_json_value(inner.get("v").unwrap_or(&serde_json::Value::Null))?;
+                    return Ok(CollectedType::Mapped { key_type: Box::new(k), value_type: Box::new(vt) });
                 }
                 if let Some(s) = map.get("raw").and_then(|v| v.as_str()) {
                     return Ok(CollectedType::Raw(s.to_owned()));
@@ -433,10 +393,7 @@ impl<'de> serde::Deserialize<'de> for CollectedObjectField {
                 formatter.write_str("struct CollectedObjectField")
             }
 
-            fn visit_map<A: MapAccess<'de>>(
-                self,
-                mut map: A,
-            ) -> Result<CollectedObjectField, A::Error> {
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<CollectedObjectField, A::Error> {
                 let mut name: Option<std::string::String> = None;
                 let mut collected_type: Option<CollectedType> = None;
                 let mut required: Option<bool> = None;
@@ -464,11 +421,9 @@ impl<'de> serde::Deserialize<'de> for CollectedObjectField {
 
                 Ok(CollectedObjectField {
                     name: name.ok_or_else(|| de::Error::missing_field("name"))?,
-                    collected_type: collected_type
-                        .ok_or_else(|| de::Error::missing_field("collected_type"))?,
+                    collected_type: collected_type.ok_or_else(|| de::Error::missing_field("collected_type"))?,
                     required: required.ok_or_else(|| de::Error::missing_field("required"))?,
-                    description: description
-                        .ok_or_else(|| de::Error::missing_field("description"))?,
+                    description: description.ok_or_else(|| de::Error::missing_field("description"))?,
                 })
             }
         }

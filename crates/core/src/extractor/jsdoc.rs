@@ -12,9 +12,11 @@ impl<'src> SourceDataCollector<'src> {
     pub(super) fn find_jsdoc(&self, span_start: u32) -> String {
         const PROXIMITY_THRESHOLD: u32 = 120; // bytes — enough for blank lines + decorator
 
-        let comment = self.comments.iter().rev().find(|c| {
-            c.is_block && c.span_end <= span_start && span_start - c.span_end <= PROXIMITY_THRESHOLD
-        });
+        let comment = self
+            .comments
+            .iter()
+            .rev()
+            .find(|c| c.is_block && c.span_end <= span_start && span_start - c.span_end <= PROXIMITY_THRESHOLD);
 
         match comment {
             Some(c) => {
@@ -29,9 +31,11 @@ impl<'src> SourceDataCollector<'src> {
     pub(super) fn extract_jsdoc_tags(&self, span_start: u32) -> BTreeMap<String, String> {
         const PROXIMITY_THRESHOLD: u32 = 120;
 
-        let comment = self.comments.iter().rev().find(|c| {
-            c.is_block && c.span_end <= span_start && span_start - c.span_end <= PROXIMITY_THRESHOLD
-        });
+        let comment = self
+            .comments
+            .iter()
+            .rev()
+            .find(|c| c.is_block && c.span_end <= span_start && span_start - c.span_end <= PROXIMITY_THRESHOLD);
 
         match comment {
             Some(c) => {
@@ -89,11 +93,8 @@ pub(super) fn extract_jsdoc_tags(raw: &str) -> BTreeMap<String, String> {
                 // `@param propName description` or `@param {type} propName description`
                 let value = value.trim_start_matches('{');
                 // Skip {type} if present
-                let value = if value.contains('}') {
-                    value.split_once('}').map(|x| x.1).unwrap_or("").trim()
-                } else {
-                    value
-                };
+                let value =
+                    if value.contains('}') { value.split_once('}').map(|x| x.1).unwrap_or("").trim() } else { value };
                 // First word is the prop name
                 if let Some(space) = value.find(char::is_whitespace) {
                     let prop_name = &value[..space];

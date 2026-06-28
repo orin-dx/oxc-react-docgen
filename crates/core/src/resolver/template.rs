@@ -33,10 +33,7 @@ pub(super) fn resolve_template_literal(
         file: Some(consuming_file.to_string()),
         line: None,
         column: None,
-        help: Some(
-            "Enable typescript-go or add explicit string literal union for template literal types."
-                .into(),
-        ),
+        help: Some("Enable typescript-go or add explicit string literal union for template literal types.".into()),
         code: DiagnosticCode::TemplateLiteralOpaque,
     });
     PropType::Opaque { raw: raw.clone(), reason: OpaqueReason::TemplateLiteral { expression: raw } }
@@ -61,13 +58,7 @@ pub(super) fn try_expand_template_literal(
             }
             CollectedType::Named { name, .. } => {
                 // Look up in global type aliases for a LiteralUnion.
-                let resolved = resolve_named_to_string_literals(
-                    name.as_str(),
-                    consuming_file,
-                    ctx,
-                    state,
-                    depth + 1,
-                );
+                let resolved = resolve_named_to_string_literals(name.as_str(), consuming_file, ctx, state, depth + 1);
                 if let Some(strs) = resolved {
                     per_part.push(strs);
                 } else {
@@ -82,13 +73,7 @@ pub(super) fn try_expand_template_literal(
                     PropType::Union(members) => {
                         let strs: Option<Vec<String>> = members
                             .iter()
-                            .map(|m| {
-                                if let PropType::StringLiteral(s) = m {
-                                    Some(s.clone())
-                                } else {
-                                    None
-                                }
-                            })
+                            .map(|m| if let PropType::StringLiteral(s) = m { Some(s.clone()) } else { None })
                             .collect();
                         if let Some(s) = strs {
                             per_part.push(s);
@@ -128,9 +113,8 @@ pub(super) fn resolve_named_to_string_literals(
     state: &mut ResolveState,
     depth: u8,
 ) -> Option<Vec<String>> {
-    let (canonical_file, canonical_name) =
-        resolve_to_canonical(name, consuming_file, ctx, &mut state.diagnostics)
-            .unwrap_or_else(|| (consuming_file.to_owned(), name.to_owned()));
+    let (canonical_file, canonical_name) = resolve_to_canonical(name, consuming_file, ctx, &mut state.diagnostics)
+        .unwrap_or_else(|| (consuming_file.to_owned(), name.to_owned()));
 
     let scoped_key = format!("{}:{}", canonical_file, canonical_name);
 
@@ -142,13 +126,7 @@ pub(super) fn resolve_named_to_string_literals(
             CollectedTypeAlias::Union { members, .. } => {
                 let strs: Option<Vec<String>> = members
                     .iter()
-                    .map(|m| {
-                        if let CollectedType::StringLiteral(s) = m {
-                            Some(s.to_string())
-                        } else {
-                            None
-                        }
-                    })
+                    .map(|m| if let CollectedType::StringLiteral(s) = m { Some(s.to_string()) } else { None })
                     .collect();
                 return strs;
             }
@@ -162,10 +140,9 @@ pub(super) fn resolve_named_to_string_literals(
     match pt {
         PropType::StringLiteral(s) => Some(vec![s]),
         PropType::LiteralUnion { members, .. } => Some(members),
-        PropType::Union(members) => members
-            .into_iter()
-            .map(|m| if let PropType::StringLiteral(s) = m { Some(s) } else { None })
-            .collect(),
+        PropType::Union(members) => {
+            members.into_iter().map(|m| if let PropType::StringLiteral(s) = m { Some(s) } else { None }).collect()
+        }
         _ => None,
     }
 }

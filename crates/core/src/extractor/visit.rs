@@ -5,8 +5,7 @@ use oxc_ast_visit::{walk, Visit};
 use oxc_syntax::scope::ScopeFlags;
 
 use crate::types::{
-    CollectedInterface, ComponentMapping, EnumEntry, EnumValue, ExtendsRef, ImportBinding,
-    LexedExport, RawProp,
+    CollectedInterface, ComponentMapping, EnumEntry, EnumValue, ExtendsRef, ImportBinding, LexedExport, RawProp,
 };
 
 use super::{declaration_name, is_pascal_case, SourceDataCollector};
@@ -105,10 +104,9 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
             });
         } else {
             // `export * from "./y"`
-            self.data.exports.push(LexedExport::ReExportAll {
-                source_specifier: src,
-                is_type_only: node.export_kind.is_type(),
-            });
+            self.data
+                .exports
+                .push(LexedExport::ReExportAll { source_specifier: src, is_type_only: node.export_kind.is_type() });
         }
     }
 
@@ -116,8 +114,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
         let name = node.id.name.as_str();
         let key = self.scoped_key(name);
 
-        let extends: Vec<ExtendsRef> =
-            node.extends.iter().map(|ext| self.collect_extends(ext)).collect();
+        let extends: Vec<ExtendsRef> = node.extends.iter().map(|ext| self.collect_extends(ext)).collect();
 
         let props: Vec<RawProp> =
             node.body.body.iter().filter_map(|sig| self.collect_property_signature(sig)).collect();
@@ -167,9 +164,9 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                 };
 
                 let value = match &member.initializer {
-                    Some(init) => self
-                        .expression_to_enum_value(init)
-                        .unwrap_or_else(|| EnumValue::String(name.clone())),
+                    Some(init) => {
+                        self.expression_to_enum_value(init).unwrap_or_else(|| EnumValue::String(name.clone()))
+                    }
                     None => EnumValue::String(name.clone()),
                 };
 

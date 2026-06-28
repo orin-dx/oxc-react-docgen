@@ -77,10 +77,7 @@ impl ImportResolutionMap {
         for (file_path, exports) in &global.re_export_map {
             for export in exports {
                 if let LexedExport::ReExportAll { source_specifier, .. } = export {
-                    wildcard_sources
-                        .entry(file_path.clone())
-                        .or_default()
-                        .push(source_specifier.clone());
+                    wildcard_sources.entry(file_path.clone()).or_default().push(source_specifier.clone());
                 }
             }
         }
@@ -114,9 +111,7 @@ impl ImportResolutionMap {
 
         for export in exports {
             match export {
-                LexedExport::ReExportNamed {
-                    local_name, source_name, source_specifier, ..
-                } => {
+                LexedExport::ReExportNamed { local_name, source_name, source_specifier, .. } => {
                     if local_name == exported_name {
                         return Some(ReExportStep::Named {
                             source_specifier: source_specifier.clone(),
@@ -172,12 +167,7 @@ mod tests {
         g
     }
 
-    fn make_binding(
-        local_name: &str,
-        exported_name: &str,
-        specifier: &str,
-        is_type_only: bool,
-    ) -> ImportBinding {
+    fn make_binding(local_name: &str, exported_name: &str, specifier: &str, is_type_only: bool) -> ImportBinding {
         ImportBinding {
             local_name: CompactString::from(local_name),
             exported_name: CompactString::from(exported_name),
@@ -190,10 +180,7 @@ mod tests {
     fn test_named_import_lookup() {
         let file = Utf8PathBuf::from("/project/src/Button.tsx");
         let global = make_global(
-            vec![(
-                file.clone(),
-                vec![make_binding("ButtonProps", "ButtonProps", "@radix-ui/react-button", false)],
-            )],
+            vec![(file.clone(), vec![make_binding("ButtonProps", "ButtonProps", "@radix-ui/react-button", false)])],
             vec![],
         );
 
@@ -219,10 +206,7 @@ mod tests {
         // import { Button as Btn } from "@radix-ui/react-button"
         let file = Utf8PathBuf::from("/project/src/Wrapper.tsx");
         let global = make_global(
-            vec![(
-                file.clone(),
-                vec![make_binding("Btn", "Button", "@radix-ui/react-button", false)],
-            )],
+            vec![(file.clone(), vec![make_binding("Btn", "Button", "@radix-ui/react-button", false)])],
             vec![],
         );
 
@@ -295,10 +279,7 @@ mod tests {
             vec![],
             vec![(
                 barrel.clone(),
-                vec![LexedExport::ReExportAll {
-                    source_specifier: "./types".to_owned(),
-                    is_type_only: false,
-                }],
+                vec![LexedExport::ReExportAll { source_specifier: "./types".to_owned(), is_type_only: false }],
             )],
         );
 
@@ -327,10 +308,7 @@ mod tests {
             vec![(
                 barrel.clone(),
                 vec![
-                    LexedExport::ReExportAll {
-                        source_specifier: "./everything".to_owned(),
-                        is_type_only: false,
-                    },
+                    LexedExport::ReExportAll { source_specifier: "./everything".to_owned(), is_type_only: false },
                     LexedExport::ReExportNamed {
                         local_name: "Target".to_owned(),
                         source_name: "Target".to_owned(),

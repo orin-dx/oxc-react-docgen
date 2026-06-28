@@ -30,10 +30,7 @@ pub fn html_element_for(type_name: &str) -> Option<&'static str> {
 ///
 /// `extra` allows callers (e.g. the resolver) to pass additional builtin names
 /// from `PipelineOptions.extra_builtins` without needing to change this file.
-pub fn is_react_builtin(
-    name: &str,
-    extra: &rustc_hash::FxHashSet<compact_str::CompactString>,
-) -> bool {
+pub fn is_react_builtin(name: &str, extra: &rustc_hash::FxHashSet<compact_str::CompactString>) -> bool {
     extra.contains(name)
         || matches!(
             name,
@@ -156,9 +153,7 @@ pub fn notable_html_attrs(element: &str) -> &'static [&'static str] {
         "select" => &["onChange", "value", "defaultValue", "disabled", "multiple", "required"],
         "form" => &["onSubmit", "onReset", "action", "method", "encType", "noValidate"],
         "img" => &["src", "alt", "width", "height", "loading", "onLoad", "onError"],
-        _ => {
-            &["onClick", "onFocus", "onBlur", "className", "style", "id", "tabIndex", "aria-label"]
-        }
+        _ => &["onClick", "onFocus", "onBlur", "className", "style", "id", "tabIndex", "aria-label"],
     }
 }
 

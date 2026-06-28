@@ -64,11 +64,8 @@ pub(super) fn resolve_typeof(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> PropType {
     // `typeof X` — look for X in global.enums (for cva() results).
-    let found_enum = ctx
-        .global
-        .enums
-        .iter()
-        .find(|(key, _)| key.ends_with(&format!(":{}", name)) || key.as_str() == name.as_str());
+    let found_enum =
+        ctx.global.enums.iter().find(|(key, _)| key.ends_with(&format!(":{}", name)) || key.as_str() == name.as_str());
 
     if found_enum.is_some() {
         // Has cva-like enum entries — the VariantProps<typeof X> pattern handles this.
@@ -78,10 +75,7 @@ pub(super) fn resolve_typeof(
 
     diagnostics.push(Diagnostic {
         severity: DiagnosticSeverity::Info,
-        message: format!(
-            "typeof '{}' in '{}' — could not statically evaluate",
-            name, consuming_file
-        ),
+        message: format!("typeof '{}' in '{}' — could not statically evaluate", name, consuming_file),
         file: Some(consuming_file.to_string()),
         line: None,
         column: None,

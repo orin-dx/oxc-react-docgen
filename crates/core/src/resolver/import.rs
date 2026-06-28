@@ -17,8 +17,7 @@ pub(super) fn resolve_to_canonical(
     let import_ref = ctx.import_map.find_import(consuming_file, name)?;
 
     // Resolve the specifier to an absolute file path.
-    let resolved_file =
-        resolve_import_specifier(&import_ref.specifier, consuming_file, ctx, diagnostics)?;
+    let resolved_file = resolve_import_specifier(&import_ref.specifier, consuming_file, ctx, diagnostics)?;
 
     let canonical_name = import_ref.exported_name.to_string();
     Some((resolved_file, canonical_name))

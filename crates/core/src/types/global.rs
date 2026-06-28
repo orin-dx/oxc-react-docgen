@@ -5,8 +5,7 @@ use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::collected::{
-    CollectedInterface, CollectedTypeAlias, ComponentMapping, EnumEntry, ImportBinding,
-    LexedExport, SourceData,
+    CollectedInterface, CollectedTypeAlias, ComponentMapping, EnumEntry, ImportBinding, LexedExport, SourceData,
 };
 use super::diagnostic::Diagnostic;
 

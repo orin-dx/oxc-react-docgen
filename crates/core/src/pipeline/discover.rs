@@ -3,10 +3,7 @@ use camino::Utf8PathBuf;
 /// Walk `src_dirs` and collect every `.ts` / `.tsx` file, excluding:
 /// - Built-in patterns: `.stories.`, `.test.`, `.spec.`, `__snapshots__`, `node_modules`
 /// - User-supplied extra exclude patterns
-pub(super) fn discover_files(
-    src_dirs: &[Utf8PathBuf],
-    extra_excludes: &[String],
-) -> Vec<Utf8PathBuf> {
+pub(super) fn discover_files(src_dirs: &[Utf8PathBuf], extra_excludes: &[String]) -> Vec<Utf8PathBuf> {
     let mut files = Vec::new();
 
     for dir in src_dirs {
@@ -14,10 +11,8 @@ pub(super) fn discover_files(
         let dir_str = dir.as_str();
         let dir_is_in_node_modules = dir_str.contains("node_modules");
 
-        let walker = ignore::WalkBuilder::new(dir.as_std_path())
-            .hidden(false)
-            .git_ignore(!dir_is_in_node_modules)
-            .build();
+        let walker =
+            ignore::WalkBuilder::new(dir.as_std_path()).hidden(false).git_ignore(!dir_is_in_node_modules).build();
 
         for entry in walker.flatten() {
             let path = entry.path();

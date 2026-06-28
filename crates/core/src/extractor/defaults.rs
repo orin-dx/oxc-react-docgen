@@ -51,26 +51,18 @@ impl<'src> SourceDataCollector<'src> {
                 computed: false,
                 source: DefaultSource::Destructuring,
             },
-            Expression::NumericLiteral(n) => RawDefault {
-                value: n.value.to_string(),
-                computed: false,
-                source: DefaultSource::Destructuring,
-            },
-            Expression::BooleanLiteral(b) => RawDefault {
-                value: b.value.to_string(),
-                computed: false,
-                source: DefaultSource::Destructuring,
-            },
-            Expression::NullLiteral(_) => RawDefault {
-                value: "null".into(),
-                computed: false,
-                source: DefaultSource::Destructuring,
-            },
-            Expression::Identifier(id) if id.name.as_str() == "undefined" => RawDefault {
-                value: "undefined".into(),
-                computed: false,
-                source: DefaultSource::Destructuring,
-            },
+            Expression::NumericLiteral(n) => {
+                RawDefault { value: n.value.to_string(), computed: false, source: DefaultSource::Destructuring }
+            }
+            Expression::BooleanLiteral(b) => {
+                RawDefault { value: b.value.to_string(), computed: false, source: DefaultSource::Destructuring }
+            }
+            Expression::NullLiteral(_) => {
+                RawDefault { value: "null".into(), computed: false, source: DefaultSource::Destructuring }
+            }
+            Expression::Identifier(id) if id.name.as_str() == "undefined" => {
+                RawDefault { value: "undefined".into(), computed: false, source: DefaultSource::Destructuring }
+            }
             // Array and object literals: capture source text, not computed
             Expression::ArrayExpression(_) | Expression::ObjectExpression(_) => {
                 use oxc_span::GetSpan;

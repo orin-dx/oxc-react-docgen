@@ -23,10 +23,7 @@ pub fn resolve_collected_type(
     if depth > MAX_DEPTH {
         state.diagnostics.push(Diagnostic {
             severity: DiagnosticSeverity::Warning,
-            message: format!(
-                "Max resolution depth exceeded resolving type: {}",
-                ct.to_raw_string()
-            ),
+            message: format!("Max resolution depth exceeded resolving type: {}", ct.to_raw_string()),
             file: Some(consuming_file.to_string()),
             line: None,
             column: None,
@@ -58,34 +55,19 @@ pub fn resolve_collected_type(
 
         // ── Composites ───────────────────────────────────────────────────────
         CollectedType::Union(members) => resolve_union(members, consuming_file, ctx, state, depth),
-        CollectedType::Intersection(members) => {
-            resolve_intersection(members, consuming_file, ctx, state, depth)
+        CollectedType::Intersection(members) => resolve_intersection(members, consuming_file, ctx, state, depth),
+        CollectedType::Array(inner) => {
+            PropType::Array(Box::new(resolve_collected_type(inner, consuming_file, ctx, state, depth + 1)))
         }
-        CollectedType::Array(inner) => PropType::Array(Box::new(resolve_collected_type(
-            inner,
-            consuming_file,
-            ctx,
-            state,
-            depth + 1,
-        ))),
         CollectedType::Tuple(members) => PropType::Tuple(
-            members
-                .iter()
-                .map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1))
-                .collect(),
+            members.iter().map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1)).collect(),
         ),
         CollectedType::Object(fields) => PropType::Object(
             fields
                 .iter()
                 .map(|f| ObjectField {
                     name: f.name.clone(),
-                    prop_type: resolve_collected_type(
-                        &f.collected_type,
-                        consuming_file,
-                        ctx,
-                        state,
-                        depth + 1,
-                    ),
+                    prop_type: resolve_collected_type(&f.collected_type, consuming_file, ctx, state, depth + 1),
                     required: f.required,
                     description: f.description.clone(),
                 })
@@ -93,14 +75,10 @@ pub fn resolve_collected_type(
         ),
 
         // ── Named type reference ──────────────────────────────────────────────
-        CollectedType::Named { name, args } => {
-            resolve_named(name, args, consuming_file, ctx, state, depth)
-        }
+        CollectedType::Named { name, args } => resolve_named(name, args, consuming_file, ctx, state, depth),
 
         // ── typeof X ─────────────────────────────────────────────────────────
-        CollectedType::TypeOf(name) => {
-            resolve_typeof(name, consuming_file, ctx, &mut state.diagnostics)
-        }
+        CollectedType::TypeOf(name) => resolve_typeof(name, consuming_file, ctx, &mut state.diagnostics),
 
         // ── Indexed access ───────────────────────────────────────────────────
         CollectedType::IndexedAccess { obj, key } => {
@@ -108,9 +86,7 @@ pub fn resolve_collected_type(
         }
 
         // ── Template literal ─────────────────────────────────────────────────
-        CollectedType::TemplateLiteral(parts) => {
-            resolve_template_literal(parts, consuming_file, ctx, state, depth)
-        }
+        CollectedType::TemplateLiteral(parts) => resolve_template_literal(parts, consuming_file, ctx, state, depth),
 
         // ── Function type ─────────────────────────────────────────────────────
         CollectedType::Function { params, return_type } => {
@@ -121,9 +97,7 @@ pub fn resolve_collected_type(
         CollectedType::Conditional { .. } => {
             PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::ConditionalType }
         }
-        CollectedType::Mapped { .. } => {
-            PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::MappedType }
-        }
+        CollectedType::Mapped { .. } => PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::MappedType },
 
         // ── Raw fallback ─────────────────────────────────────────────────────
         CollectedType::Raw(s) => {

@@ -46,11 +46,7 @@ pub fn parse_file(path: &Utf8Path, source: &str) -> SourceData {
         .program
         .comments
         .iter()
-        .map(|c| OwnedComment {
-            span_start: c.span.start,
-            span_end: c.span.end,
-            is_block: c.is_block(),
-        })
+        .map(|c| OwnedComment { span_start: c.span.start, span_end: c.span.end, is_block: c.is_block() })
         .collect();
     collector.comments = comments;
     collector.visit_program(&ret.program);
@@ -103,11 +99,7 @@ impl<'src> SourceDataCollector<'src> {
     // ─── Import source specifier lookup ──────────────────────────────────────
 
     pub(super) fn find_import_specifier(&self, local_name: &str) -> Option<String> {
-        self.data
-            .imports
-            .iter()
-            .find(|imp| imp.local_name.as_str() == local_name)
-            .map(|imp| imp.specifier.clone())
+        self.data.imports.iter().find(|imp| imp.local_name.as_str() == local_name).map(|imp| imp.specifier.clone())
     }
 
     // ─── ExtendsRef classification ────────────────────────────────────────────
@@ -117,11 +109,7 @@ impl<'src> SourceDataCollector<'src> {
         let lookup_name = name.strip_prefix("React.").unwrap_or(name);
 
         if let Some(element) = crate::react_types::html_element_for(lookup_name) {
-            return ExtendsRef::Builtin {
-                name: name.into(),
-                element: Some(element.to_owned()),
-                type_args,
-            };
+            return ExtendsRef::Builtin { name: name.into(), element: Some(element.to_owned()), type_args };
         }
         if crate::react_types::is_react_builtin(lookup_name, &rustc_hash::FxHashSet::default()) {
             return ExtendsRef::Builtin { name: name.into(), element: None, type_args };
@@ -156,9 +144,7 @@ impl<'src> SourceDataCollector<'src> {
         type_params: &Option<OxcBox<'a, TSTypeParameterInstantiation<'a>>>,
     ) -> Vec<String> {
         match type_params {
-            Some(tp) => {
-                tp.params.iter().map(|p| self.ts_type_to_collected(p).to_raw_string()).collect()
-            }
+            Some(tp) => tp.params.iter().map(|p| self.ts_type_to_collected(p).to_raw_string()).collect(),
             None => vec![],
         }
     }
@@ -178,14 +164,10 @@ impl<'src> SourceDataCollector<'src> {
             TSType::TSVoidKeyword(_) => CollectedType::Void,
             TSType::TSBigIntKeyword(_) => CollectedType::BigInt,
             TSType::TSSymbolKeyword(_) => CollectedType::Symbol,
-            TSType::TSObjectKeyword(_) => {
-                CollectedType::Named { name: "object".into(), args: vec![] }
-            }
+            TSType::TSObjectKeyword(_) => CollectedType::Named { name: "object".into(), args: vec![] },
 
             TSType::TSLiteralType(lit) => match &lit.literal {
-                TSLiteral::StringLiteral(s) => {
-                    CollectedType::StringLiteral(s.value.as_str().into())
-                }
+                TSLiteral::StringLiteral(s) => CollectedType::StringLiteral(s.value.as_str().into()),
                 TSLiteral::NumericLiteral(n) => CollectedType::NumberLiteral(n.value),
                 TSLiteral::BooleanLiteral(b) => CollectedType::BoolLiteral(b.value),
                 TSLiteral::UnaryExpression(u) => {
@@ -193,9 +175,7 @@ impl<'src> SourceDataCollector<'src> {
                     let raw = self.source[u.span.start as usize..u.span.end as usize].to_owned();
                     CollectedType::Raw(raw)
                 }
-                _ => CollectedType::Raw(
-                    self.source[lit.span.start as usize..lit.span.end as usize].to_owned(),
-                ),
+                _ => CollectedType::Raw(self.source[lit.span.start as usize..lit.span.end as usize].to_owned()),
             },
 
             TSType::TSTypeReference(tr) => {
@@ -214,36 +194,26 @@ impl<'src> SourceDataCollector<'src> {
             }
 
             TSType::TSUnionType(u) => {
-                let members: Vec<CollectedType> =
-                    u.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
+                let members: Vec<CollectedType> = u.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
                 CollectedType::Union(members)
             }
 
             TSType::TSIntersectionType(i) => {
-                let members: Vec<CollectedType> =
-                    i.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
+                let members: Vec<CollectedType> = i.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
                 CollectedType::Intersection(members)
             }
 
-            TSType::TSArrayType(a) => {
-                CollectedType::Array(Box::new(self.ts_type_to_collected(&a.element_type)))
-            }
+            TSType::TSArrayType(a) => CollectedType::Array(Box::new(self.ts_type_to_collected(&a.element_type))),
 
             TSType::TSTupleType(t) => {
-                let members: Vec<CollectedType> = t
-                    .element_types
-                    .iter()
-                    .map(|el| self.ts_tuple_element_to_collected(el))
-                    .collect();
+                let members: Vec<CollectedType> =
+                    t.element_types.iter().map(|el| self.ts_tuple_element_to_collected(el)).collect();
                 CollectedType::Tuple(members)
             }
 
             TSType::TSTypeLiteral(lit) => {
-                let fields: Vec<CollectedObjectField> = lit
-                    .members
-                    .iter()
-                    .filter_map(|member| self.ts_signature_to_object_field(member))
-                    .collect();
+                let fields: Vec<CollectedObjectField> =
+                    lit.members.iter().filter_map(|member| self.ts_signature_to_object_field(member)).collect();
                 CollectedType::Object(fields)
             }
 
@@ -300,10 +270,7 @@ impl<'src> SourceDataCollector<'src> {
                     .as_ref()
                     .map(|ta| self.ts_type_to_collected(ta))
                     .unwrap_or(CollectedType::Unknown);
-                CollectedType::Mapped {
-                    key_type: Box::new(key_type),
-                    value_type: Box::new(value_type),
-                }
+                CollectedType::Mapped { key_type: Box::new(key_type), value_type: Box::new(value_type) }
             }
 
             TSType::TSParenthesizedType(p) => {
@@ -335,10 +302,7 @@ impl<'src> SourceDataCollector<'src> {
     /// Convert a `TSTupleElement` (which is a superset of `TSType`) to a `CollectedType`.
     ///
     /// TSTupleElement inherits all TSType variants and adds TSOptionalType and TSRestType.
-    pub(super) fn ts_tuple_element_to_collected<'a>(
-        &self,
-        el: &TSTupleElement<'a>,
-    ) -> CollectedType {
+    pub(super) fn ts_tuple_element_to_collected<'a>(&self, el: &TSTupleElement<'a>) -> CollectedType {
         match el {
             TSTupleElement::TSOptionalType(o) => {
                 // T? in tuple → Union([T, Undefined])
@@ -376,10 +340,7 @@ impl<'src> SourceDataCollector<'src> {
         self.source[span.start as usize..span.end as usize].to_owned()
     }
 
-    pub(super) fn ts_signature_to_object_field<'a>(
-        &self,
-        member: &TSSignature<'a>,
-    ) -> Option<CollectedObjectField> {
+    pub(super) fn ts_signature_to_object_field<'a>(&self, member: &TSSignature<'a>) -> Option<CollectedObjectField> {
         match member {
             TSSignature::TSPropertySignature(sig) => {
                 let name = match &sig.key {
@@ -393,12 +354,7 @@ impl<'src> SourceDataCollector<'src> {
                     .map(|ta| self.ts_type_to_collected(&ta.type_annotation))
                     .unwrap_or(CollectedType::Any);
                 let description = self.find_jsdoc(sig.span.start);
-                Some(CollectedObjectField {
-                    name,
-                    collected_type,
-                    required: !sig.optional,
-                    description,
-                })
+                Some(CollectedObjectField { name, collected_type, required: !sig.optional, description })
             }
             TSSignature::TSMethodSignature(sig) => {
                 let name = match &sig.key {
@@ -454,10 +410,7 @@ impl<'src> SourceDataCollector<'src> {
     /// Get the (name, type_args) of a TSType if it's a simple named reference.
     ///
     /// Unwraps single-layer wrappers like `PropsWithChildren<P>` and `Readonly<P>`.
-    pub(super) fn extract_type_name_from_type<'a>(
-        &self,
-        ty: &TSType<'a>,
-    ) -> Option<(CompactString, Vec<String>)> {
+    pub(super) fn extract_type_name_from_type<'a>(&self, ty: &TSType<'a>) -> Option<(CompactString, Vec<String>)> {
         match ty {
             TSType::TSTypeReference(tr) => {
                 let name = self.extract_type_ref_name(tr);
@@ -489,11 +442,7 @@ impl<'src> SourceDataCollector<'src> {
         match expr {
             Expression::Identifier(id) => id.name.as_str().to_owned(),
             Expression::StaticMemberExpression(me) => {
-                format!(
-                    "{}.{}",
-                    self.expression_to_ident_name(&me.object),
-                    me.property.name.as_str()
-                )
+                format!("{}.{}", self.expression_to_ident_name(&me.object), me.property.name.as_str())
             }
             _ => "unknown".to_owned(),
         }
@@ -588,8 +537,8 @@ mod tests {
     #[test]
     fn test_shadcn_button() {
         let fixture = fixture_path("shadcn/button.tsx");
-        let source = std::fs::read_to_string(&fixture)
-            .unwrap_or_else(|_| panic!("fixture not found: {}", fixture.display()));
+        let source =
+            std::fs::read_to_string(&fixture).unwrap_or_else(|_| panic!("fixture not found: {}", fixture.display()));
         let path = Utf8Path::new("/fixtures/shadcn/button.tsx");
         let data = parse_file(path, &source);
 
@@ -611,8 +560,8 @@ mod tests {
     #[test]
     fn test_shadcn_input() {
         let fixture = fixture_path("shadcn/input.tsx");
-        let source = std::fs::read_to_string(&fixture)
-            .unwrap_or_else(|_| panic!("fixture not found: {}", fixture.display()));
+        let source =
+            std::fs::read_to_string(&fixture).unwrap_or_else(|_| panic!("fixture not found: {}", fixture.display()));
         let path = Utf8Path::new("/fixtures/shadcn/input.tsx");
         let data = parse_file(path, &source);
 
@@ -634,8 +583,8 @@ mod tests {
     #[test]
     fn test_radix_button_dts() {
         let fixture = fixture_path("radix/button.d.ts");
-        let source = std::fs::read_to_string(&fixture)
-            .unwrap_or_else(|_| panic!("fixture not found: {}", fixture.display()));
+        let source =
+            std::fs::read_to_string(&fixture).unwrap_or_else(|_| panic!("fixture not found: {}", fixture.display()));
         // .d.ts is NOT tsx — component detection is off, but interfaces should still collect
         let path = Utf8Path::new("/fixtures/radix/button.d.ts");
         let data = parse_file(path, &source);
@@ -785,14 +734,8 @@ mod tests {
         let data = parse_file(path, source);
 
         assert!(!data.exports.is_empty(), "No exports collected");
-        assert!(
-            data.exports.iter().any(|e| matches!(e, LexedExport::ReExportAll { .. })),
-            "ReExportAll not found"
-        );
-        assert!(
-            data.exports.iter().any(|e| matches!(e, LexedExport::ReExportNamed { .. })),
-            "ReExportNamed not found"
-        );
+        assert!(data.exports.iter().any(|e| matches!(e, LexedExport::ReExportAll { .. })), "ReExportAll not found");
+        assert!(data.exports.iter().any(|e| matches!(e, LexedExport::ReExportNamed { .. })), "ReExportNamed not found");
     }
 
     #[test]

@@ -16,16 +16,12 @@ pub(super) fn resolve_union(
 ) -> PropType {
     // Filter out `undefined` from optional unions: `string | undefined` → `string`
     // (the `required: false` on the prop already captures optionality).
-    let meaningful: Vec<&CollectedType> =
-        members.iter().filter(|m| !matches!(m, CollectedType::Undefined)).collect();
+    let meaningful: Vec<&CollectedType> = members.iter().filter(|m| !matches!(m, CollectedType::Undefined)).collect();
 
-    let to_resolve =
-        if meaningful.is_empty() { members.iter().collect::<Vec<_>>() } else { meaningful };
+    let to_resolve = if meaningful.is_empty() { members.iter().collect::<Vec<_>>() } else { meaningful };
 
-    let resolved: Vec<PropType> = to_resolve
-        .iter()
-        .map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1))
-        .collect();
+    let resolved: Vec<PropType> =
+        to_resolve.iter().map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1)).collect();
 
     // Flatten nested Unions.
     let mut flat: Vec<PropType> = Vec::with_capacity(resolved.len());
@@ -63,10 +59,8 @@ pub(super) fn resolve_intersection(
         return resolve_collected_type(non_empty[0], consuming_file, ctx, state, depth + 1);
     }
 
-    let resolved: Vec<PropType> = members
-        .iter()
-        .map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1))
-        .collect();
+    let resolved: Vec<PropType> =
+        members.iter().map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1)).collect();
 
     PropType::Intersection(resolved)
 }
@@ -104,9 +98,7 @@ pub(super) fn resolve_indexed_access(
             | "tabSize"
             | "animationIterationCount",
         ) => Some(PropType::Number),
-        ("CSSProperties" | "React.CSSProperties", _) if !key_str.is_empty() => {
-            Some(PropType::String)
-        }
+        ("CSSProperties" | "React.CSSProperties", _) if !key_str.is_empty() => Some(PropType::String),
         (
             "HTMLAttributes" | "React.HTMLAttributes" | "DOMAttributes" | "React.DOMAttributes",
             "className" | "id" | "slot" | "title" | "lang" | "dir",

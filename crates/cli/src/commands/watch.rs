@@ -31,8 +31,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
         None
     };
 
-    let session =
-        std::sync::Arc::new(oxc_react_docgen_core::pipeline::WatchSession::new(options.clone()));
+    let session = std::sync::Arc::new(oxc_react_docgen_core::pipeline::WatchSession::new(options.clone()));
     let first = session.initialize();
 
     if let Some(ref pb) = pb {
@@ -68,8 +67,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
     });
 
     // File watcher using watchexec 8.x (synchronous constructor, async main)
-    let src_dirs: Vec<std::path::PathBuf> =
-        options.src_dirs.iter().map(|p| p.as_std_path().to_owned()).collect();
+    let src_dirs: Vec<std::path::PathBuf> = options.src_dirs.iter().map(|p| p.as_std_path().to_owned()).collect();
 
     let rt = tokio::runtime::Runtime::new().into_diagnostic()?;
     rt.block_on(async move {
@@ -90,17 +88,10 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
                         let update = session_inner.update_file(&utf8);
                         if !quiet_inner {
                             use owo_colors::OwoColorize;
-                            let names: Vec<_> = update
-                                .updated_components
-                                .iter()
-                                .map(|c| c.display_name.as_str())
-                                .collect();
+                            let names: Vec<_> =
+                                update.updated_components.iter().map(|c| c.display_name.as_str()).collect();
                             if !names.is_empty() {
-                                println!(
-                                    "  {}  {}",
-                                    utf8.file_name().unwrap_or("?").dimmed(),
-                                    names.join(", ").bold()
-                                );
+                                println!("  {}  {}", utf8.file_name().unwrap_or("?").dimmed(), names.join(", ").bold());
                             }
                         }
                         if let Some(ref p) = out_path {

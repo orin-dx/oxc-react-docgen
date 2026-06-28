@@ -43,8 +43,7 @@ pub fn cmd_inspect(args: crate::InspectArgs, config_path: Option<&str>) -> Resul
     for prop in component.props.values() {
         let type_str = prop.prop_type.raw_string();
         let req_str = if prop.required { "✓".to_string() } else { "–".to_string() };
-        let default_str =
-            prop.default_value.as_ref().map(|d| d.value.clone()).unwrap_or_else(|| "–".into());
+        let default_str = prop.default_value.as_ref().map(|d| d.value.clone()).unwrap_or_else(|| "–".into());
         let from_str = prop.parent.as_ref().map(|p| p.name.clone()).unwrap_or_default();
 
         table.add_row(vec![
@@ -63,13 +62,11 @@ pub fn cmd_inspect(args: crate::InspectArgs, config_path: Option<&str>) -> Resul
     if !component.notable_inherited.is_empty() {
         println!();
         for layer in &component.inheritance {
-            let element_note =
-                layer.html_element.as_ref().map(|e| format!(" (<{e}>)")).unwrap_or_default();
+            let element_note = layer.html_element.as_ref().map(|e| format!(" (<{e}>)")).unwrap_or_default();
             println!("  {} {}{}", "↳".dimmed(), layer.type_name.dimmed(), element_note.dimmed());
         }
 
-        let notable_names: Vec<&str> =
-            component.notable_inherited.keys().map(|s| s.as_str()).collect();
+        let notable_names: Vec<&str> = component.notable_inherited.keys().map(|s| s.as_str()).collect();
         println!("    Notable: {}", notable_names.join("  ").dimmed());
     }
 

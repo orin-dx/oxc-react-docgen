@@ -25,15 +25,7 @@ pub(super) fn resolve_type_alias_chain(
         CollectedTypeAlias::Passthrough { target, file_path } => match target {
             CollectedType::Named { name, args } => {
                 let raw_args: Vec<String> = args.iter().map(|a| a.to_raw_string()).collect();
-                resolve_props_chain(
-                    name.as_str(),
-                    &raw_args,
-                    file_path,
-                    mapping,
-                    ctx,
-                    state,
-                    depth + 1,
-                )
+                resolve_props_chain(name.as_str(), &raw_args, file_path, mapping, ctx, state, depth + 1)
             }
             _ => ResolvedChain::default(),
         },
@@ -88,8 +80,7 @@ pub(super) fn resolve_type_alias_chain(
             // Merge all members' props.
             let mut chain = ResolvedChain::default();
             for member in members {
-                let member_chain =
-                    resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
+                let member_chain = resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
                 chain.merge_parent(member_chain);
             }
             chain
@@ -129,8 +120,7 @@ pub(super) fn resolve_base_as_chain(
             // Expand the object fields directly as own props.
             let mut chain = ResolvedChain::default();
             for field in fields {
-                let prop_type =
-                    resolve_collected_type(&field.collected_type, file_path, ctx, state, depth);
+                let prop_type = resolve_collected_type(&field.collected_type, file_path, ctx, state, depth);
                 chain.props.push(ParsedProp {
                     name: field.name.clone(),
                     prop_type,
@@ -165,17 +155,9 @@ pub(super) fn resolve_union_alias(
         .iter()
         .filter_map(|m| {
             if let CollectedType::Named { name, .. } = m {
-                let mut branch_state =
-                    ResolveState { visited: state.visited.clone(), diagnostics: vec![] };
-                let chain = resolve_props_chain(
-                    name.as_str(),
-                    &[],
-                    file_path,
-                    mapping,
-                    ctx,
-                    &mut branch_state,
-                    depth + 1,
-                );
+                let mut branch_state = ResolveState { visited: state.visited.clone(), diagnostics: vec![] };
+                let chain =
+                    resolve_props_chain(name.as_str(), &[], file_path, mapping, ctx, &mut branch_state, depth + 1);
                 state.diagnostics.extend(branch_state.diagnostics);
                 Some((name.as_str(), chain.props))
             } else {
@@ -209,9 +191,7 @@ pub(super) fn resolve_union_alias(
     if let Some(ref disc_name) = discriminant {
         let disc_literals: Vec<PropType> = named_members
             .iter()
-            .filter_map(|(_, props)| {
-                props.iter().find(|p| &p.name == disc_name).map(|p| p.prop_type.clone())
-            })
+            .filter_map(|(_, props)| props.iter().find(|p| &p.name == disc_name).map(|p| p.prop_type.clone()))
             .collect();
 
         if let Some(disc_prop) = merged_props.get_mut(disc_name) {
@@ -235,11 +215,7 @@ pub(super) fn resolve_union_alias(
         });
     }
 
-    ResolvedChain {
-        props: merged_props.into_values().collect(),
-        discriminant_prop: discriminant,
-        ..Default::default()
-    }
+    ResolvedChain { props: merged_props.into_values().collect(), discriminant_prop: discriminant, ..Default::default() }
 }
 
 /// Resolve a `CollectedTypeAlias` to a `PropType` (at the type level, not chain level).
@@ -258,17 +234,13 @@ pub(super) fn resolve_type_alias_type(
             resolve_collected_type(target, consuming_file, ctx, state, depth + 1)
         }
         CollectedTypeAlias::Union { members, .. } => {
-            let resolved: Vec<PropType> = members
-                .iter()
-                .map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1))
-                .collect();
+            let resolved: Vec<PropType> =
+                members.iter().map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1)).collect();
             PropType::Union(resolved)
         }
         CollectedTypeAlias::Intersection { members, .. } => {
-            let resolved: Vec<PropType> = members
-                .iter()
-                .map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1))
-                .collect();
+            let resolved: Vec<PropType> =
+                members.iter().map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1)).collect();
             PropType::Intersection(resolved)
         }
         CollectedTypeAlias::Partial { base, .. } | CollectedTypeAlias::Required { base, .. } => {

@@ -62,10 +62,8 @@ pub fn build_options(
     config_path: Option<&str>,
 ) -> PipelineOptions {
     let cwd = std::env::current_dir().unwrap_or_default();
-    let config_override = config_path
-        .map(std::path::PathBuf::from)
-        .and_then(|p| try_load_config(&p))
-        .or_else(|| load_config_file(&cwd));
+    let config_override =
+        config_path.map(std::path::PathBuf::from).and_then(|p| try_load_config(&p)).or_else(|| load_config_file(&cwd));
 
     let mut opts = config_override.unwrap_or_default();
 

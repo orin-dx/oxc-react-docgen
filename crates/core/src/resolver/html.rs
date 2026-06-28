@@ -4,17 +4,14 @@ use crate::types::*;
 
 pub(super) fn infer_html_attr_prop_type(attr_name: &str) -> PropType {
     match attr_name {
-        "onClick" | "onKeyDown" | "onKeyUp" | "onFocus" | "onBlur" | "onChange" | "onInput"
-        | "onSubmit" | "onReset" | "onLoad" | "onError" | "onPress" | "onPressStart"
-        | "onPressEnd" | "onHoverStart" | "onHoverEnd" | "onFocusChange" | "onPressChange" => {
+        "onClick" | "onKeyDown" | "onKeyUp" | "onFocus" | "onBlur" | "onChange" | "onInput" | "onSubmit"
+        | "onReset" | "onLoad" | "onError" | "onPress" | "onPressStart" | "onPressEnd" | "onHoverStart"
+        | "onHoverEnd" | "onFocusChange" | "onPressChange" => {
             PropType::EventHandler { event_type: "Event".to_string() }
         }
-        "disabled" | "readOnly" | "required" | "checked" | "multiple" | "noValidate"
-        | "autoFocus" | "fullWidth" | "loading" | "isDisabled" | "isReadOnly" | "isRequired" => {
-            PropType::Boolean
-        }
-        "tabIndex" | "rows" | "cols" | "maxLength" | "min" | "max" | "width" | "height"
-        | "size" => PropType::Number,
+        "disabled" | "readOnly" | "required" | "checked" | "multiple" | "noValidate" | "autoFocus" | "fullWidth"
+        | "loading" | "isDisabled" | "isReadOnly" | "isRequired" => PropType::Boolean,
+        "tabIndex" | "rows" | "cols" | "maxLength" | "min" | "max" | "width" | "height" | "size" => PropType::Number,
         "style" => PropType::CssProperties,
         "children" => PropType::ReactNode,
         _ => PropType::String,

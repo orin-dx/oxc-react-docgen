@@ -117,9 +117,8 @@ pub(super) fn resolve_props_chain(
     }
 
     // ── Step 3: Resolve import to canonical (file, name) ─────────────────────
-    let (canonical_file, canonical_name) =
-        resolve_to_canonical(type_name, consuming_file, ctx, &mut state.diagnostics)
-            .unwrap_or_else(|| (consuming_file.to_owned(), type_name.to_owned()));
+    let (canonical_file, canonical_name) = resolve_to_canonical(type_name, consuming_file, ctx, &mut state.diagnostics)
+        .unwrap_or_else(|| (consuming_file.to_owned(), type_name.to_owned()));
 
     let scoped_key = format!("{}:{}", canonical_file, canonical_name);
 
@@ -130,30 +129,18 @@ pub(super) fn resolve_props_chain(
 
     // ── Step 5: Interface ─────────────────────────────────────────────────────
     if let Some(iface) = ctx.global.interfaces.get(&scoped_key).cloned() {
-        return resolve_interface_chain(
-            &iface,
-            type_args,
-            consuming_file,
-            mapping,
-            ctx,
-            state,
-            depth,
-        );
+        return resolve_interface_chain(&iface, type_args, consuming_file, mapping, ctx, state, depth);
     }
 
     // ── Step 6: Unresolvable ──────────────────────────────────────────────────
     state.diagnostics.push(Diagnostic {
         severity: DiagnosticSeverity::Warning,
-        message: format!(
-            "Cannot resolve type '{}' in '{}' (scoped key: '{}')",
-            type_name, consuming_file, scoped_key
-        ),
+        message: format!("Cannot resolve type '{}' in '{}' (scoped key: '{}')", type_name, consuming_file, scoped_key),
         file: Some(consuming_file.to_string()),
         line: None,
         column: None,
         help: Some(
-            "Type may be in an unresolvable cross-package location. Check that the package is installed."
-                .into(),
+            "Type may be in an unresolvable cross-package location. Check that the package is installed.".into(),
         ),
         code: DiagnosticCode::UnresolvableImport,
     });
@@ -184,25 +171,18 @@ pub(super) fn resolve_interface_chain(
     }
 
     // ── Resolve own props ────────────────────────────────────────────────────
-    let parent_ref =
-        Some(PropParent { name: iface.name.to_string(), file_name: iface.file_path.to_string() });
+    let parent_ref = Some(PropParent { name: iface.name.to_string(), file_name: iface.file_path.to_string() });
 
     for raw_prop in &iface.props {
-        let prop_type =
-            resolve_collected_type(&raw_prop.collected_type, &iface.file_path, ctx, state, depth);
+        let prop_type = resolve_collected_type(&raw_prop.collected_type, &iface.file_path, ctx, state, depth);
 
         // Default value: code default takes precedence over JSDoc @default.
         let code_default = mapping.param_defaults.get(&raw_prop.name);
-        let jsdoc_default = raw_prop
-            .tags
-            .get("default")
-            .or_else(|| raw_prop.tags.get("defaultValue"))
-            .map(|s| s.trim());
+        let jsdoc_default =
+            raw_prop.tags.get("default").or_else(|| raw_prop.tags.get("defaultValue")).map(|s| s.trim());
 
         let default_value = match (code_default, jsdoc_default) {
-            (Some(code), Some(jsdoc))
-                if code.value.trim_matches('"').trim_matches('\'') != jsdoc =>
-            {
+            (Some(code), Some(jsdoc)) if code.value.trim_matches('"').trim_matches('\'') != jsdoc => {
                 state.diagnostics.push(Diagnostic {
                     severity: DiagnosticSeverity::Info,
                     message: format!(
@@ -212,16 +192,12 @@ pub(super) fn resolve_interface_chain(
                     file: Some(iface.file_path.to_string()),
                     line: None,
                     column: None,
-                    help: Some(
-                        "Update the JSDoc @default to match the code default.".into(),
-                    ),
+                    help: Some("Update the JSDoc @default to match the code default.".into()),
                     code: DiagnosticCode::JsDocDefaultMismatch,
                 });
                 Some(DefaultValue { value: code.value.clone(), computed: code.computed })
             }
-            (Some(code), _) => {
-                Some(DefaultValue { value: code.value.clone(), computed: code.computed })
-            }
+            (Some(code), _) => Some(DefaultValue { value: code.value.clone(), computed: code.computed }),
             (None, Some(jsdoc)) => Some(DefaultValue { value: jsdoc.to_owned(), computed: false }),
             (None, None) => None,
         };

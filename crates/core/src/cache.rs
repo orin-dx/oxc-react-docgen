@@ -90,8 +90,7 @@ impl DtsCache {
         let data_path = dir.join("dts-v1.msgpack");
         let bytes = std::fs::read(data_path.as_std_path()).ok()?;
 
-        let entries: Vec<(SerializableCacheKey, SourceData)> =
-            rmp_serde::from_slice(&bytes).ok()?;
+        let entries: Vec<(SerializableCacheKey, SourceData)> = rmp_serde::from_slice(&bytes).ok()?;
 
         let map = DashMap::with_capacity(entries.len());
         for (k, v) in entries {
@@ -127,11 +126,8 @@ impl DtsCache {
         std::fs::create_dir_all(self.cache_dir.as_std_path()).ok()?;
 
         // Collect into a serializable form.
-        let entries: Vec<(SerializableCacheKey, SourceData)> = self
-            .store
-            .iter()
-            .map(|r| (SerializableCacheKey::from(r.key()), r.value().clone()))
-            .collect();
+        let entries: Vec<(SerializableCacheKey, SourceData)> =
+            self.store.iter().map(|r| (SerializableCacheKey::from(r.key()), r.value().clone())).collect();
 
         let bytes = rmp_serde::to_vec(&entries).ok()?;
 
@@ -147,11 +143,7 @@ impl DtsCache {
             "entry_count": entries.len(),
         });
         let manifest_json = serde_json::to_string_pretty(&manifest).ok()?;
-        std::fs::write(
-            self.cache_dir.join("manifest.json").as_std_path(),
-            manifest_json.as_bytes(),
-        )
-        .ok()?;
+        std::fs::write(self.cache_dir.join("manifest.json").as_std_path(), manifest_json.as_bytes()).ok()?;
 
         Some(())
     }
@@ -290,10 +282,7 @@ mod tests {
     #[test]
     fn test_save_to_disk_never_panics_on_bad_dir() {
         // Writing to a path that can't be created should not panic.
-        let cache = DtsCache {
-            store: DashMap::new(),
-            cache_dir: Utf8PathBuf::from("/dev/null/impossible/cache"),
-        };
+        let cache = DtsCache { store: DashMap::new(), cache_dir: Utf8PathBuf::from("/dev/null/impossible/cache") };
         cache.save_to_disk(); // must not panic
     }
 }

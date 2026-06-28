@@ -22,8 +22,9 @@ pub(super) fn react_type_to_prop_type(
 
     match strip {
         // React node types.
-        "ReactNode" | "ReactElement" | "JSX.Element" | "ReactPortal" | "ReactFragment"
-        | "ReactChild" => PropType::ReactNode,
+        "ReactNode" | "ReactElement" | "JSX.Element" | "ReactPortal" | "ReactFragment" | "ReactChild" => {
+            PropType::ReactNode
+        }
 
         // CSS properties.
         "CSSProperties" | "CSSObject" => PropType::CssProperties,
@@ -34,15 +35,12 @@ pub(super) fn react_type_to_prop_type(
         }
 
         // Synthetic and DOM events — the type IS the event type.
-        "SyntheticEvent" | "MouseEvent" | "KeyboardEvent" | "ChangeEvent" | "FocusEvent"
-        | "FormEvent" | "DragEvent" | "TouchEvent" | "WheelEvent" | "AnimationEvent"
-        | "TransitionEvent" | "ClipboardEvent" | "CompositionEvent" | "PointerEvent" => {
+        "SyntheticEvent" | "MouseEvent" | "KeyboardEvent" | "ChangeEvent" | "FocusEvent" | "FormEvent"
+        | "DragEvent" | "TouchEvent" | "WheelEvent" | "AnimationEvent" | "TransitionEvent" | "ClipboardEvent"
+        | "CompositionEvent" | "PointerEvent" => {
             let raw_args: Vec<String> = args.iter().map(|a| a.to_raw_string()).collect();
-            let event_type = if raw_args.is_empty() {
-                name.to_owned()
-            } else {
-                format!("{}<{}>", name, raw_args.join(", "))
-            };
+            let event_type =
+                if raw_args.is_empty() { name.to_owned() } else { format!("{}<{}>", name, raw_args.join(", ")) };
             PropType::EventHandler { event_type }
         }
 
@@ -62,10 +60,8 @@ pub(super) fn react_type_to_prop_type(
         | "VoidFunctionComponent"
         | "ComponentType"
         | "ForwardRefExoticComponent" => {
-            let resolved_args: Vec<PropType> = args
-                .iter()
-                .map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1))
-                .collect();
+            let resolved_args: Vec<PropType> =
+                args.iter().map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1)).collect();
             PropType::Named { name: name.into(), args: resolved_args }
         }
 
@@ -73,19 +69,12 @@ pub(super) fn react_type_to_prop_type(
         "ComponentPropsWithoutRef" | "ComponentProps" | "ComponentPropsWithRef" => {
             if let Some(first) = args.first() {
                 match first {
-                    CollectedType::StringLiteral(el) => PropType::HtmlAttributes {
-                        element: el.to_lowercase().to_string(),
-                        omitted: vec![],
-                    },
+                    CollectedType::StringLiteral(el) => {
+                        PropType::HtmlAttributes { element: el.to_lowercase().to_string(), omitted: vec![] }
+                    }
                     other => PropType::Named {
                         name: name.into(),
-                        args: vec![resolve_collected_type(
-                            other,
-                            consuming_file,
-                            ctx,
-                            state,
-                            depth + 1,
-                        )],
+                        args: vec![resolve_collected_type(other, consuming_file, ctx, state, depth + 1)],
                     },
                 }
             } else {
@@ -107,19 +96,15 @@ pub(super) fn react_type_to_prop_type(
 
         // Context / Consumer / Provider — surface as Named.
         "Context" | "Consumer" | "Provider" | "RefAttributes" => {
-            let resolved_args: Vec<PropType> = args
-                .iter()
-                .map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1))
-                .collect();
+            let resolved_args: Vec<PropType> =
+                args.iter().map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1)).collect();
             PropType::Named { name: name.into(), args: resolved_args }
         }
 
         // Default — surface as Named with resolved args.
         _ => {
-            let resolved_args: Vec<PropType> = args
-                .iter()
-                .map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1))
-                .collect();
+            let resolved_args: Vec<PropType> =
+                args.iter().map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1)).collect();
             PropType::Named { name: name.into(), args: resolved_args }
         }
     }
@@ -140,9 +125,7 @@ pub(super) fn resolve_react_types_file(from_file: &Utf8Path, ctx: &ResolutionCon
 
 /// Read `compilerOptions.paths` from a tsconfig.json and convert to `oxc_resolver`
 /// alias format: `Vec<(pattern, Vec<AliasValue>)>`.
-pub(super) fn read_tsconfig_paths(
-    tsconfig: Option<&camino::Utf8Path>,
-) -> Vec<(String, Vec<AliasValue>)> {
+pub(super) fn read_tsconfig_paths(tsconfig: Option<&camino::Utf8Path>) -> Vec<(String, Vec<AliasValue>)> {
     let Some(path) = tsconfig else { return vec![] };
     let Ok(content) = std::fs::read_to_string(path.as_std_path()) else { return vec![] };
     let stripped = strip_json_comments(&content);
@@ -150,8 +133,7 @@ pub(super) fn read_tsconfig_paths(
         return vec![];
     };
 
-    let base_url =
-        value["compilerOptions"]["baseUrl"].as_str().map(|b| path.parent().unwrap_or(path).join(b));
+    let base_url = value["compilerOptions"]["baseUrl"].as_str().map(|b| path.parent().unwrap_or(path).join(b));
 
     let paths = match value["compilerOptions"]["paths"].as_object() {
         Some(p) => p,
@@ -168,11 +150,8 @@ pub(super) fn read_tsconfig_paths(
                 .map(|t| {
                     // Remove trailing wildcards: "@lib/*" → "@lib/"
                     let t = t.trim_end_matches("/*").trim_end_matches('*');
-                    let resolved_path = if let Some(base) = &base_url {
-                        base.join(t)
-                    } else {
-                        path.parent().unwrap_or(path).join(t)
-                    };
+                    let resolved_path =
+                        if let Some(base) = &base_url { base.join(t) } else { path.parent().unwrap_or(path).join(t) };
                     AliasValue::Path(resolved_path.as_std_path().to_string_lossy().into_owned())
                 })
                 .collect();

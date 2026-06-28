@@ -60,31 +60,20 @@ impl From<JsExtractOptions> for PipelineOptions {
 
         let extra_paths: rustc_hash::FxHashMap<String, Vec<camino::Utf8PathBuf>> = js
             .extra_paths_json
-            .and_then(|s| {
-                serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&s).ok()
-            })
+            .and_then(|s| serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&s).ok())
             .map(|map| {
                 map.into_iter()
                     .filter_map(|(k, v)| {
-                        let paths: Vec<camino::Utf8PathBuf> = v
-                            .as_array()?
-                            .iter()
-                            .filter_map(|p| p.as_str())
-                            .map(camino::Utf8PathBuf::from)
-                            .collect();
+                        let paths: Vec<camino::Utf8PathBuf> =
+                            v.as_array()?.iter().filter_map(|p| p.as_str()).map(camino::Utf8PathBuf::from).collect();
                         Some((k, paths))
                     })
                     .collect()
             })
             .unwrap_or_default();
 
-        let known_type_overrides: rustc_hash::FxHashMap<
-            String,
-            oxc_react_docgen_core::pipeline::KnownTypeOverride,
-        > = js
-            .known_type_overrides_json
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+        let known_type_overrides: rustc_hash::FxHashMap<String, oxc_react_docgen_core::pipeline::KnownTypeOverride> =
+            js.known_type_overrides_json.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
 
         PipelineOptions {
             src_dirs: js.src_dirs.into_iter().map(Into::into).collect(),
@@ -95,9 +84,9 @@ impl From<JsExtractOptions> for PipelineOptions {
             },
             cross_package: js.cross_package.unwrap_or(true),
             pandacss_outdir: js.pandacss_outdir.map(Into::into),
-            variant_functions: js.variant_functions.unwrap_or_else(|| {
-                vec!["cva".into(), "tv".into(), "defineRecipe".into(), "recipe".into()]
-            }),
+            variant_functions: js
+                .variant_functions
+                .unwrap_or_else(|| vec!["cva".into(), "tv".into(), "defineRecipe".into(), "recipe".into()]),
             skip_html_props: js.skip_html_props.unwrap_or(false),
             tsconfig_path: js.tsconfig_path.map(Into::into),
             extra_paths,

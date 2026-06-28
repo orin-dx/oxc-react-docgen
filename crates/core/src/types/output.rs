@@ -209,12 +209,7 @@ impl PropType {
     pub fn is_literal_union(&self) -> bool {
         match self {
             PropType::Union(members) => members.iter().all(|m| {
-                matches!(
-                    m,
-                    PropType::StringLiteral(_)
-                        | PropType::NumberLiteral(_)
-                        | PropType::BoolLiteral(_)
-                )
+                matches!(m, PropType::StringLiteral(_) | PropType::NumberLiteral(_) | PropType::BoolLiteral(_))
             }),
             PropType::LiteralUnion { .. } => true,
             _ => false,
@@ -236,12 +231,8 @@ impl PropType {
             PropType::StringLiteral(s) => format!("\"{}\"", s),
             PropType::NumberLiteral(n) => n.to_string(),
             PropType::BoolLiteral(b) => b.to_string(),
-            PropType::Union(members) => {
-                members.iter().map(|m| m.raw_string()).collect::<Vec<_>>().join(" | ")
-            }
-            PropType::Intersection(members) => {
-                members.iter().map(|m| m.raw_string()).collect::<Vec<_>>().join(" & ")
-            }
+            PropType::Union(members) => members.iter().map(|m| m.raw_string()).collect::<Vec<_>>().join(" | "),
+            PropType::Intersection(members) => members.iter().map(|m| m.raw_string()).collect::<Vec<_>>().join(" & "),
             PropType::Array(inner) => format!("{}[]", inner.raw_string()),
             PropType::Tuple(_) => "tuple".into(),
             PropType::Object(_) => "object".into(),
@@ -466,11 +457,7 @@ impl PropType {
                 Ok(PropType::Named { name, args })
             }
             "eventHandler" | "event_handler" => {
-                let event_type = v["eventType"]
-                    .as_str()
-                    .or_else(|| v["event_type"].as_str())
-                    .unwrap_or("")
-                    .to_owned();
+                let event_type = v["eventType"].as_str().or_else(|| v["event_type"].as_str()).unwrap_or("").to_owned();
                 Ok(PropType::EventHandler { event_type })
             }
             "ref" => {
@@ -490,10 +477,7 @@ impl PropType {
                     .as_array()
                     .map(|a| a.iter().filter_map(|v| v.as_str()).map(|s| s.to_owned()).collect())
                     .unwrap_or_default();
-                let has_default = v["hasDefault"]
-                    .as_bool()
-                    .or_else(|| v["has_default"].as_bool())
-                    .unwrap_or(false);
+                let has_default = v["hasDefault"].as_bool().or_else(|| v["has_default"].as_bool()).unwrap_or(false);
                 Ok(PropType::LiteralUnion { members, has_default })
             }
             "opaque" => {
@@ -503,10 +487,7 @@ impl PropType {
                     "mappedType" => OpaqueReason::MappedType,
                     "moduleAugmentation" => OpaqueReason::ModuleAugmentation,
                     "runtimeDependent" => OpaqueReason::RuntimeDependent {
-                        function_name: v["reason"]["functionName"]
-                            .as_str()
-                            .unwrap_or("")
-                            .to_owned(),
+                        function_name: v["reason"]["functionName"].as_str().unwrap_or("").to_owned(),
                     },
                     "unresolvableImport" => OpaqueReason::UnresolvableImport {
                         specifier: v["reason"]["specifier"].as_str().unwrap_or("").to_owned(),

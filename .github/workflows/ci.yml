@@ -4,25 +4,80 @@ on:
     branches: [main]
   pull_request:
 
+# Cancel in-progress runs for the same branch/PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
   RUST_BACKTRACE: 1
 
 jobs:
-  rust:
-    name: Rust
+  # ── Rust ───────────────────────────────────────────────────────────────────
+
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
-          toolchain: "1.96.0"
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
-      - run: cargo clippy --workspace --exclude oxc-react-docgen-napi -- -D warnings
-      - run: cargo test --workspace --exclude oxc-react-docgen-napi
-      - run: cargo bench --workspace --exclude oxc-react-docgen-napi --no-run
+      - run: cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - run: cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked
+
+  deny:
+    name: Deny (licenses · advisories · bans)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+      - run: cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --lcov --output-path lcov.info
+      - uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+
+  bench:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo bench --workspace --exclude oxc-react-docgen-napi 2>&1 | tee bench-results.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench-results.txt
+
+  # ── TypeScript ─────────────────────────────────────────────────────────────
 
   typescript:
     name: TypeScript / Node ${{ matrix.node }}
@@ -43,9 +98,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @oxc-react-docgen/vite-plugin test
 
-  # Verifies that npm and pnpm users can install the published package and that
-  # @oxc-react-docgen/napi arrives as a transitive dependency (not requiring
-  # a separate install step).
+  # Verifies that npm and pnpm users get @oxc-react-docgen/napi automatically
+  # as a transitive dep — no separate install step required.
   install:
     name: Install / Node ${{ matrix.node }} / ${{ matrix.pm }}
     runs-on: ubuntu-latest
@@ -85,21 +139,5 @@ jobs:
               throw new Error('vite-plugin not installed');
             if (!fs.existsSync(base + '/@oxc-react-docgen/napi/package.json'))
               throw new Error('@oxc-react-docgen/napi not installed as transitive dep');
-            console.log('OK — napi present as transitive dep');
+            console.log('OK');
           "
-
-  bench:
-    name: Benchmarks
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.96.0"
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo bench --workspace --exclude oxc-react-docgen-napi 2>&1 | tee bench-results.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: bench-results
-          path: bench-results.txt

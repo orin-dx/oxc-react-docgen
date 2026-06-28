@@ -3,6 +3,7 @@ name = "oxc-react-docgen"
 description = "Fast React prop extraction — CLI"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [[bin]]
 name = "oxc-react-docgen"

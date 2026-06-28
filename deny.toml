@@ -4,10 +4,33 @@ ignore = []
 
 [licenses]
 version = 2
-allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "ISC", "BSD-2-Clause", "BSD-3-Clause", "Unicode-3.0", "Unicode-DFS-2016"]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",  # unicode-ident, unicode-id-start
+    "Zlib",         # foldhash (via simd-json → oxc_resolver)
+    "CC0-1.0",      # notify (via watchexec)
+    "MPL-2.0",      # option-ext (via dirs)
+]
 
 [bans]
 multiple-versions = "warn"
+# oxc_module_lexer is versioned independently from the main OXC crate family;
+# 0.38.x and 0.135.x coexist by design. Skip the duplicate warning.
+skip = [
+    { name = "oxc_allocator" },
+    { name = "oxc_ast" },
+    { name = "oxc_ast_macros" },
+    { name = "oxc_ecmascript" },
+    { name = "oxc_regular_expression" },
+    { name = "oxc_span" },
+    { name = "oxc_str" },
+    { name = "oxc_syntax" },
+]
 
 [sources]
 unknown-registry = "deny"

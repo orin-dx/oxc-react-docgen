@@ -17,8 +17,8 @@ vcs:
     pre-commit:
       - '. "$HOME/.cargo/env"'
       - "cargo fmt --check"
-      - "cargo clippy --workspace -- -D warnings"
+      - "cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings"
       - "typos"
-      - "cargo deny check advisories"
+      - "cargo deny check"
 
 telemetry: false

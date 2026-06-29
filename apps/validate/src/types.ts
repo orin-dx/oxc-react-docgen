@@ -22,6 +22,8 @@ export interface ToolResult {
   output: NormalizedOutput
   /** HTML element(s) the component inherits from (our tool only) */
   inheritedElements?: string[]
+  /** Notable inherited prop names surfaced from the HTML element (our tool only) */
+  notableInheritedNames?: string[]
   error?: string
 }
 

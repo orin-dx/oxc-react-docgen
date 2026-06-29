@@ -70,19 +70,25 @@ for (const fixture of [...allFixtures].sort()) {
     if (oursOnly.length) console.log(`    ours-only (${oursOnly.length}): ${oursOnly.slice(0, 8).join(', ')}`)
     if (rdgOnly.length) console.log(`    rdg-only  (${rdgOnly.length}): ${rdgOnly.slice(0, 5).join(', ')}${rdgOnly.length > 5 ? '...' : ''}`)
 
-    // For rdt-only props: distinguish HTML attrs (covered by our inheritance) from true misses
+    // For rdt-only props: distinguish HTML attrs covered by our notableInherited from true misses.
+    // We trust our notableInherited list as the ground truth for what we surface from HTML elements.
+    const ourNotableNames = new Set(r_ours?.notableInheritedNames ?? [])
     if (rdtOnly.length) {
-      const htmlPropPattern = /^(on[A-Z]|aria-|data-|class|style|id|tab|ref|key$|role$)/
-      const likelyhtmlAttrs = rdtOnly.filter(p => htmlPropPattern.test(p) || ourInheritedElements.length > 0)
-      const trueMisses = rdtOnly.filter(p => !htmlPropPattern.test(p) && ourInheritedElements.length === 0)
+      // A prop is "covered by our inheritance" if it appears in our notableInherited list.
+      // Props not in notableInherited and not in our own props are true misses.
+      const coveredByInheritance = rdtOnly.filter(p => ourNotableNames.has(p))
+      const trueMisses = rdtOnly.filter(p => !ourNotableNames.has(p) && !oursProps.includes(p))
       if (trueMisses.length) {
-        console.log(`    ❗ rdt-only (REAL MISSES) (${trueMisses.length}): ${trueMisses.slice(0, 8).join(', ')}`)
+        console.log(`    ❗ rdt-only REAL MISSES (${trueMisses.length}): ${trueMisses.slice(0, 8).join(', ')}`)
         misses += trueMisses.length
       }
-      if (likelyhtmlAttrs.length && ourInheritedElements.length > 0) {
-        console.log(`    ℹ️  rdt expands ${rdtOnly.length} HTML attrs (covered by our inheritance: ${ourInheritedElements.join(', ')})`)
-      } else if (likelyhtmlAttrs.length) {
-        console.log(`    rdt-only (likely HTML attrs) (${rdtOnly.length}): ${rdtOnly.slice(0, 5).join(', ')}...`)
+      if (coveredByInheritance.length) {
+        console.log(`    ℹ️  rdt expands ${coveredByInheritance.length} attrs we surface via notableInherited`)
+      }
+      const unexpandedHtmlAttrs = rdtOnly.filter(p => !ourNotableNames.has(p) && !oursProps.includes(p) &&
+        /^(on[A-Z]|aria-|data-)/.test(p))
+      if (unexpandedHtmlAttrs.length && ourInheritedElements.length > 0) {
+        console.log(`    ℹ️  ${unexpandedHtmlAttrs.length} additional HTML event/ARIA attrs rdt expands (not in our notableInherited)`)
       }
     }
 
@@ -106,19 +112,23 @@ for (const fixture of [...allFixtures].sort()) {
       }
     }
 
-    const rdtOnlyRealCount = rdtOnly.filter(p => {
-      const htmlPropPattern = /^(on[A-Z]|aria-|data-|class|style|id|tab|ref|key$|role$)/
-      return !htmlPropPattern.test(p) && ourInheritedElements.length === 0
-    }).length
+    // A win is: no real misses, no unexpected extra props, no type diffs, and we found something.
+    const rdtOnlyRealCount = rdtOnly.filter(p => !ourNotableNames.has(p) && !oursProps.includes(p)).length
 
     if (!oursOnly.length && rdtOnlyRealCount === 0 && !typeDiffs.length && oursProps.length > 0) {
-      console.log(`    ✅ own props identical to rdt (HTML attrs via inheritance)`)
+      console.log(`    ✅ own props match rdt`)
       wins++
     } else if (oursProps.length === 0 && rdtProps.length === 0) {
       ties++
     } else if (oursProps.length === 0 && rdtProps.length > 0 && ourInheritedElements.length > 0) {
-      console.log(`    ✅ 0 own props correct (all props are inherited HTML attrs: ${ourInheritedElements.join(', ')})`)
-      wins++
+      const notableCount = ourNotableNames.size
+      const rdtCovered = rdtOnly.filter(p => ourNotableNames.has(p)).length
+      if (rdtCovered === rdtProps.length) {
+        console.log(`    ✅ 0 own props, all ${rdtProps.length} rdt props covered by notableInherited`)
+        wins++
+      } else {
+        console.log(`    ⚠️  0 own props; we surface ${notableCount} notableInherited, rdt has ${rdtProps.length} total (inherits ${ourInheritedElements.join(', ')})`)
+      }
     } else if (oursProps.length === 0 && rdtProps.length > 0 && ourInheritedElements.length === 0) {
       console.log(`    ❌ ours found nothing, rdt found ${rdtProps.length} props`)
     }

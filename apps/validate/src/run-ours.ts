@@ -1,12 +1,15 @@
 import { execSync } from 'node:child_process'
-import { mkdirSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ToolResult, NormalizedOutput } from './types.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const FIXTURES_ROOT = resolve(__dirname, '../../../fixtures')
-const CLI = resolve(__dirname, '../../../target/debug/oxc-react-docgen')
+// Prefer release build (faster, has all fixes); fall back to debug for dev convenience.
+const CLI = existsSync(resolve(__dirname, '../../../target/release/oxc-react-docgen'))
+  ? resolve(__dirname, '../../../target/release/oxc-react-docgen')
+  : resolve(__dirname, '../../../target/debug/oxc-react-docgen')
 
 // Find library directories under fixtures/
 function discoverLibraries(): string[] {
@@ -96,12 +99,16 @@ for (const lib of libraries) {
       const inheritedElements = (c.inheritance ?? [])
         .map((l: any) => l.htmlElement)
         .filter(Boolean)
+      const notableInheritedNames = Object.keys(c.notableInherited ?? {})
+      // Key by displayName (not file path) to avoid collision when multiple components share a file.
+      const basename = c.filePath.split('/').pop()?.replace(/\.tsx?$/, '').replace(/\.d$/, '') ?? c.displayName
       results.push({
         tool: 'oxc-react-docgen',
-        fixture: `${lib}/${c.filePath.split('/').pop()?.replace(/\.tsx?$/, '').replace(/\.d$/, '') ?? c.displayName}`,
+        fixture: `${lib}/${basename}/${c.displayName}`,
         durationMs,
         output: normalize({ components: { [c.displayName]: c } }),
         inheritedElements,
+        notableInheritedNames,
       })
     }
   } catch (e: any) {

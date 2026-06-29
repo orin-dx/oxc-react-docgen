@@ -49,12 +49,42 @@ for (const fixture of fixtures) {
   const start = performance.now()
   try {
     const raw = parser.parse(fixture.path)
-    results.push({
-      tool: 'react-docgen-typescript',
-      fixture: fixture.name,
-      durationMs: performance.now() - start,
-      output: normalize(raw),
-    })
+    const durationMs = performance.now() - start
+    // One entry per component so keys match our tool's ${lib}/${basename}/${displayName} format.
+    for (const comp of raw) {
+      results.push({
+        tool: 'react-docgen-typescript',
+        fixture: `${fixture.name}/${comp.displayName}`,
+        durationMs,
+        output: {
+          [comp.displayName]: {
+            displayName: comp.displayName,
+            description: comp.description ?? '',
+            props: Object.fromEntries(
+              Object.entries(comp.props ?? {}).map(([propName, prop]: [string, any]) => [
+                propName,
+                {
+                  name: propName,
+                  required: prop.required ?? false,
+                  type: prop.type?.name ?? 'unknown',
+                  description: prop.description ?? '',
+                  defaultValue: prop.defaultValue?.value,
+                },
+              ])
+            ),
+          },
+        },
+      })
+    }
+    if (raw.length === 0) {
+      results.push({
+        tool: 'react-docgen-typescript',
+        fixture: fixture.name,
+        durationMs,
+        output: {},
+        error: 'no components found',
+      })
+    }
   } catch (e: any) {
     results.push({
       tool: 'react-docgen-typescript',

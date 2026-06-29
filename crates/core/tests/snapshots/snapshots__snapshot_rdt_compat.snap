@@ -288,6 +288,234 @@ expression: value
       },
       "methods": []
     },
+    "IconButton": {
+      "displayName": "IconButton",
+      "filePath": "[ROOT]/fixtures/rdt-compat/pick-source.tsx",
+      "description": "Accessible label for screen readers.",
+      "props": {
+        "icon": {
+          "name": "icon",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": true,
+          "defaultValue": null,
+          "description": "The icon to display inside the button.",
+          "tags": {},
+          "parent": {
+            "name": "IconButtonProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/pick-source.tsx"
+          },
+          "declarations": [
+            {
+              "name": "IconButtonProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/pick-source.tsx"
+            }
+          ]
+        },
+        "label": {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "defaultValue": null,
+          "description": "Accessible label for screen readers.",
+          "tags": {},
+          "parent": {
+            "name": "IconButtonProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/pick-source.tsx"
+          },
+          "declarations": [
+            {
+              "name": "IconButtonProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/pick-source.tsx"
+            }
+          ]
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
+    "Select": {
+      "displayName": "Select",
+      "filePath": "[ROOT]/fixtures/rdt-compat/controlled.tsx",
+      "description": "Whether the select is disabled.",
+      "props": {
+        "children": {
+          "name": "children",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Whether the select is disabled.",
+          "tags": {},
+          "parent": {
+            "name": "SelectProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+          },
+          "declarations": [
+            {
+              "name": "SelectProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+            }
+          ]
+        },
+        "defaultOpen": {
+          "name": "defaultOpen",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Initial open state (uncontrolled).",
+          "tags": {},
+          "parent": {
+            "name": "SelectProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+          },
+          "declarations": [
+            {
+              "name": "SelectProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+            }
+          ]
+        },
+        "defaultValue": {
+          "name": "defaultValue",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Initial selected value (uncontrolled).",
+          "tags": {},
+          "parent": {
+            "name": "SelectProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+          },
+          "declarations": [
+            {
+              "name": "SelectProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+            }
+          ]
+        },
+        "disabled": {
+          "name": "disabled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Whether the select is disabled.",
+          "tags": {},
+          "parent": {
+            "name": "SelectProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+          },
+          "declarations": [
+            {
+              "name": "SelectProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+            }
+          ]
+        },
+        "onOpenChange": {
+          "name": "onOpenChange",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Called when the open state changes. Arrow-function form for comparison.",
+          "tags": {},
+          "parent": {
+            "name": "SelectProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+          },
+          "declarations": [
+            {
+              "name": "SelectProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+            }
+          ]
+        },
+        "onValueChange": {
+          "name": "onValueChange",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "..."
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Called when the selected value changes. Method-shorthand form.",
+          "tags": {},
+          "parent": {
+            "name": "SelectProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+          },
+          "declarations": [
+            {
+              "name": "SelectProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+            }
+          ]
+        },
+        "open": {
+          "name": "open",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Whether the dropdown is open (controlled).",
+          "tags": {},
+          "parent": {
+            "name": "SelectProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+          },
+          "declarations": [
+            {
+              "name": "SelectProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+            }
+          ]
+        },
+        "value": {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Currently selected value (controlled).",
+          "tags": {},
+          "parent": {
+            "name": "SelectProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+          },
+          "declarations": [
+            {
+              "name": "SelectProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/controlled.tsx"
+            }
+          ]
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
     "TypeSampler": {
       "displayName": "TypeSampler",
       "filePath": "[ROOT]/fixtures/rdt-compat/types.tsx",
@@ -539,9 +767,9 @@ expression: value
   "enums": {},
   "diagnostics": [],
   "stats": {
-    "componentsExtracted": 3,
+    "componentsExtracted": 5,
     "componentsSkipped": 0,
-    "filesParsed": 3,
+    "filesParsed": 6,
     "dtsFilesParsed": 0,
     "dtsCacheHits": 0,
     "durationMs": 0,

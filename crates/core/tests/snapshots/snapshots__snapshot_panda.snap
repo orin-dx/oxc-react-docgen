@@ -28,6 +28,58 @@ expression: value
               "fileName": "[ROOT]/fixtures/panda/button.tsx"
             }
           ]
+        },
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "literalUnion",
+                "members": [
+                  "sm",
+                  "md",
+                  "lg"
+                ],
+                "hasDefault": false
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "visual": {
+          "name": "visual",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "literalUnion",
+                "members": [
+                  "solid",
+                  "outline",
+                  "ghost"
+                ],
+                "hasDefault": false
+              },
+              {
+                "kind": "null"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": null,
+          "declarations": []
         }
       },
       "inheritance": [
@@ -287,14 +339,45 @@ expression: value
         }
       },
       "discriminantProp": null,
-      "composes": [
-        "VariantProps<typeof buttonRecipe>"
-      ],
+      "composes": [],
       "tags": {},
       "methods": []
     }
   },
-  "enums": {},
+  "enums": {
+    "buttonRecipe": [
+      {
+        "name": "visual",
+        "value": "solid",
+        "description": ""
+      },
+      {
+        "name": "visual",
+        "value": "outline",
+        "description": ""
+      },
+      {
+        "name": "visual",
+        "value": "ghost",
+        "description": ""
+      },
+      {
+        "name": "size",
+        "value": "sm",
+        "description": ""
+      },
+      {
+        "name": "size",
+        "value": "md",
+        "description": ""
+      },
+      {
+        "name": "size",
+        "value": "lg",
+        "description": ""
+      }
+    ]
+  },
   "diagnostics": [],
   "stats": {
     "componentsExtracted": 1,

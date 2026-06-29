@@ -73,8 +73,9 @@ impl<'src> SourceDataCollector<'src> {
             return;
         }
 
-        // Second argument should be an object with a "variants" key
-        let Some(second_arg) = call.arguments.get(1) else { return };
+        // cva(baseClasses, { variants }) takes config at index 1; all other callees take it at index 0
+        let arg_index = usize::from(callee_name == "cva");
+        let Some(second_arg) = call.arguments.get(arg_index) else { return };
         let second_expr = match second_arg {
             Argument::SpreadElement(_) => return,
             other => match other.as_expression() {

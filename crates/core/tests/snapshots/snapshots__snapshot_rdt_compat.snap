@@ -1,0 +1,552 @@
+---
+source: crates/core/tests/snapshots.rs
+expression: value
+---
+{
+  "components": {
+    "Avatar": {
+      "displayName": "Avatar",
+      "filePath": "[ROOT]/fixtures/rdt-compat/memo.tsx",
+      "description": "Avatar diameter in pixels. @default 40",
+      "props": {
+        "name": {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "defaultValue": null,
+          "description": "The user's display name.",
+          "tags": {},
+          "parent": {
+            "name": "AvatarProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/memo.tsx"
+          },
+          "declarations": [
+            {
+              "name": "AvatarProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/memo.tsx"
+            }
+          ]
+        },
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Avatar diameter in pixels. @default 40",
+          "tags": {},
+          "parent": {
+            "name": "AvatarProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/memo.tsx"
+          },
+          "declarations": [
+            {
+              "name": "AvatarProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/memo.tsx"
+            }
+          ]
+        },
+        "src": {
+          "name": "src",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "URL of the avatar image.",
+          "tags": {},
+          "parent": {
+            "name": "AvatarProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/memo.tsx"
+          },
+          "declarations": [
+            {
+              "name": "AvatarProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/memo.tsx"
+            }
+          ]
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
+    "Card": {
+      "displayName": "Card",
+      "filePath": "[ROOT]/fixtures/rdt-compat/jsdoc.tsx",
+      "description": "A card for grouping related content.",
+      "props": {
+        "header": {
+          "name": "header",
+          "type": {
+            "kind": "reactNode"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Header slot content.",
+          "tags": {
+            "since": "2.0.0"
+          },
+          "parent": {
+            "name": "CardProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/jsdoc.tsx"
+          },
+          "declarations": [
+            {
+              "name": "CardProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/jsdoc.tsx"
+            }
+          ]
+        },
+        "variant": {
+          "name": "variant",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "flat"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "outlined"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "elevated"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "\"flat\"",
+            "computed": false
+          },
+          "description": "The visual appearance of the card.",
+          "tags": {
+            "default": "\"flat\"",
+            "deprecated": "Use `appearance` instead."
+          },
+          "parent": {
+            "name": "CardProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/jsdoc.tsx"
+          },
+          "declarations": [
+            {
+              "name": "CardProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/jsdoc.tsx"
+            }
+          ]
+        }
+      },
+      "inheritance": [
+        {
+          "typeName": "React.HTMLAttributes",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "div",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "className": {
+          "name": "className",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "style": {
+          "name": "style",
+          "type": {
+            "kind": "cssProperties"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {
+        "category": "Layout",
+        "see": "https://example.com/components/card",
+        "since": "1.0.0"
+      },
+      "methods": []
+    },
+    "TypeSampler": {
+      "displayName": "TypeSampler",
+      "filePath": "[ROOT]/fixtures/rdt-compat/types.tsx",
+      "description": "Inline conditional type — cannot expand without a type checker → `opaque`\nwith reason `conditionalType`.",
+      "props": {
+        "alwaysEnabled": {
+          "name": "alwaysEnabled",
+          "type": {
+            "kind": "boolLiteral",
+            "0": true
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Standalone boolean literal — exercises `boolLiteral`.",
+          "tags": {},
+          "parent": {
+            "name": "TypeSamplerProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+          },
+          "declarations": [
+            {
+              "name": "TypeSamplerProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+            }
+          ]
+        },
+        "buttonProps": {
+          "name": "buttonProps",
+          "type": {
+            "kind": "htmlAttributes",
+            "element": "button",
+            "omitted": []
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "ComponentPropsWithoutRef<E> as a prop value — exercises `htmlAttributes`.\nDistinct from inheriting ButtonHTMLAttributes at the component level.",
+          "tags": {},
+          "parent": {
+            "name": "TypeSamplerProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+          },
+          "declarations": [
+            {
+              "name": "TypeSamplerProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+            }
+          ]
+        },
+        "derived": {
+          "name": "derived",
+          "type": {
+            "kind": "opaque",
+            "raw": "string extends \"a\" ? \"yes\" : \"no\"",
+            "reason": {
+              "type": "conditionalType"
+            }
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Inline conditional type — cannot expand without a type checker → `opaque`\nwith reason `conditionalType`.",
+          "tags": {},
+          "parent": {
+            "name": "TypeSamplerProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+          },
+          "declarations": [
+            {
+              "name": "TypeSamplerProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+            }
+          ]
+        },
+        "items": {
+          "name": "items",
+          "type": {
+            "kind": "array",
+            "0": {
+              "kind": "string"
+            }
+          },
+          "required": true,
+          "defaultValue": null,
+          "description": "Array written as T[] (not Array<T>) — exercises the `array` PropType kind.",
+          "tags": {},
+          "parent": {
+            "name": "TypeSamplerProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+          },
+          "declarations": [
+            {
+              "name": "TypeSamplerProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+            }
+          ]
+        },
+        "nothing": {
+          "name": "nothing",
+          "type": {
+            "kind": "undefined"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Explicit undefined — exercises the `undefined` PropType kind.",
+          "tags": {},
+          "parent": {
+            "name": "TypeSamplerProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+          },
+          "declarations": [
+            {
+              "name": "TypeSamplerProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+            }
+          ]
+        },
+        "position": {
+          "name": "position",
+          "type": {
+            "kind": "tuple",
+            "0": [
+              {
+                "kind": "number"
+              },
+              {
+                "kind": "number"
+              }
+            ]
+          },
+          "required": true,
+          "defaultValue": null,
+          "description": "Positional tuple — exercises the `tuple` PropType kind.",
+          "tags": {},
+          "parent": {
+            "name": "TypeSamplerProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+          },
+          "declarations": [
+            {
+              "name": "TypeSamplerProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+            }
+          ]
+        },
+        "step": {
+          "name": "step",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "numberLiteral",
+                "0": 1.0
+              },
+              {
+                "kind": "numberLiteral",
+                "0": 2.0
+              },
+              {
+                "kind": "numberLiteral",
+                "0": 4.0
+              },
+              {
+                "kind": "numberLiteral",
+                "0": 8.0
+              }
+            ]
+          },
+          "required": true,
+          "defaultValue": null,
+          "description": "Numeric literals in a union — exercises `numberLiteral`.",
+          "tags": {},
+          "parent": {
+            "name": "TypeSamplerProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+          },
+          "declarations": [
+            {
+              "name": "TypeSamplerProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+            }
+          ]
+        },
+        "sx": {
+          "name": "sx",
+          "type": {
+            "kind": "sxProps"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Resolved via the SxProps known-pattern shortcut (fires when the name\ncannot be resolved from source imports).",
+          "tags": {},
+          "parent": {
+            "name": "TypeSamplerProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+          },
+          "declarations": [
+            {
+              "name": "TypeSamplerProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+            }
+          ]
+        },
+        "tokenStyle": {
+          "name": "tokenStyle",
+          "type": {
+            "kind": "intersection",
+            "0": [
+              {
+                "kind": "cssProperties"
+              },
+              {
+                "kind": "object",
+                "0": [
+                  {
+                    "name": "--accent",
+                    "propType": {
+                      "kind": "string"
+                    },
+                    "required": true,
+                    "description": "Inline intersection in a prop value — exercises `intersection`.\nCssProperties resolves to cssProperties; the object literal stays as-is."
+                  }
+                ]
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Inline intersection in a prop value — exercises `intersection`.\nCssProperties resolves to cssProperties; the object literal stays as-is.",
+          "tags": {},
+          "parent": {
+            "name": "TypeSamplerProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+          },
+          "declarations": [
+            {
+              "name": "TypeSamplerProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/types.tsx"
+            }
+          ]
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    }
+  },
+  "enums": {},
+  "diagnostics": [],
+  "stats": {
+    "componentsExtracted": 3,
+    "componentsSkipped": 0,
+    "filesParsed": 3,
+    "dtsFilesParsed": 0,
+    "dtsCacheHits": 0,
+    "durationMs": 0,
+    "tier1Count": 0,
+    "tier3Count": 0,
+    "opaqueCount": 0
+  }
+}

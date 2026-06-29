@@ -117,3 +117,9 @@ fn snapshot_panda() {
     let value = snapshot_fixture("panda");
     insta::assert_json_snapshot!(value);
 }
+
+#[test]
+fn snapshot_rdt_compat() {
+    let value = snapshot_fixture("rdt-compat");
+    insta::assert_json_snapshot!(value);
+}

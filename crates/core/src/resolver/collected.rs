@@ -114,6 +114,21 @@ pub fn resolve_collected_type(
             if trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2 {
                 return PropType::StringLiteral(trimmed[1..trimmed.len() - 1].to_owned());
             }
+            // TypeScript primitive keywords — tuple elements come through Raw because
+            // TSTupleElement falls through to source-text extraction for non-optional,
+            // non-rest elements. Recognise keywords here so they emit the proper PropType.
+            match trimmed {
+                "string" => return PropType::String,
+                "number" => return PropType::Number,
+                "boolean" => return PropType::Boolean,
+                "null" => return PropType::Null,
+                "undefined" => return PropType::Undefined,
+                "never" => return PropType::Never,
+                "void" => return PropType::Void,
+                "any" => return PropType::Any,
+                "unknown" => return PropType::Unknown,
+                _ => {}
+            }
             // Simple identifier → Named type reference.
             if !trimmed.is_empty()
                 && !trimmed.contains(' ')

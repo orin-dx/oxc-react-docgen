@@ -7,7 +7,7 @@ expression: value
     "Avatar": {
       "displayName": "Avatar",
       "filePath": "[ROOT]/fixtures/rdt-compat/memo.tsx",
-      "description": "Avatar diameter in pixels. @default 40",
+      "description": "",
       "props": {
         "name": {
           "name": "name",
@@ -72,6 +72,171 @@ expression: value
       },
       "inheritance": [],
       "notableInherited": {},
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
+    "Box": {
+      "displayName": "Box",
+      "filePath": "[ROOT]/fixtures/rdt-compat/svg-icon.tsx",
+      "description": "",
+      "props": {
+        "padded": {
+          "name": "padded",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Apply padding.",
+          "tags": {},
+          "parent": {
+            "name": "BoxProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/svg-icon.tsx"
+          },
+          "declarations": [
+            {
+              "name": "BoxProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/svg-icon.tsx"
+            }
+          ]
+        }
+      },
+      "inheritance": [
+        {
+          "typeName": "React.HTMLProps",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "div",
+          "totalProps": 0
+        }
+      ],
+      "notableInherited": {
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "className": {
+          "name": "className",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "style": {
+          "name": "style",
+          "type": {
+            "kind": "cssProperties"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
       "discriminantProp": null,
       "composes": [],
       "tags": {},
@@ -148,7 +313,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.HTMLAttributes",
-          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -288,10 +453,65 @@ expression: value
       },
       "methods": []
     },
+    "Icon": {
+      "displayName": "Icon",
+      "filePath": "[ROOT]/fixtures/rdt-compat/svg-icon.tsx",
+      "description": "A generic SVG icon wrapper.",
+      "props": {
+        "color": {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Icon color.",
+          "tags": {},
+          "parent": {
+            "name": "IconProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/svg-icon.tsx"
+          },
+          "declarations": [
+            {
+              "name": "IconProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/svg-icon.tsx"
+            }
+          ]
+        },
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Icon size in pixels.",
+          "tags": {},
+          "parent": {
+            "name": "IconProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/svg-icon.tsx"
+          },
+          "declarations": [
+            {
+              "name": "IconProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/svg-icon.tsx"
+            }
+          ]
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": null,
+      "composes": [
+        "React.SVGAttributes"
+      ],
+      "tags": {},
+      "methods": []
+    },
     "IconButton": {
       "displayName": "IconButton",
       "filePath": "[ROOT]/fixtures/rdt-compat/pick-source.tsx",
-      "description": "Accessible label for screen readers.",
+      "description": "",
       "props": {
         "disabled": {
           "name": "disabled",
@@ -418,7 +638,7 @@ expression: value
     "Select": {
       "displayName": "Select",
       "filePath": "[ROOT]/fixtures/rdt-compat/controlled.tsx",
-      "description": "Whether the select is disabled.",
+      "description": "",
       "props": {
         "children": {
           "name": "children",
@@ -427,7 +647,7 @@ expression: value
           },
           "required": false,
           "defaultValue": null,
-          "description": "Whether the select is disabled.",
+          "description": "",
           "tags": {},
           "parent": {
             "name": "SelectProps",
@@ -525,7 +745,7 @@ expression: value
           "name": "onValueChange",
           "type": {
             "kind": "eventHandler",
-            "eventType": "..."
+            "eventType": "string"
           },
           "required": false,
           "defaultValue": null,
@@ -593,7 +813,7 @@ expression: value
     "TypeSampler": {
       "displayName": "TypeSampler",
       "filePath": "[ROOT]/fixtures/rdt-compat/types.tsx",
-      "description": "Inline conditional type — cannot expand without a type checker → `opaque`\nwith reason `conditionalType`.",
+      "description": "",
       "props": {
         "alwaysEnabled": {
           "name": "alwaysEnabled",
@@ -816,7 +1036,7 @@ expression: value
           },
           "required": false,
           "defaultValue": null,
-          "description": "Inline intersection in a prop value — exercises `intersection`.\nCssProperties resolves to cssProperties; the object literal stays as-is.",
+          "description": "",
           "tags": {},
           "parent": {
             "name": "TypeSamplerProps",
@@ -841,9 +1061,9 @@ expression: value
   "enums": {},
   "diagnostics": [],
   "stats": {
-    "componentsExtracted": 5,
+    "componentsExtracted": 7,
     "componentsSkipped": 0,
-    "filesParsed": 6,
+    "filesParsed": 7,
     "dtsFilesParsed": 0,
     "dtsCacheHits": 0,
     "durationMs": 0,

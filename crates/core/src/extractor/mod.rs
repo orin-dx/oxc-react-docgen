@@ -369,12 +369,25 @@ impl<'src> SourceDataCollector<'src> {
                     PropertyKey::StringLiteral(s) => s.value.as_str().to_owned(),
                     _ => return None,
                 };
+                let params: Vec<CollectedType> = sig
+                    .params
+                    .items
+                    .iter()
+                    .map(|p| {
+                        p.type_annotation
+                            .as_ref()
+                            .map(|ta| self.ts_type_to_collected(&ta.type_annotation))
+                            .unwrap_or(CollectedType::Any)
+                    })
+                    .collect();
+                let return_type = sig
+                    .return_type
+                    .as_ref()
+                    .map(|rt| self.ts_type_to_collected(&rt.type_annotation))
+                    .unwrap_or(CollectedType::Void);
                 Some(CollectedObjectField {
                     name,
-                    collected_type: CollectedType::Function {
-                        params: vec![CollectedType::Raw("...".into())],
-                        return_type: Box::new(CollectedType::Any),
-                    },
+                    collected_type: CollectedType::Function { params, return_type: Box::new(return_type) },
                     required: !sig.optional,
                     description: String::new(),
                 })
@@ -484,13 +497,25 @@ impl<'src> SourceDataCollector<'src> {
                 let name = ms.key.static_name()?.to_string();
                 let description = self.find_jsdoc(ms.span.start);
                 let tags = self.extract_jsdoc_tags(ms.span.start);
-
+                let params: Vec<CollectedType> = ms
+                    .params
+                    .items
+                    .iter()
+                    .map(|p| {
+                        p.type_annotation
+                            .as_ref()
+                            .map(|ta| self.ts_type_to_collected(&ta.type_annotation))
+                            .unwrap_or(CollectedType::Any)
+                    })
+                    .collect();
+                let return_type = ms
+                    .return_type
+                    .as_ref()
+                    .map(|rt| self.ts_type_to_collected(&rt.type_annotation))
+                    .unwrap_or(CollectedType::Void);
                 Some(RawProp {
                     name,
-                    collected_type: CollectedType::Function {
-                        params: vec![CollectedType::Raw("...".into())],
-                        return_type: Box::new(CollectedType::Any),
-                    },
+                    collected_type: CollectedType::Function { params, return_type: Box::new(return_type) },
                     required: !ms.optional,
                     description,
                     tags,

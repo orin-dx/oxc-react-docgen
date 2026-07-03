@@ -134,6 +134,16 @@ pub(super) fn resolve_base_as_chain(
             }
             chain
         }
+        CollectedType::Union(members) => {
+            // Union base: merge all members together.
+            // This handles `Omit<A | B, K>` and similar patterns.
+            let mut chain = ResolvedChain::default();
+            for member in members {
+                let sub = resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
+                chain.merge_parent(sub);
+            }
+            chain
+        }
         _ => ResolvedChain::default(),
     }
 }
@@ -184,6 +194,17 @@ pub(super) fn resolve_union_alias(
     for (_, member_props) in &named_members {
         for prop in member_props {
             merged_props.entry(prop.name.clone()).or_insert_with(|| prop.clone());
+        }
+    }
+
+    // Also merge non-Named members (inline objects, intersections, nested unions, etc.)
+    // that were excluded from the discriminant analysis above.
+    for member in members {
+        if !matches!(member, CollectedType::Named { .. }) {
+            let sub_chain = resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
+            for prop in sub_chain.props {
+                merged_props.entry(prop.name.clone()).or_insert_with(|| prop.clone());
+            }
         }
     }
 

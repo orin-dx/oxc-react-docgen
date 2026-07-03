@@ -148,7 +148,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.HTMLAttributes",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -293,6 +293,46 @@ expression: value
       "filePath": "[ROOT]/fixtures/rdt-compat/pick-source.tsx",
       "description": "Accessible label for screen readers.",
       "props": {
+        "disabled": {
+          "name": "disabled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Whether the button is disabled.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/pick-source.tsx"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/pick-source.tsx"
+            }
+          ]
+        },
+        "form": {
+          "name": "form",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Associates the button with a form element.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/pick-source.tsx"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/pick-source.tsx"
+            }
+          ]
+        },
         "icon": {
           "name": "icon",
           "type": {
@@ -329,6 +369,40 @@ expression: value
           "declarations": [
             {
               "name": "IconButtonProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/pick-source.tsx"
+            }
+          ]
+        },
+        "type": {
+          "name": "type",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "button"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "submit"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "reset"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The button's type attribute.",
+          "tags": {},
+          "parent": {
+            "name": "ButtonBaseProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/pick-source.tsx"
+          },
+          "declarations": [
+            {
+              "name": "ButtonBaseProps",
               "fileName": "[ROOT]/fixtures/rdt-compat/pick-source.tsx"
             }
           ]

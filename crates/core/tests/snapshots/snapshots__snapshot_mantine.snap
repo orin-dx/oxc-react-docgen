@@ -464,7 +464,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.ButtonHTMLAttributes",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "button",
           "totalProps": 0
@@ -1732,7 +1732,7 @@ expression: value
   "diagnostics": [
     {
       "severity": "warning",
-      "message": "[ROOT]/Cannot resolve type 'MantineColor' in '/Users/gabe/Projects/oxc-react-codegen/fixtures/mantine/Button.d.ts' — it will appear as opaque",
+      "message": "Cannot resolve type 'MantineColor' in '[ROOT]/fixtures/mantine/Button.d.ts' — it will appear as opaque",
       "file": "[ROOT]/fixtures/mantine/Button.d.ts",
       "line": null,
       "column": null,
@@ -1741,7 +1741,7 @@ expression: value
     },
     {
       "severity": "warning",
-      "message": "[ROOT]/Cannot resolve type 'MantineColor' in '/Users/gabe/Projects/oxc-react-codegen/fixtures/mantine/TextInput.d.ts' — it will appear as opaque",
+      "message": "Cannot resolve type 'MantineColor' in '[ROOT]/fixtures/mantine/TextInput.d.ts' — it will appear as opaque",
       "file": "[ROOT]/fixtures/mantine/TextInput.d.ts",
       "line": null,
       "column": null,

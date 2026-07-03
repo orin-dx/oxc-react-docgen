@@ -48,6 +48,45 @@ pub(super) fn resolve_props_chain(
     // Strip "React." namespace prefix before all builtin/utility checks.
     let type_name_bare = type_name.strip_prefix("React.").unwrap_or(type_name);
 
+    // ── Step 0.5: Inline utility type in extends position ─────────────────────
+    // Pick/Omit/Partial/Readonly appearing directly in `extends Pick<T,K>`
+    // have non-empty type_args. Route through alias resolver (same logic as
+    // `type X = Pick<T,K>`) instead of the step-1 silent no-op.
+    if !type_args.is_empty() {
+        let synthetic = match type_name_bare {
+            // Guard: skip if the base type is itself generic (contains '<').
+            // Raw string type_args can't represent nested generics reliably.
+            "Pick" if type_args.len() >= 2 && !type_args[0].contains('<') => {
+                let base = CollectedType::Named { name: type_args[0].as_str().into(), args: vec![] };
+                Some(CollectedTypeAlias::Pick {
+                    base,
+                    picked_keys: parse_string_union_keys(&type_args[1]),
+                    file_path: consuming_file.to_owned(),
+                })
+            }
+            "Omit" if type_args.len() >= 2 && !type_args[0].contains('<') => {
+                let base = CollectedType::Named { name: type_args[0].as_str().into(), args: vec![] };
+                Some(CollectedTypeAlias::Omit {
+                    base,
+                    omitted_keys: parse_string_union_keys(&type_args[1]),
+                    file_path: consuming_file.to_owned(),
+                })
+            }
+            "Partial" if !type_args.is_empty() && !type_args[0].contains('<') => {
+                let base = CollectedType::Named { name: type_args[0].as_str().into(), args: vec![] };
+                Some(CollectedTypeAlias::Partial { base, file_path: consuming_file.to_owned() })
+            }
+            "Readonly" if !type_args.is_empty() && !type_args[0].contains('<') => {
+                let base = CollectedType::Named { name: type_args[0].as_str().into(), args: vec![] };
+                Some(CollectedTypeAlias::Passthrough { target: base, file_path: consuming_file.to_owned() })
+            }
+            _ => None,
+        };
+        if let Some(alias) = synthetic {
+            return resolve_type_alias_chain(&alias, consuming_file, mapping, ctx, state, depth);
+        }
+    }
+
     // ── Step 1: TypeScript built-in utility types — silent no-op ─────────────
     // Not prop providers; suppress false "unresolvable" warnings.
     if matches!(
@@ -223,16 +262,30 @@ pub(super) fn find_discriminant_prop(members: &[(&str, Vec<ParsedProp>)]) -> Opt
         return None;
     }
 
-    let first_props = &members[0].1;
+    // Collect candidate prop names: appear in all members AND have PropType::StringLiteral in at least one.
+    // Use the intersection of all member prop names as candidates.
+    let mut candidate_names: Option<std::collections::BTreeSet<&str>> = None;
+    for (_, member_props) in members {
+        let names: std::collections::BTreeSet<&str> = member_props.iter().map(|p| p.name.as_str()).collect();
+        candidate_names = Some(match candidate_names {
+            None => names,
+            Some(existing) => existing.intersection(&names).copied().collect(),
+        });
+    }
+    let candidate_names = candidate_names.unwrap_or_default();
 
-    'outer: for prop in first_props {
-        if !matches!(prop.prop_type, PropType::StringLiteral(_)) {
+    'outer: for candidate in &candidate_names {
+        // Check that this prop has a string literal type in at least one member.
+        let has_literal = members.iter().any(|(_, props)| {
+            props.iter().any(|p| p.name.as_str() == *candidate && matches!(p.prop_type, PropType::StringLiteral(_)))
+        });
+        if !has_literal {
             continue;
         }
 
         let mut literal_values: Vec<&str> = Vec::new();
         for (_, member_props) in members {
-            let found = member_props.iter().find(|p| p.name == prop.name);
+            let found = member_props.iter().find(|p| p.name.as_str() == *candidate);
             match found {
                 Some(p) => {
                     if let PropType::StringLiteral(ref s) = p.prop_type {
@@ -250,9 +303,14 @@ pub(super) fn find_discriminant_prop(members: &[(&str, Vec<ParsedProp>)]) -> Opt
         }
 
         if literal_values.len() == members.len() {
-            return Some(prop.name.clone());
+            return Some((*candidate).to_owned());
         }
     }
 
     None
+}
+
+/// Parse a TypeScript string union like `'disabled' | 'type' | 'form'` into individual key strings.
+fn parse_string_union_keys(raw: &str) -> Vec<String> {
+    raw.split('|').map(|s| s.trim().trim_matches('\'').trim_matches('"').to_owned()).filter(|s| !s.is_empty()).collect()
 }

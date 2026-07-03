@@ -37,15 +37,19 @@ fn run_fixture(library: &str) -> serde_json::Value {
     serde_json::from_str(&json_str).expect("round-trip must parse")
 }
 
-/// Replace all absolute paths in the JSON value with `[PATH]`.
+/// Replace all absolute paths in the JSON value with `[ROOT]`.
 /// This makes snapshots portable across machines and directory layouts.
 fn redact_paths(value: &mut serde_json::Value, workspace: &str) {
     match value {
         serde_json::Value::String(s) => {
-            if s.contains(workspace) || s.starts_with('/') {
-                // Keep the filename portion so snapshots are still readable.
+            if s.starts_with('/') {
+                // Pure path string: strip the workspace prefix and replace with [ROOT]/
                 let trimmed = s.trim_start_matches(workspace).trim_start_matches('/').to_owned();
                 *s = format!("[ROOT]/{trimmed}");
+            } else if s.contains(workspace) {
+                // Embedded path (e.g., diagnostic messages containing quoted absolute paths):
+                // replace all occurrences so snapshots are stable across checkout locations.
+                *s = s.replace(workspace, "[ROOT]");
             }
         }
         serde_json::Value::Array(arr) => {

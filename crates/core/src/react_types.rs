@@ -18,7 +18,9 @@ pub fn html_element_for(type_name: &str) -> Option<&'static str> {
         "AudioHTMLAttributes" => Some("audio"),
         "HTMLAttributes" => Some("div"),
         "DOMAttributes" => Some("div"),
-        "AriaAttributes" => None, // not an element, but recognized as built-in
+        "AriaAttributes" => None,             // not an element, but recognized as built-in
+        "SVGAttributes" | "SVGProps" => None, // SVG — no single element to pick
+        "HTMLProps" => Some("div"),           // generic HTML props → div
         _ => None,
     }
 }
@@ -91,6 +93,11 @@ pub fn is_react_builtin(name: &str, extra: &rustc_hash::FxHashSet<compact_str::C
                 | "ReactChild"
                 | "ForwardRefExoticComponent"
                 | "RefAttributes"
+                | "ComponentRef"
+                | "JSXElementConstructor"
+                | "SVGAttributes"
+                | "SVGProps"
+                | "HTMLProps"
         )
 }
 

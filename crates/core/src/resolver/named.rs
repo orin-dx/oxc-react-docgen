@@ -105,6 +105,10 @@ pub(super) fn resolve_named(
             | "VideoHTMLAttributes" | "AudioHTMLAttributes" | "DOMAttributes"
             | "AriaAttributes" | "HTMLInputTypeAttribute" | "HTMLAttributeReferrerPolicy"
             | "HTMLAttributeAnchorTarget" | "HTMLInputAutoCompleteAttribute"
+            // React SVG/generic HTML prop types
+            | "SVGAttributes" | "SVGProps" | "HTMLProps"
+            // React component utility types
+            | "ComponentRef" | "JSXElementConstructor"
     ) || bare.ends_with("HTMLAttributes")
     {
         return PropType::Named { name: name.clone(), args: resolved_args };

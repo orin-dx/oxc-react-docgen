@@ -200,7 +200,9 @@ impl ResolvedChain {
         self.inheritance = new_inheritance;
 
         self.composes.extend(parent.composes);
-        self.inherited_by_name.extend(parent.inherited_by_name);
+        for (name, prop) in parent.inherited_by_name {
+            self.inherited_by_name.entry(name).or_insert(prop);
+        }
     }
 }
 

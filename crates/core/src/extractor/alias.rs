@@ -59,6 +59,15 @@ impl<'src> SourceDataCollector<'src> {
                         };
                         Some(CollectedTypeAlias::Required { base, file_path: fp })
                     }
+                    "Readonly" => {
+                        let tp = tr.type_arguments.as_ref()?;
+                        let (base_name, base_args) = self.extract_type_name_from_type(tp.params.first()?)?;
+                        let target = CollectedType::Named {
+                            name: base_name,
+                            args: base_args.into_iter().map(CollectedType::Raw).collect(),
+                        };
+                        Some(CollectedTypeAlias::Passthrough { target, file_path: fp })
+                    }
                     _ => {
                         // Simple passthrough: `type Size = SomeOtherType`
                         let args = self.extract_type_args(&tr.type_arguments);

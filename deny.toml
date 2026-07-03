@@ -1,6 +1,8 @@
 [advisories]
 version = 2
-ignore = []
+ignore = [
+    "RUSTSEC-2026-0190",  # anyhow unsoundness in Error::downcast_mut(); fixed in >=1.0.103
+]
 
 [licenses]
 version = 2

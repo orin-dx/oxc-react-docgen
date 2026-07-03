@@ -9,7 +9,7 @@ use super::SourceDataCollector;
 impl<'src> SourceDataCollector<'src> {
     // ─── TypeAlias classification ─────────────────────────────────────────────
 
-    pub(super) fn classify_type_alias<'a>(&self, _name: &str, ty: &TSType<'a>) -> Option<CollectedTypeAlias> {
+    pub(super) fn classify_type_alias<'a>(&mut self, _name: &str, ty: &TSType<'a>) -> Option<CollectedTypeAlias> {
         let fp = self.file_path.clone();
         match ty {
             TSType::TSTypeReference(tr) => {

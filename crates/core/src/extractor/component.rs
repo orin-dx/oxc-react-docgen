@@ -27,13 +27,17 @@ impl<'src> SourceDataCollector<'src> {
     }
 
     /// Try to detect: `const Button: FC<ButtonProps> = ...`
-    pub(super) fn try_fc_annotation<'a>(&self, decl: &VariableDeclarator<'a>, name: &str) -> Option<ComponentMapping> {
+    pub(super) fn try_fc_annotation<'a>(
+        &mut self,
+        decl: &VariableDeclarator<'a>,
+        name: &str,
+    ) -> Option<ComponentMapping> {
         let type_ann = decl.type_annotation.as_ref()?;
         self.extract_props_from_type_annotation(&type_ann.type_annotation, name, decl.span.start, decl.span.end)
     }
 
     pub(super) fn extract_props_from_type_annotation<'a>(
-        &self,
+        &mut self,
         ty: &TSType<'a>,
         name: &str,
         span_start: u32,
@@ -69,7 +73,11 @@ impl<'src> SourceDataCollector<'src> {
     }
 
     /// Try to detect: `const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(...)`
-    pub(super) fn try_forward_ref<'a>(&self, decl: &VariableDeclarator<'a>, name: &str) -> Option<ComponentMapping> {
+    pub(super) fn try_forward_ref<'a>(
+        &mut self,
+        decl: &VariableDeclarator<'a>,
+        name: &str,
+    ) -> Option<ComponentMapping> {
         let init = decl.init.as_ref()?;
         let call = match init {
             Expression::CallExpression(ce) => ce,
@@ -103,7 +111,11 @@ impl<'src> SourceDataCollector<'src> {
     }
 
     /// Try to detect: `const Button = anyHOC(function Button(props: ButtonProps) {...})`
-    pub(super) fn try_hoc_wrapped<'a>(&self, decl: &VariableDeclarator<'a>, name: &str) -> Option<ComponentMapping> {
+    pub(super) fn try_hoc_wrapped<'a>(
+        &mut self,
+        decl: &VariableDeclarator<'a>,
+        name: &str,
+    ) -> Option<ComponentMapping> {
         let init = decl.init.as_ref()?;
         let call = match init {
             Expression::CallExpression(ce) => ce,
@@ -174,7 +186,7 @@ impl<'src> SourceDataCollector<'src> {
     ///
     /// Common in .d.ts files — no initializer, just a type annotation.
     pub(super) fn try_forward_ref_exotic_decl<'a>(
-        &self,
+        &mut self,
         decl: &VariableDeclarator<'a>,
         name: &str,
     ) -> Option<ComponentMapping> {

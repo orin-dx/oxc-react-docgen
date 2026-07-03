@@ -74,6 +74,9 @@ pub(super) struct SourceDataCollector<'src> {
     pub(super) comments: Vec<OwnedComment>,
     /// Names that came from imports — used to classify ExtendsRef.
     pub(super) imported_names: FxHashSet<CompactString>,
+    /// Tracks which JSDoc comment spans have already been consumed (by span_end).
+    /// Prevents the same comment from leaking to both a component description and its first prop.
+    pub(super) consumed_jsdoc: FxHashSet<u32>,
 }
 
 impl<'src> SourceDataCollector<'src> {
@@ -85,6 +88,7 @@ impl<'src> SourceDataCollector<'src> {
             data: SourceData::default(),
             comments: Vec::new(),
             imported_names: FxHashSet::default(),
+            consumed_jsdoc: FxHashSet::default(),
         }
     }
 
@@ -140,7 +144,7 @@ impl<'src> SourceDataCollector<'src> {
     // ─── TSTypeParameterInstantiation → Vec<String> ──────────────────────────
 
     pub(super) fn extract_type_args<'a>(
-        &self,
+        &mut self,
         type_params: &Option<OxcBox<'a, TSTypeParameterInstantiation<'a>>>,
     ) -> Vec<String> {
         match type_params {
@@ -151,7 +155,7 @@ impl<'src> SourceDataCollector<'src> {
 
     // ─── TSType → CollectedType ───────────────────────────────────────────────
 
-    pub(super) fn ts_type_to_collected<'a>(&self, ty: &TSType<'a>) -> CollectedType {
+    pub(super) fn ts_type_to_collected<'a>(&mut self, ty: &TSType<'a>) -> CollectedType {
         match ty {
             TSType::TSStringKeyword(_) => CollectedType::String,
             TSType::TSNumberKeyword(_) => CollectedType::Number,
@@ -302,7 +306,7 @@ impl<'src> SourceDataCollector<'src> {
     /// Convert a `TSTupleElement` (which is a superset of `TSType`) to a `CollectedType`.
     ///
     /// TSTupleElement inherits all TSType variants and adds TSOptionalType and TSRestType.
-    pub(super) fn ts_tuple_element_to_collected<'a>(&self, el: &TSTupleElement<'a>) -> CollectedType {
+    pub(super) fn ts_tuple_element_to_collected<'a>(&mut self, el: &TSTupleElement<'a>) -> CollectedType {
         match el {
             TSTupleElement::TSOptionalType(o) => {
                 // T? in tuple → Union([T, Undefined])
@@ -340,7 +344,10 @@ impl<'src> SourceDataCollector<'src> {
         self.source[span.start as usize..span.end as usize].to_owned()
     }
 
-    pub(super) fn ts_signature_to_object_field<'a>(&self, member: &TSSignature<'a>) -> Option<CollectedObjectField> {
+    pub(super) fn ts_signature_to_object_field<'a>(
+        &mut self,
+        member: &TSSignature<'a>,
+    ) -> Option<CollectedObjectField> {
         match member {
             TSSignature::TSPropertySignature(sig) => {
                 let name = match &sig.key {
@@ -399,7 +406,7 @@ impl<'src> SourceDataCollector<'src> {
     /// Used for `FC<ButtonProps>` → "ButtonProps".
     /// Handles `PropsWithChildren<P>` and `Readonly<P>` wrappers.
     pub(super) fn extract_props_arg<'a>(
-        &self,
+        &mut self,
         type_params: &Option<OxcBox<'a, TSTypeParameterInstantiation<'a>>>,
     ) -> Option<(CompactString, Vec<String>)> {
         let tp = type_params.as_ref()?;
@@ -410,7 +417,7 @@ impl<'src> SourceDataCollector<'src> {
     /// Get the (name, type_args) of a TSType if it's a simple named reference.
     ///
     /// Unwraps single-layer wrappers like `PropsWithChildren<P>` and `Readonly<P>`.
-    pub(super) fn extract_type_name_from_type<'a>(&self, ty: &TSType<'a>) -> Option<(CompactString, Vec<String>)> {
+    pub(super) fn extract_type_name_from_type<'a>(&mut self, ty: &TSType<'a>) -> Option<(CompactString, Vec<String>)> {
         match ty {
             TSType::TSTypeReference(tr) => {
                 let name = self.extract_type_ref_name(tr);
@@ -432,7 +439,7 @@ impl<'src> SourceDataCollector<'src> {
 
     // ─── TSInterfaceHeritage → ExtendsRef ────────────────────────────────────
 
-    pub(super) fn collect_extends<'a>(&self, ext: &TSInterfaceHeritage<'a>) -> ExtendsRef {
+    pub(super) fn collect_extends<'a>(&mut self, ext: &TSInterfaceHeritage<'a>) -> ExtendsRef {
         let name = self.expression_to_ident_name(&ext.expression);
         let type_args = self.extract_type_args(&ext.type_arguments);
         self.classify_extends(&name, type_args)
@@ -450,7 +457,7 @@ impl<'src> SourceDataCollector<'src> {
 
     // ─── Property Signature collection ───────────────────────────────────────
 
-    pub(super) fn collect_property_signature<'a>(&self, sig: &TSSignature<'a>) -> Option<RawProp> {
+    pub(super) fn collect_property_signature<'a>(&mut self, sig: &TSSignature<'a>) -> Option<RawProp> {
         match sig {
             TSSignature::TSPropertySignature(ps) => {
                 let name = ps.key.static_name()?.to_string();

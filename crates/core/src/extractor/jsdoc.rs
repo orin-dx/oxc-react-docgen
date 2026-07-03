@@ -9,19 +9,28 @@ impl<'src> SourceDataCollector<'src> {
 
     /// Find JSDoc comment immediately preceding the given byte offset.
     /// Returns empty string if none found.
-    pub(super) fn find_jsdoc(&self, span_start: u32) -> String {
+    ///
+    /// Marks the comment as consumed so subsequent calls for a different span cannot
+    /// return the same comment (prevents prop JSDoc leaking into component descriptions).
+    pub(super) fn find_jsdoc(&mut self, span_start: u32) -> String {
         const PROXIMITY_THRESHOLD: u32 = 120; // bytes — enough for blank lines + decorator
 
-        let comment = self
-            .comments
-            .iter()
-            .rev()
-            .find(|c| c.is_block && c.span_end <= span_start && span_start - c.span_end <= PROXIMITY_THRESHOLD);
+        let comment = self.comments.iter().rev().find(|c| {
+            c.is_block
+                && c.span_end <= span_start
+                && span_start - c.span_end <= PROXIMITY_THRESHOLD
+                && !self.consumed_jsdoc.contains(&c.span_end)
+        });
 
         match comment {
             Some(c) => {
+                let span_end = c.span_end;
                 let raw = &self.source[c.span_start as usize..c.span_end as usize];
-                parse_jsdoc_text(raw)
+                let text = parse_jsdoc_text(raw);
+                if !text.is_empty() {
+                    self.consumed_jsdoc.insert(span_end);
+                }
+                text
             }
             None => String::new(),
         }

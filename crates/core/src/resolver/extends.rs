@@ -47,10 +47,7 @@ pub(super) fn resolve_extends_ref(
                                 html_element: Some(inner.to_lowercase()),
                                 total_props: 0,
                             };
-                            return (
-                                ResolvedChain { inheritance: vec![layer.clone()], ..Default::default() },
-                                Some(layer),
-                            );
+                            return (ResolvedChain::default(), Some(layer));
                         }
                     }
                 }

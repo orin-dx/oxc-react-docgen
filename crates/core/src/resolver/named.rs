@@ -70,7 +70,7 @@ pub(super) fn resolve_named(
     // ── 5. Known pattern check (fallback — only when not found in source) ─────
     // Library opaque patterns (ThemingProps, StylesApiProps, VariantProps, …) are
     // applied only when the type cannot be resolved from the project's own source.
-    if let Some(result) = resolve_known(name.as_str(), &resolved_args, &ctx.global) {
+    if let Some(result) = resolve_known(name.as_str(), &resolved_args, &ctx.global, &ctx.enum_bare_index) {
         return match result {
             KnownPatternResult::Type(pt) => pt,
             KnownPatternResult::Alias { name: alias_name } => {

@@ -32,7 +32,18 @@ expression: value
         "defaultValue": {
           "name": "defaultValue",
           "type": {
-            "kind": "string"
+            "kind": "union",
+            "0": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "array",
+                "0": {
+                  "kind": "string"
+                }
+              }
+            ]
           },
           "required": false,
           "defaultValue": null,
@@ -52,8 +63,17 @@ expression: value
         "onValueChange": {
           "name": "onValueChange",
           "type": {
-            "kind": "eventHandler",
-            "eventType": "string"
+            "kind": "union",
+            "0": [
+              {
+                "kind": "eventHandler",
+                "eventType": "string"
+              },
+              {
+                "kind": "eventHandler",
+                "eventType": "string[]"
+              }
+            ]
           },
           "required": false,
           "defaultValue": null,
@@ -103,7 +123,18 @@ expression: value
         "value": {
           "name": "value",
           "type": {
-            "kind": "string"
+            "kind": "union",
+            "0": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "array",
+                "0": {
+                  "kind": "string"
+                }
+              }
+            ]
           },
           "required": false,
           "defaultValue": null,

@@ -50,6 +50,15 @@ pub struct ResolutionContext {
     pub import_map: Arc<ImportResolutionMap>,
     pub oxc_resolver: Arc<Resolver>,
     pub extra_builtins: FxHashSet<CompactString>,
+    /// Bare name → full scoped key ("file:name") index over `global.enums`,
+    /// built once per resolution pass so `resolve_typeof` and
+    /// `resolve_cva_variant_props` (VariantProps<typeof X>) can do an O(1)
+    /// lookup instead of a linear scan with a `format!()` allocation per
+    /// candidate on every reference. Ambiguous bare names (same name in two
+    /// files) resolve to whichever key `global.enums` yields first during
+    /// this build pass — the same tie-break the old linear scan produced,
+    /// since both iterate the same underlying map.
+    pub enum_bare_index: FxHashMap<CompactString, CompactString>,
 }
 
 impl ResolutionContext {
@@ -64,11 +73,18 @@ impl ResolutionContext {
             ..ResolveOptions::default()
         };
 
+        let mut enum_bare_index: FxHashMap<CompactString, CompactString> = FxHashMap::default();
+        for key in global.enums.keys() {
+            let bare = key.rsplit_once(':').map(|(_, name)| name).unwrap_or(key.as_str());
+            enum_bare_index.entry(CompactString::from(bare)).or_insert_with(|| CompactString::from(key.as_str()));
+        }
+
         Self {
             import_map: Arc::new(ImportResolutionMap::build(&global)),
             global,
             oxc_resolver: Arc::new(Resolver::new(resolve_options)),
             extra_builtins: options.extra_builtins.clone(),
+            enum_bare_index,
         }
     }
 }

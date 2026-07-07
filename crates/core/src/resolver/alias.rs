@@ -191,12 +191,21 @@ pub(super) fn resolve_union_alias(
     // Try to find a discriminant prop (a prop whose type is a distinct string literal across all members).
     let discriminant = find_discriminant_prop(&named_members);
 
-    // Merge all props from all members.
+    // Merge all props from all members. A prop's merged type is the union of every
+    // distinct type it has across the members that declare it (deduped — two members
+    // contributing the identical type must not produce a redundant single-member
+    // union); a prop missing from at least one member becomes optional overall, even
+    // if it was required in every member where it does appear, since the union type
+    // doesn't guarantee its presence.
     let mut merged_props: BTreeMap<String, ParsedProp> = BTreeMap::new();
+    let mut prop_types: BTreeMap<String, Vec<PropType>> = BTreeMap::new();
+    let mut seen_count: BTreeMap<String, usize> = BTreeMap::new();
+    let mut required_in_all: BTreeMap<String, bool> = BTreeMap::new();
+    let mut total_variants: usize = 0;
+
     for (_, member_props) in &named_members {
-        for prop in member_props {
-            merged_props.entry(prop.name.clone()).or_insert_with(|| prop.clone());
-        }
+        total_variants += 1;
+        record_variant_props(member_props, &mut merged_props, &mut prop_types, &mut seen_count, &mut required_in_all);
     }
 
     // Also merge non-Named members (inline objects, intersections, nested unions, etc.)
@@ -204,9 +213,31 @@ pub(super) fn resolve_union_alias(
     for member in members {
         if !matches!(member, CollectedType::Named { .. }) {
             let sub_chain = resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
-            for prop in sub_chain.props {
-                merged_props.entry(prop.name.clone()).or_insert_with(|| prop.clone());
-            }
+            total_variants += 1;
+            record_variant_props(
+                &sub_chain.props,
+                &mut merged_props,
+                &mut prop_types,
+                &mut seen_count,
+                &mut required_in_all,
+            );
+        }
+    }
+
+    for (name, mut types) in prop_types {
+        let prop_type = match types.len() {
+            0 | 1 => match types.pop() {
+                Some(t) => t,
+                None => continue,
+            },
+            _ => PropType::Union(types),
+        };
+
+        if let Some(entry) = merged_props.get_mut(&name) {
+            entry.prop_type = prop_type;
+            let present_everywhere = seen_count.get(&name).copied().unwrap_or(0) == total_variants;
+            let required_everywhere = required_in_all.get(&name).copied().unwrap_or(false);
+            entry.required = present_everywhere && required_everywhere;
         }
     }
 
@@ -239,6 +270,34 @@ pub(super) fn resolve_union_alias(
     }
 
     ResolvedChain { props: merged_props.into_values().collect(), discriminant_prop: discriminant, ..Default::default() }
+}
+
+/// Record one union member's props into the shared merge accumulators: the
+/// first-seen `ParsedProp` (for name/description/parent/etc.), the set of
+/// distinct types contributed for each prop name, how many members declared
+/// it, and whether every member that declared it marked it required.
+fn record_variant_props(
+    props: &[ParsedProp],
+    merged_props: &mut BTreeMap<String, ParsedProp>,
+    prop_types: &mut BTreeMap<String, Vec<PropType>>,
+    seen_count: &mut BTreeMap<String, usize>,
+    required_in_all: &mut BTreeMap<String, bool>,
+) {
+    for prop in props {
+        merged_props.entry(prop.name.clone()).or_insert_with(|| prop.clone());
+
+        let types = prop_types.entry(prop.name.clone()).or_default();
+        if !types.contains(&prop.prop_type) {
+            types.push(prop.prop_type.clone());
+        }
+
+        *seen_count.entry(prop.name.clone()).or_insert(0) += 1;
+
+        required_in_all
+            .entry(prop.name.clone())
+            .and_modify(|required| *required = *required && prop.required)
+            .or_insert(prop.required);
+    }
 }
 
 /// Resolve a `CollectedTypeAlias` to a `PropType` (at the type level, not chain level).

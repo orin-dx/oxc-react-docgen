@@ -124,7 +124,7 @@ pub(super) fn resolve_props_chain(
             })
             .collect();
 
-        if let Some(result) = resolve_known(type_name_bare, &resolved_args, &ctx.global) {
+        if let Some(result) = resolve_known(type_name_bare, &resolved_args, &ctx.global, &ctx.enum_bare_index) {
             return match result {
                 KnownPatternResult::Props(props) => ResolvedChain { props, ..Default::default() },
                 KnownPatternResult::Type(PropType::HtmlAttributes { element, omitted }) => {

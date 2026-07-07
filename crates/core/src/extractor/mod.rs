@@ -15,9 +15,9 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 use rustc_hash::FxHashSet;
 
-use crate::types::{CollectedObjectField, CollectedType, ExtendsRef, RawProp, SourceData};
 #[cfg(test)]
-use crate::types::{CollectedTypeAlias, LexedExport};
+use crate::types::LexedExport;
+use crate::types::{CollectedObjectField, CollectedType, CollectedTypeAlias, ExtendsRef, RawProp, SourceData};
 
 mod alias;
 mod component;
@@ -446,6 +446,24 @@ impl<'src> SourceDataCollector<'src> {
                 Some((name.into(), args))
             }
             TSType::TSParenthesizedType(p) => self.extract_type_name_from_type(&p.type_annotation),
+            TSType::TSUnionType(u) => {
+                let members: Vec<CollectedType> = u.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
+                let bare = format!("__anon_{}", self.data.type_aliases.len());
+                let scoped = self.scoped_key(&bare);
+                self.data
+                    .type_aliases
+                    .insert(scoped, CollectedTypeAlias::Union { members, file_path: self.file_path.clone() });
+                Some((bare.into(), vec![]))
+            }
+            TSType::TSIntersectionType(i) => {
+                let members: Vec<CollectedType> = i.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
+                let bare = format!("__anon_{}", self.data.type_aliases.len());
+                let scoped = self.scoped_key(&bare);
+                self.data
+                    .type_aliases
+                    .insert(scoped, CollectedTypeAlias::Intersection { members, file_path: self.file_path.clone() });
+                Some((bare.into(), vec![]))
+            }
             _ => None,
         }
     }

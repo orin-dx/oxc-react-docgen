@@ -4,6 +4,130 @@ expression: value
 ---
 {
   "components": {
+    "Accordion": {
+      "displayName": "Accordion",
+      "filePath": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx",
+      "description": "",
+      "props": {
+        "collapsible": {
+          "name": "collapsible",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Whether the open item can be collapsed by clicking it again.",
+          "tags": {},
+          "parent": {
+            "name": "AccordionSingleProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx"
+          },
+          "declarations": [
+            {
+              "name": "AccordionSingleProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx"
+            }
+          ]
+        },
+        "defaultValue": {
+          "name": "defaultValue",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The initially open item ID (uncontrolled).",
+          "tags": {},
+          "parent": {
+            "name": "AccordionSingleProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx"
+          },
+          "declarations": [
+            {
+              "name": "AccordionSingleProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx"
+            }
+          ]
+        },
+        "onValueChange": {
+          "name": "onValueChange",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Called when the open item changes.",
+          "tags": {},
+          "parent": {
+            "name": "AccordionSingleProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx"
+          },
+          "declarations": [
+            {
+              "name": "AccordionSingleProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx"
+            }
+          ]
+        },
+        "type": {
+          "name": "type",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "single"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "multiple"
+              }
+            ]
+          },
+          "required": true,
+          "defaultValue": null,
+          "description": "Selects single-item open mode.",
+          "tags": {},
+          "parent": {
+            "name": "AccordionSingleProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx"
+          },
+          "declarations": [
+            {
+              "name": "AccordionSingleProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx"
+            }
+          ]
+        },
+        "value": {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The controlled open item ID (controlled).",
+          "tags": {},
+          "parent": {
+            "name": "AccordionSingleProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx"
+          },
+          "declarations": [
+            {
+              "name": "AccordionSingleProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx"
+            }
+          ]
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": "type",
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
     "Avatar": {
       "displayName": "Avatar",
       "filePath": "[ROOT]/fixtures/rdt-compat/memo.tsx",
@@ -1059,9 +1183,19 @@ expression: value
     }
   },
   "enums": {},
-  "diagnostics": [],
+  "diagnostics": [
+    {
+      "severity": "info",
+      "message": "Discriminated union detected with discriminant prop 'type'",
+      "file": "[ROOT]/fixtures/rdt-compat/discriminated-union.tsx",
+      "line": null,
+      "column": null,
+      "help": null,
+      "code": "DISCRIMINATED_UNION"
+    }
+  ],
   "stats": {
-    "componentsExtracted": 7,
+    "componentsExtracted": 8,
     "componentsSkipped": 0,
     "filesParsed": 7,
     "dtsFilesParsed": 0,

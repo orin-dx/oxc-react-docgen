@@ -4,18 +4,20 @@
  * The Radix Accordion / MUI TextField pattern: the component accepts one of
  * several mutually exclusive prop shapes, distinguished by a literal `type`
  * discriminant. This fixture documents what the resolver actually produces —
- * whether it detects discriminantProp, merges props, or degrades.
+ * discriminantProp detection, prop merging from the first union member, and
+ * the discriminant prop's type showing the full union of literals.
  *
  * Exercises:
- *   - ForwardRefExoticComponent<InterfaceA | InterfaceB>
+ *   - forwardRef<Ref, InterfaceA | InterfaceB> inline union prop type
  *   - Literal discriminant property (`type: 'single'` vs `type: 'multiple'`)
  *   - Array prop type (value?: string[] in the multiple branch)
  *
  * Observed resolver behaviour:
- *   - The Accordion component is NOT extracted at all. The resolver does not
- *     handle a union-of-interfaces as the root props type and silently skips
- *     the component. No discriminantProp detection, no prop merging, no
- *     diagnostic. This is a known limitation: union props types are unsupported.
+ *   - Accordion is extracted with all props from AccordionSingleProps.
+ *   - discriminantProp: "type" is detected correctly.
+ *   - The `type` prop shows `'single' | 'multiple'` (union from both members).
+ *   - Duplicate prop names (value, defaultValue, onValueChange) resolve to the
+ *     first member's types (AccordionSingleProps wins over AccordionMultipleProps).
  */
 import * as React from 'react';
 

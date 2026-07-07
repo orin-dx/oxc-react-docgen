@@ -26,14 +26,25 @@ impl<'src> SourceDataCollector<'src> {
         }
     }
 
-    /// Try to detect: `const Button: FC<ButtonProps> = ...`
+    /// Try to detect: `const Button: FC<ButtonProps> = ({ variant = 'primary' }) => ...`
     pub(super) fn try_fc_annotation<'a>(
         &mut self,
         decl: &VariableDeclarator<'a>,
         name: &str,
     ) -> Option<ComponentMapping> {
         let type_ann = decl.type_annotation.as_ref()?;
-        self.extract_props_from_type_annotation(&type_ann.type_annotation, name, decl.span.start, decl.span.end)
+        let init_params = match decl.init.as_ref() {
+            Some(Expression::ArrowFunctionExpression(afe)) => Some(&*afe.params),
+            Some(Expression::FunctionExpression(fe)) => Some(&*fe.params),
+            _ => None,
+        };
+        self.extract_props_from_type_annotation(
+            &type_ann.type_annotation,
+            name,
+            decl.span.start,
+            decl.span.end,
+            init_params,
+        )
     }
 
     pub(super) fn extract_props_from_type_annotation<'a>(
@@ -42,6 +53,7 @@ impl<'src> SourceDataCollector<'src> {
         name: &str,
         span_start: u32,
         span_end: u32,
+        init_params: Option<&FormalParameters<'a>>,
     ) -> Option<ComponentMapping> {
         match ty {
             TSType::TSTypeReference(tr) => {
@@ -62,11 +74,11 @@ impl<'src> SourceDataCollector<'src> {
                     tags: self.extract_jsdoc_tags(span_start),
                     span_start,
                     span_end,
-                    param_defaults: Default::default(),
+                    param_defaults: init_params.map(|p| self.extract_param_defaults(p)).unwrap_or_default(),
                 })
             }
             TSType::TSParenthesizedType(p) => {
-                self.extract_props_from_type_annotation(&p.type_annotation, name, span_start, span_end)
+                self.extract_props_from_type_annotation(&p.type_annotation, name, span_start, span_end, init_params)
             }
             _ => None,
         }
@@ -97,6 +109,15 @@ impl<'src> SourceDataCollector<'src> {
         let props_type = &type_params.params[1];
         let (props_name, type_args) = self.extract_type_name_from_type(props_type)?;
 
+        // The render function is forwardRef's call argument — its first parameter is
+        // props (the second is `ref`, which never carries destructured defaults we care about).
+        let render_params = match call.arguments.first() {
+            Some(Argument::FunctionExpression(fe)) => Some(&fe.params),
+            Some(Argument::ArrowFunctionExpression(afe)) => Some(&afe.params),
+            _ => None,
+        };
+        let param_defaults = render_params.map(|p| self.extract_param_defaults(p)).unwrap_or_default();
+
         Some(ComponentMapping {
             component_name: name.to_owned(),
             props_type_name: props_name,
@@ -106,7 +127,7 @@ impl<'src> SourceDataCollector<'src> {
             tags: self.extract_jsdoc_tags(decl.span.start),
             span_start: decl.span.start,
             span_end: decl.span.end,
-            param_defaults: Default::default(),
+            param_defaults,
         })
     }
 

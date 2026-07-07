@@ -230,7 +230,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.HTMLProps",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -437,7 +437,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.HTMLAttributes",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -577,6 +577,62 @@ expression: value
       },
       "methods": []
     },
+    "Chip": {
+      "displayName": "Chip",
+      "filePath": "[ROOT]/fixtures/rdt-compat/destructured-defaults.tsx",
+      "description": "",
+      "props": {
+        "closable": {
+          "name": "closable",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "true",
+            "computed": false
+          },
+          "description": "Whether the chip shows a close button.",
+          "tags": {},
+          "parent": {
+            "name": "ChipProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/destructured-defaults.tsx"
+          },
+          "declarations": [
+            {
+              "name": "ChipProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/destructured-defaults.tsx"
+            }
+          ]
+        },
+        "label": {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "defaultValue": null,
+          "description": "The chip's label text.",
+          "tags": {},
+          "parent": {
+            "name": "ChipProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/destructured-defaults.tsx"
+          },
+          "declarations": [
+            {
+              "name": "ChipProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/destructured-defaults.tsx"
+            }
+          ]
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
     "Icon": {
       "displayName": "Icon",
       "filePath": "[ROOT]/fixtures/rdt-compat/svg-icon.tsx",
@@ -588,7 +644,10 @@ expression: value
             "kind": "string"
           },
           "required": false,
-          "defaultValue": null,
+          "defaultValue": {
+            "value": "\"currentColor\"",
+            "computed": false
+          },
           "description": "Icon color.",
           "tags": {},
           "parent": {
@@ -608,7 +667,10 @@ expression: value
             "kind": "number"
           },
           "required": false,
-          "defaultValue": null,
+          "defaultValue": {
+            "value": "24",
+            "computed": false
+          },
           "description": "Icon size in pixels.",
           "tags": {},
           "parent": {
@@ -934,6 +996,79 @@ expression: value
       "tags": {},
       "methods": []
     },
+    "Toggle": {
+      "displayName": "Toggle",
+      "filePath": "[ROOT]/fixtures/rdt-compat/destructured-defaults.tsx",
+      "description": "",
+      "props": {
+        "pressed": {
+          "name": "pressed",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "Whether the toggle is pressed.",
+          "tags": {},
+          "parent": {
+            "name": "ToggleProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/destructured-defaults.tsx"
+          },
+          "declarations": [
+            {
+              "name": "ToggleProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/destructured-defaults.tsx"
+            }
+          ]
+        },
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "union",
+            "0": [
+              {
+                "kind": "stringLiteral",
+                "0": "sm"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "md"
+              },
+              {
+                "kind": "stringLiteral",
+                "0": "lg"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "\"md\"",
+            "computed": false
+          },
+          "description": "Size variant.",
+          "tags": {},
+          "parent": {
+            "name": "ToggleProps",
+            "fileName": "[ROOT]/fixtures/rdt-compat/destructured-defaults.tsx"
+          },
+          "declarations": [
+            {
+              "name": "ToggleProps",
+              "fileName": "[ROOT]/fixtures/rdt-compat/destructured-defaults.tsx"
+            }
+          ]
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
     "TypeSampler": {
       "displayName": "TypeSampler",
       "filePath": "[ROOT]/fixtures/rdt-compat/types.tsx",
@@ -1195,9 +1330,9 @@ expression: value
     }
   ],
   "stats": {
-    "componentsExtracted": 8,
+    "componentsExtracted": 10,
     "componentsSkipped": 0,
-    "filesParsed": 7,
+    "filesParsed": 8,
     "dtsFilesParsed": 0,
     "dtsCacheHits": 0,
     "durationMs": 0,

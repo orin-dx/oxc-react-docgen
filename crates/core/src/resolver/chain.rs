@@ -221,7 +221,9 @@ pub(super) fn resolve_interface_chain(
             raw_prop.tags.get("default").or_else(|| raw_prop.tags.get("defaultValue")).map(|s| s.trim());
 
         let default_value = match (code_default, jsdoc_default) {
-            (Some(code), Some(jsdoc)) if code.value.trim_matches('"').trim_matches('\'') != jsdoc => {
+            (Some(code), Some(jsdoc))
+                if code.value.trim_matches('"').trim_matches('\'') != jsdoc.trim_matches('"').trim_matches('\'') =>
+            {
                 state.diagnostics.push(Diagnostic {
                     severity: DiagnosticSeverity::Info,
                     message: format!(

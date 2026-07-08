@@ -12,7 +12,7 @@ The CLI can emit an RDT-compatible shape via `--format rdt` (see [MIGRATING.md](
 
 ## Install
 
-`@oxc-react-docgen/napi` and `@oxc-react-docgen/vite-plugin` are not yet published to npm — there are no per-platform prebuilt binaries to install today. Until a release ships:
+`@oxc-react-docgen/napi`, `@oxc-react-docgen/vite-plugin`, and `@oxc-react-docgen/cli` are not yet published to npm — there are no per-platform prebuilt binaries to install today. Until a release ships:
 
 ```bash
 git clone https://github.com/castrog/oxc-react-codegen
@@ -59,7 +59,16 @@ docgen.components['Button'].props
 
 ## CLI
 
+The CLI is a single Rust binary (`crates/cli`) — argument parsing, output formatting, and
+`--format rdt`/`--format storybook` serialization all live there and nowhere else.
+`@oxc-react-docgen/cli` (once published) is a thin npm wrapper that just execs the
+platform-appropriate compiled binary; it deliberately contains no reimplementation of CLI
+behavior, so there's exactly one place that behavior can drift.
+
 ```bash
+# Once published: npx @oxc-react-docgen/cli extract --src src/ --out docgen.json
+# From source today: ./target/release/oxc-react-docgen (after cargo build --release)
+
 # One-shot extraction
 oxc-react-docgen extract --src src/ --out docgen.json
 
@@ -129,6 +138,7 @@ crates/binding/       thin NAPI wrapper over core
 crates/cli/           clap + miette CLI
 packages/napi/        @oxc-react-docgen/napi (dev binary loader + TS types)
 packages/vite-plugin/ @oxc-react-docgen/vite-plugin
+packages/cli/         @oxc-react-docgen/cli (npx wrapper — execs crates/cli's binary, no reimplemented logic)
 apps/validate/        accuracy comparison harness (react-docgen, rdt, ours)
 fixtures/             real library .d.ts/.tsx files (shadcn, MUI, Chakra, Mantine, etc.)
 ```

@@ -49,7 +49,7 @@ enum Command {
     /// Watch for changes and re-extract
     Watch(WatchArgs),
 
-    /// Validate extraction — exits 2 if any errors. For CI.
+    /// Validate extraction — exits 2 if any errors, or 1 if --strict and there are warnings. For CI.
     Check(CheckArgs),
 
     /// Show resolved props for a single component (debugging tool)
@@ -124,7 +124,7 @@ pub struct CheckArgs {
     #[arg(long, short, value_delimiter = ',')]
     pub src: Vec<String>,
 
-    /// Fail on warnings in addition to errors
+    /// Fail on warnings in addition to errors (exits 1, distinct from the exit-2 error path)
     #[arg(long)]
     pub strict: bool,
 }

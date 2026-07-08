@@ -35,16 +35,16 @@ function propTypeToString(pt: any): string {
     case 'cssProperties': return 'CSSProperties'
     case 'elementType': return 'ElementType'
     case 'sxProps': return 'SxProps'
-    case 'stringLiteral': return JSON.stringify(pt[0])
-    case 'numberLiteral': return String(pt[0])
-    case 'boolLiteral': return String(pt[0])
-    case 'union': return (pt[0] as any[]).map(propTypeToString).join(' | ')
-    case 'intersection': return (pt[0] as any[]).map(propTypeToString).join(' & ')
-    case 'array': return `${propTypeToString(pt[0])}[]`
-    case 'tuple': return `[${(pt[0] as any[]).map(propTypeToString).join(', ')}]`
+    case 'stringLiteral': return JSON.stringify(pt.value)
+    case 'numberLiteral': return String(pt.value)
+    case 'boolLiteral': return String(pt.value)
+    case 'union': return (pt.members as any[]).map(propTypeToString).join(' | ')
+    case 'intersection': return (pt.members as any[]).map(propTypeToString).join(' & ')
+    case 'array': return `${propTypeToString(pt.element)}[]`
+    case 'tuple': return `[${(pt.elements as any[]).map(propTypeToString).join(', ')}]`
     case 'object': return '{ ... }'
     case 'named': return pt.args?.length ? `${pt.name}<${pt.args.map(propTypeToString).join(', ')}>` : pt.name
-    case 'eventHandler': return `(event: ${pt.eventType}) => void`
+    case 'eventHandler': return `(${pt.paramName ?? 'e'}: ${pt.eventType}) => void`
     case 'ref': return pt.element ? `Ref<${pt.element}>` : 'Ref'
     case 'htmlAttributes': return `${pt.element}HTMLAttributes`
     case 'literalUnion': return pt.members.map((m: string) => JSON.stringify(m)).join(' | ')

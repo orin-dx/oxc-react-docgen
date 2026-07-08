@@ -116,11 +116,14 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
 
         let extends: Vec<ExtendsRef> = node.extends.iter().map(|ext| self.collect_extends(ext)).collect();
 
-        let props: Vec<RawProp> =
-            node.body.body.iter().filter_map(|sig| self.collect_property_signature(sig)).collect();
-
+        // Claim the interface's own leading comment before descending into props —
+        // otherwise a short interface's first prop (processed next) can steal it via
+        // find_jsdoc's proximity match, leaving the interface's own description empty.
         let description = self.find_jsdoc(node.span.start);
         let tags = self.extract_jsdoc_tags(node.span.start);
+
+        let props: Vec<RawProp> =
+            node.body.body.iter().filter_map(|sig| self.collect_property_signature(sig)).collect();
 
         self.data.interfaces.insert(
             key.clone(),

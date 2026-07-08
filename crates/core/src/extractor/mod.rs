@@ -692,6 +692,22 @@ mod tests {
     }
 
     #[test]
+    fn test_interface_description_not_stolen_by_first_prop() {
+        let source = r#"
+/** Props for Button. */
+interface ButtonProps {
+  variant: string;
+}
+"#;
+        let path = Utf8Path::new("/fixtures/inline.tsx");
+        let data = parse_file(path, source);
+
+        let iface = data.interfaces.values().find(|i| i.name.as_str() == "ButtonProps").unwrap();
+        assert_eq!(iface.description, "Props for Button.");
+        assert_eq!(iface.props[0].description, "");
+    }
+
+    #[test]
     fn test_shadcn_input() {
         let fixture = fixture_path("shadcn/input.tsx");
         let source =

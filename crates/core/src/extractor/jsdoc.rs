@@ -12,18 +12,31 @@ impl<'src> SourceDataCollector<'src> {
     ///
     /// Marks the comment as consumed so subsequent calls for a different span cannot
     /// return the same comment (prevents prop JSDoc leaking into component descriptions).
+    ///
+    /// `self.comments` is sorted by span (source order), so the candidate window is
+    /// located via binary search rather than a linear scan — callers run one of these
+    /// per prop/interface/component, and a full rescan-per-call is quadratic in file size.
     pub(super) fn find_jsdoc(&mut self, span_start: u32) -> String {
         const PROXIMITY_THRESHOLD: u32 = 120; // bytes — enough for blank lines + decorator
 
-        let comment = self.comments.iter().rev().find(|c| {
-            c.is_block
-                && c.span_end <= span_start
-                && span_start - c.span_end <= PROXIMITY_THRESHOLD
-                && !self.consumed_jsdoc.contains(&c.span_end)
-        });
+        let upper = self.comments.partition_point(|c| c.span_end <= span_start);
+        let mut found: Option<usize> = None;
+        for i in (0..upper).rev() {
+            let c = &self.comments[i];
+            if span_start - c.span_end > PROXIMITY_THRESHOLD {
+                // Comments are sorted ascending by span, so every earlier comment
+                // is farther still — nothing left in range.
+                break;
+            }
+            if c.is_block && !self.consumed_jsdoc.contains(&c.span_end) {
+                found = Some(i);
+                break;
+            }
+        }
 
-        match comment {
-            Some(c) => {
+        match found {
+            Some(i) => {
+                let c = &self.comments[i];
                 let span_end = c.span_end;
                 let raw = &self.source[c.span_start as usize..c.span_end as usize];
                 let text = parse_jsdoc_text(raw);
@@ -40,11 +53,14 @@ impl<'src> SourceDataCollector<'src> {
     pub(super) fn extract_jsdoc_tags(&self, span_start: u32) -> BTreeMap<String, String> {
         const PROXIMITY_THRESHOLD: u32 = 120;
 
-        let comment = self
-            .comments
-            .iter()
-            .rev()
-            .find(|c| c.is_block && c.span_end <= span_start && span_start - c.span_end <= PROXIMITY_THRESHOLD);
+        let upper = self.comments.partition_point(|c| c.span_end <= span_start);
+        let comment = (0..upper).rev().find_map(|i| {
+            let c = &self.comments[i];
+            if span_start - c.span_end > PROXIMITY_THRESHOLD {
+                return None;
+            }
+            c.is_block.then_some(c)
+        });
 
         match comment {
             Some(c) => {

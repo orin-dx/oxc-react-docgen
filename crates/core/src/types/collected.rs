@@ -67,6 +67,10 @@ pub enum CollectedType {
     // ── Function type: (props: P) => ReactNode
     Function {
         params: Vec<CollectedType>,
+        /// Source parameter names, parallel to `params` (same length). `None` for
+        /// a given index when that parameter has no simple identifier binding
+        /// (e.g. destructured) or the caller didn't capture one.
+        param_names: Vec<Option<CompactString>>,
         return_type: Box<CollectedType>,
     },
 
@@ -135,9 +139,17 @@ impl CollectedType {
                     .collect::<Vec<_>>()
                     .join("")
             ),
-            CollectedType::Function { params, return_type } => format!(
+            CollectedType::Function { params, param_names, return_type } => format!(
                 "({}) => {}",
-                params.iter().map(|p| p.to_raw_string()).collect::<Vec<_>>().join(", "),
+                params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| match param_names.get(i).and_then(|n| n.as_ref()) {
+                        Some(name) => format!("{name}: {}", p.to_raw_string()),
+                        None => p.to_raw_string(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 return_type.to_raw_string()
             ),
             CollectedType::Conditional { check, extends_type, true_type, false_type } => format!(
@@ -214,10 +226,11 @@ impl CollectedType {
             CollectedType::TemplateLiteral(parts) => serde_json::json!({
                 "tl": parts.iter().map(|p| p.to_json_value()).collect::<Vec<_>>()
             }),
-            // Function: {"fn": {p: [params], r: return_type}}
-            CollectedType::Function { params, return_type } => serde_json::json!({
+            // Function: {"fn": {p: [params], names: [param_names], r: return_type}}
+            CollectedType::Function { params, param_names, return_type } => serde_json::json!({
                 "fn": {
                     "p": params.iter().map(|p| p.to_json_value()).collect::<Vec<_>>(),
+                    "names": param_names.iter().map(|n| n.as_ref().map(|s| s.as_str())).collect::<Vec<_>>(),
                     "r": return_type.to_json_value()
                 }
             }),
@@ -323,8 +336,13 @@ impl CollectedType {
                         .and_then(|v| v.as_array())
                         .map(|arr| arr.iter().map(Self::from_json_value).collect::<Result<Vec<_>, _>>())
                         .unwrap_or(Ok(vec![]))?;
+                    let param_names = inner
+                        .get("names")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().map(|v| v.as_str().map(CompactString::from)).collect::<Vec<_>>())
+                        .unwrap_or_default();
                     let rt = Self::from_json_value(inner.get("r").unwrap_or(&serde_json::Value::Null))?;
-                    return Ok(CollectedType::Function { params, return_type: Box::new(rt) });
+                    return Ok(CollectedType::Function { params, param_names, return_type: Box::new(rt) });
                 }
                 if let Some(inner) = map.get("cond") {
                     let check = Self::from_json_value(inner.get("c").unwrap_or(&serde_json::Value::Null))?;

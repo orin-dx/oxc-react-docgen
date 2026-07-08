@@ -67,11 +67,13 @@ expression: value
             "members": [
               {
                 "kind": "eventHandler",
-                "eventType": "string"
+                "eventType": "string",
+                "paramName": "value"
               },
               {
                 "kind": "eventHandler",
-                "eventType": "string[]"
+                "eventType": "string[]",
+                "paramName": "value"
               }
             ]
           },
@@ -364,7 +366,8 @@ expression: value
           "name": "onBlur",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -380,7 +383,8 @@ expression: value
           "name": "onClick",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -396,7 +400,8 @@ expression: value
           "name": "onFocus",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -571,7 +576,8 @@ expression: value
           "name": "onBlur",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -587,7 +593,8 @@ expression: value
           "name": "onClick",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -603,7 +610,8 @@ expression: value
           "name": "onFocus",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -988,7 +996,8 @@ expression: value
           "name": "onOpenChange",
           "type": {
             "kind": "eventHandler",
-            "eventType": "boolean"
+            "eventType": "boolean",
+            "paramName": "open"
           },
           "required": false,
           "defaultValue": null,
@@ -1009,7 +1018,8 @@ expression: value
           "name": "onValueChange",
           "type": {
             "kind": "eventHandler",
-            "eventType": "string"
+            "eventType": "string",
+            "paramName": "value"
           },
           "required": false,
           "defaultValue": null,

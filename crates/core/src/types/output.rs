@@ -164,6 +164,9 @@ pub enum PropType {
     EventHandler {
         /// "MouseEvent", "ChangeEvent<HTMLInputElement>", etc.
         event_type: std::string::String,
+        /// The source parameter's name (e.g. "open" in `(open: boolean) => void`),
+        /// if the underlying function type had a simple identifier binding.
+        param_name: Option<std::string::String>,
     },
     /// Ref<T> / RefObject<T> / ForwardedRef<T>
     Ref {
@@ -246,8 +249,8 @@ impl PropType {
             }
             PropType::ReactNode => "ReactNode".into(),
             PropType::CssProperties => "CSSProperties".into(),
-            PropType::EventHandler { event_type } => {
-                format!("({}: {}) => void", "e", event_type)
+            PropType::EventHandler { event_type, param_name } => {
+                format!("({}: {}) => void", param_name.as_deref().unwrap_or("e"), event_type)
             }
             PropType::Ref { element: Some(e) } => format!("Ref<{}>", e),
             PropType::Ref { element: None } => "Ref<unknown>".into(),
@@ -328,9 +331,10 @@ impl PropType {
                 "name": name.as_str(),
                 "args": args.iter().map(|a| a.to_tagged_value()).collect::<Vec<_>>()
             }),
-            PropType::EventHandler { event_type } => serde_json::json!({
+            PropType::EventHandler { event_type, param_name } => serde_json::json!({
                 "kind": "eventHandler",
-                "eventType": event_type
+                "eventType": event_type,
+                "paramName": param_name
             }),
             PropType::Ref { element } => serde_json::json!({
                 "kind": "ref",
@@ -459,7 +463,8 @@ impl PropType {
             }
             "eventHandler" | "event_handler" => {
                 let event_type = v["eventType"].as_str().or_else(|| v["event_type"].as_str()).unwrap_or("").to_owned();
-                Ok(PropType::EventHandler { event_type })
+                let param_name = v["paramName"].as_str().or_else(|| v["param_name"].as_str()).map(|s| s.to_owned());
+                Ok(PropType::EventHandler { event_type, param_name })
             }
             "ref" => {
                 let element = v["element"].as_str().map(|s| s.to_owned());

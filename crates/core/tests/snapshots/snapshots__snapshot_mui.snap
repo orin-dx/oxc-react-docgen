@@ -486,7 +486,8 @@ expression: value
           "name": "onFocusVisible",
           "type": {
             "kind": "eventHandler",
-            "eventType": "React.FocusEventHandler"
+            "eventType": "React.FocusEventHandler",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -572,7 +573,8 @@ expression: value
               },
               {
                 "kind": "eventHandler",
-                "eventType": "T"
+                "eventType": "T",
+                "paramName": null
               },
               {
                 "kind": "named",
@@ -589,7 +591,8 @@ expression: value
                       },
                       {
                         "kind": "eventHandler",
-                        "eventType": "T"
+                        "eventType": "T",
+                        "paramName": null
                       },
                       {
                         "kind": "null"
@@ -828,7 +831,8 @@ expression: value
           "name": "onBlur",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -844,7 +848,8 @@ expression: value
           "name": "onClick",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -860,7 +865,8 @@ expression: value
           "name": "onFocus",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -876,7 +882,8 @@ expression: value
           "name": "onKeyDown",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -892,7 +899,8 @@ expression: value
           "name": "onKeyUp",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -1497,7 +1505,8 @@ expression: value
           "name": "onBlur",
           "type": {
             "kind": "eventHandler",
-            "eventType": "React.FocusEventHandler"
+            "eventType": "React.FocusEventHandler",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -1518,7 +1527,8 @@ expression: value
           "name": "onChange",
           "type": {
             "kind": "eventHandler",
-            "eventType": "React.ChangeEventHandler"
+            "eventType": "React.ChangeEventHandler",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -1539,7 +1549,8 @@ expression: value
           "name": "onFocus",
           "type": {
             "kind": "eventHandler",
-            "eventType": "React.FocusEventHandler"
+            "eventType": "React.FocusEventHandler",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -1699,7 +1710,8 @@ expression: value
               },
               {
                 "kind": "eventHandler",
-                "eventType": "T"
+                "eventType": "T",
+                "paramName": null
               },
               {
                 "kind": "named",
@@ -1716,7 +1728,8 @@ expression: value
                       },
                       {
                         "kind": "eventHandler",
-                        "eventType": "T"
+                        "eventType": "T",
+                        "paramName": null
                       },
                       {
                         "kind": "null"

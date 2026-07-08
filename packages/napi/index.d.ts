@@ -80,7 +80,7 @@ export type PropType =
   | { kind: 'tuple'; elements: PropType[] }
   | { kind: 'object'; fields: ObjectField[] }
   | { kind: 'named'; name: string; args: PropType[] }
-  | { kind: 'eventHandler'; eventType: string }
+  | { kind: 'eventHandler'; eventType: string; paramName: string | null }
   | { kind: 'ref'; element: string | null }
   | { kind: 'htmlAttributes'; element: string; omitted: string[] }
   | { kind: 'literalUnion'; members: string[]; hasDefault: boolean }

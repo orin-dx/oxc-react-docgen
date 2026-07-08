@@ -216,7 +216,8 @@ expression: value
           "name": "onBlur",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -232,7 +233,8 @@ expression: value
           "name": "onClick",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -248,7 +250,8 @@ expression: value
           "name": "onFocus",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -264,7 +267,8 @@ expression: value
           "name": "onKeyDown",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,
@@ -280,7 +284,8 @@ expression: value
           "name": "onKeyUp",
           "type": {
             "kind": "eventHandler",
-            "eventType": "Event"
+            "eventType": "Event",
+            "paramName": null
           },
           "required": false,
           "defaultValue": null,

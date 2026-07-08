@@ -746,12 +746,14 @@ mod tests {
         let ctx = empty_ctx();
         let ct = CollectedType::Function {
             params: vec![CollectedType::Named { name: "MouseEvent".into(), args: vec![] }],
+            param_names: vec![Some("e".into())],
             return_type: Box::new(CollectedType::Void),
         };
         let result = resolve_type(&ct, &ctx);
         assert!(
-            matches!(&result, PropType::EventHandler { event_type } if event_type == "MouseEvent"),
-            "Expected EventHandler<MouseEvent>, got {:?}",
+            matches!(&result, PropType::EventHandler { event_type, param_name }
+                if event_type == "MouseEvent" && param_name.as_deref() == Some("e")),
+            "Expected EventHandler<MouseEvent> with param_name 'e', got {:?}",
             result
         );
     }

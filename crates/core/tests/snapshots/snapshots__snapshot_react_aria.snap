@@ -262,7 +262,8 @@ expression: value
               },
               {
                 "kind": "eventHandler",
-                "eventType": "ButtonRenderProps"
+                "eventType": "ButtonRenderProps",
+                "paramName": "renderProps"
               }
             ]
           },
@@ -291,7 +292,8 @@ expression: value
               },
               {
                 "kind": "eventHandler",
-                "eventType": "ButtonRenderProps"
+                "eventType": "ButtonRenderProps",
+                "paramName": "renderProps"
               }
             ]
           },
@@ -452,7 +454,8 @@ expression: value
           "name": "onBlur",
           "type": {
             "kind": "eventHandler",
-            "eventType": "React.FocusEvent<HTMLButtonElement>"
+            "eventType": "React.FocusEvent<HTMLButtonElement>",
+            "paramName": "e"
           },
           "required": false,
           "defaultValue": null,
@@ -473,7 +476,8 @@ expression: value
           "name": "onFocus",
           "type": {
             "kind": "eventHandler",
-            "eventType": "React.FocusEvent<HTMLButtonElement>"
+            "eventType": "React.FocusEvent<HTMLButtonElement>",
+            "paramName": "e"
           },
           "required": false,
           "defaultValue": null,
@@ -494,7 +498,8 @@ expression: value
           "name": "onFocusChange",
           "type": {
             "kind": "eventHandler",
-            "eventType": "boolean"
+            "eventType": "boolean",
+            "paramName": "isFocused"
           },
           "required": false,
           "defaultValue": null,
@@ -515,7 +520,8 @@ expression: value
           "name": "onKeyDown",
           "type": {
             "kind": "eventHandler",
-            "eventType": "React.KeyboardEvent<HTMLButtonElement>"
+            "eventType": "React.KeyboardEvent<HTMLButtonElement>",
+            "paramName": "e"
           },
           "required": false,
           "defaultValue": null,
@@ -536,7 +542,8 @@ expression: value
           "name": "onKeyUp",
           "type": {
             "kind": "eventHandler",
-            "eventType": "React.KeyboardEvent<HTMLButtonElement>"
+            "eventType": "React.KeyboardEvent<HTMLButtonElement>",
+            "paramName": "e"
           },
           "required": false,
           "defaultValue": null,
@@ -557,7 +564,8 @@ expression: value
           "name": "onPress",
           "type": {
             "kind": "eventHandler",
-            "eventType": "PressEvent"
+            "eventType": "PressEvent",
+            "paramName": "e"
           },
           "required": false,
           "defaultValue": null,
@@ -578,7 +586,8 @@ expression: value
           "name": "onPressChange",
           "type": {
             "kind": "eventHandler",
-            "eventType": "boolean"
+            "eventType": "boolean",
+            "paramName": "isPressed"
           },
           "required": false,
           "defaultValue": null,
@@ -599,7 +608,8 @@ expression: value
           "name": "onPressEnd",
           "type": {
             "kind": "eventHandler",
-            "eventType": "PressEvent"
+            "eventType": "PressEvent",
+            "paramName": "e"
           },
           "required": false,
           "defaultValue": null,
@@ -620,7 +630,8 @@ expression: value
           "name": "onPressStart",
           "type": {
             "kind": "eventHandler",
-            "eventType": "PressEvent"
+            "eventType": "PressEvent",
+            "paramName": "e"
           },
           "required": false,
           "defaultValue": null,
@@ -641,7 +652,8 @@ expression: value
           "name": "onPressUp",
           "type": {
             "kind": "eventHandler",
-            "eventType": "PressEvent"
+            "eventType": "PressEvent",
+            "paramName": "e"
           },
           "required": false,
           "defaultValue": null,
@@ -772,7 +784,8 @@ expression: value
               },
               {
                 "kind": "eventHandler",
-                "eventType": "ButtonRenderProps"
+                "eventType": "ButtonRenderProps",
+                "paramName": "renderProps"
               }
             ]
           },

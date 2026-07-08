@@ -7,7 +7,7 @@ pub(super) fn infer_html_attr_prop_type(attr_name: &str) -> PropType {
         "onClick" | "onKeyDown" | "onKeyUp" | "onFocus" | "onBlur" | "onChange" | "onInput" | "onSubmit"
         | "onReset" | "onLoad" | "onError" | "onPress" | "onPressStart" | "onPressEnd" | "onHoverStart"
         | "onHoverEnd" | "onFocusChange" | "onPressChange" => {
-            PropType::EventHandler { event_type: "Event".to_string() }
+            PropType::EventHandler { event_type: "Event".to_string(), param_name: None }
         }
         "disabled" | "readOnly" | "required" | "checked" | "multiple" | "noValidate" | "autoFocus" | "fullWidth"
         | "loading" | "isDisabled" | "isReadOnly" | "isRequired" => PropType::Boolean,

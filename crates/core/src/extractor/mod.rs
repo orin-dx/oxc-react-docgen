@@ -304,9 +304,11 @@ impl<'src> SourceDataCollector<'src> {
                             .unwrap_or(CollectedType::Any)
                     })
                     .collect();
+                let param_names: Vec<Option<CompactString>> =
+                    f.params.items.iter().map(|p| binding_pattern_name(&p.pattern)).collect();
                 // return_type on TSFunctionType is Box<TSTypeAnnotation> (not Option)
                 let return_type = self.ts_type_to_collected(&f.return_type.type_annotation);
-                CollectedType::Function { params, return_type: Box::new(return_type) }
+                CollectedType::Function { params, param_names, return_type: Box::new(return_type) }
             }
 
             TSType::TSIndexedAccessType(ia) => CollectedType::IndexedAccess {
@@ -450,6 +452,8 @@ impl<'src> SourceDataCollector<'src> {
                             .unwrap_or(CollectedType::Any)
                     })
                     .collect();
+                let param_names: Vec<Option<CompactString>> =
+                    sig.params.items.iter().map(|p| binding_pattern_name(&p.pattern)).collect();
                 let return_type = sig
                     .return_type
                     .as_ref()
@@ -457,7 +461,7 @@ impl<'src> SourceDataCollector<'src> {
                     .unwrap_or(CollectedType::Void);
                 Some(CollectedObjectField {
                     name,
-                    collected_type: CollectedType::Function { params, return_type: Box::new(return_type) },
+                    collected_type: CollectedType::Function { params, param_names, return_type: Box::new(return_type) },
                     required: !sig.optional,
                     description: String::new(),
                 })
@@ -610,6 +614,8 @@ impl<'src> SourceDataCollector<'src> {
                             .unwrap_or(CollectedType::Any)
                     })
                     .collect();
+                let param_names: Vec<Option<CompactString>> =
+                    ms.params.items.iter().map(|p| binding_pattern_name(&p.pattern)).collect();
                 let return_type = ms
                     .return_type
                     .as_ref()
@@ -617,7 +623,7 @@ impl<'src> SourceDataCollector<'src> {
                     .unwrap_or(CollectedType::Void);
                 Some(RawProp {
                     name,
-                    collected_type: CollectedType::Function { params, return_type: Box::new(return_type) },
+                    collected_type: CollectedType::Function { params, param_names, return_type: Box::new(return_type) },
                     required: !ms.optional,
                     description,
                     tags,
@@ -635,6 +641,14 @@ impl<'src> SourceDataCollector<'src> {
 pub(super) fn is_pascal_case(s: &str) -> bool {
     let mut chars = s.chars();
     chars.next().is_some_and(|c| c.is_uppercase())
+}
+
+/// A parameter's simple identifier name, if it has one (not a destructured pattern).
+fn binding_pattern_name(pattern: &BindingPattern) -> Option<CompactString> {
+    match pattern {
+        BindingPattern::BindingIdentifier(id) => Some(id.name.as_str().into()),
+        _ => None,
+    }
 }
 
 /// Get the declared name from a Declaration node.

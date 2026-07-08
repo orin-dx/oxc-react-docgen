@@ -8,8 +8,10 @@ use crate::types::*;
 use super::collected::resolve_collected_type;
 use super::ResolutionContext;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn resolve_function_type(
     params: &[CollectedType],
+    param_names: &[Option<CompactString>],
     return_type: &CollectedType,
     consuming_file: &Utf8Path,
     ctx: &ResolutionContext,
@@ -31,20 +33,22 @@ pub(super) fn resolve_function_type(
             )
     );
 
+    let first_param_name = || param_names.first().and_then(|n| n.as_ref()).map(|s| s.to_string());
+
     if returns_react_node && params.len() == 1 {
         let event_type = params[0].to_raw_string();
-        return PropType::EventHandler { event_type };
+        return PropType::EventHandler { event_type, param_name: first_param_name() };
     }
 
     // Generic event handler: (e: SomeEvent) => void
     if params.len() == 1 {
         let event_type = params[0].to_raw_string();
-        return PropType::EventHandler { event_type };
+        return PropType::EventHandler { event_type, param_name: first_param_name() };
     }
 
     // Zero-arg callback: () => void
     if params.is_empty() {
-        return PropType::EventHandler { event_type: "void".into() };
+        return PropType::EventHandler { event_type: "void".into(), param_name: None };
     }
 
     // Multi-param function — describe as opaque.

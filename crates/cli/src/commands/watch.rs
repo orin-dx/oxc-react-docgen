@@ -1,7 +1,7 @@
 use miette::{IntoDiagnostic, Result};
 
 use crate::config::build_options;
-use crate::output::print_summary;
+use crate::output::{print_diagnostics, print_summary};
 
 pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>) -> Result<()> {
     use indicatif::{ProgressBar, ProgressStyle};
@@ -39,6 +39,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
     }
     if !quiet {
         print_summary(&first, quiet);
+        print_diagnostics(&first.diagnostics);
     }
 
     // Keyboard input thread (q=quit, r=re-extract)
@@ -93,6 +94,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
                             if !names.is_empty() {
                                 println!("  {}  {}", utf8.file_name().unwrap_or("?").dimmed(), names.join(", ").bold());
                             }
+                            print_diagnostics(&update.diagnostics);
                         }
                         if let Some(ref p) = out_path {
                             let snapshot = session_inner.snapshot();

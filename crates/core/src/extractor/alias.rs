@@ -102,6 +102,12 @@ impl<'src> SourceDataCollector<'src> {
                 Some(CollectedTypeAlias::Intersection { members, file_path: fp })
             }
             TSType::TSParenthesizedType(p) => self.classify_type_alias(_name, &p.type_annotation),
+            // Inline object type: `type Foo = { a: string }`. Previously fell through
+            // to `_ => None` and silently vanished from data.type_aliases with no
+            // diagnostic — anything referencing `Foo` would then resolve as unknown.
+            TSType::TSTypeLiteral(_) => {
+                Some(CollectedTypeAlias::Passthrough { target: self.ts_type_to_collected(ty), file_path: fp })
+            }
             _ => None,
         }
     }

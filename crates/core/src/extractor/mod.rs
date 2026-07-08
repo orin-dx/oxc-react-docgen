@@ -669,6 +669,29 @@ mod tests {
     }
 
     #[test]
+    fn test_inline_object_type_alias_not_silently_dropped() {
+        let source = r#"
+type ToastVariant = { message: string; kind?: 'info' | 'error' };
+"#;
+        let path = Utf8Path::new("/fixtures/inline-alias.tsx");
+        let data = parse_file(path, source);
+
+        let key = format!("{path}:ToastVariant");
+        let alias = data.type_aliases.get(&key).unwrap_or_else(|| {
+            panic!("expected type_aliases to contain '{key}', got keys: {:?}", data.type_aliases.keys())
+        });
+
+        match alias {
+            CollectedTypeAlias::Passthrough { target: CollectedType::Object(fields), .. } => {
+                assert_eq!(fields.len(), 2);
+                assert!(fields.iter().any(|f| f.name == "message"));
+                assert!(fields.iter().any(|f| f.name == "kind"));
+            }
+            other => panic!("expected Passthrough{{Object}}, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_shadcn_button() {
         let fixture = fixture_path("shadcn/button.tsx");
         let source =

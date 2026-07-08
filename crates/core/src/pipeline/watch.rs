@@ -29,6 +29,10 @@ pub struct WatchSession {
     pub source_cache: DashMap<Utf8PathBuf, SourceData>,
     /// Latest resolved component entries, keyed by display name.
     pub component_cache: DashMap<String, ComponentEntry>,
+    /// Latest diagnostics per file, replaced (not appended) on each re-update so a
+    /// fixed file's stale diagnostics don't linger — mirrors GlobalSourceData::remove_file's
+    /// per-file replacement semantics.
+    pub diagnostics: DashMap<Utf8PathBuf, Vec<Diagnostic>>,
     /// Guards initialize() so concurrent callers don't race to build caches.
     initialized: Mutex<bool>,
 }
@@ -42,6 +46,7 @@ impl WatchSession {
             reverse_deps: Arc::new(ReverseDeps { inner: Default::default() }),
             source_cache: DashMap::new(),
             component_cache: DashMap::new(),
+            diagnostics: DashMap::new(),
             initialized: Mutex::new(false),
         }
     }
@@ -67,7 +72,7 @@ impl WatchSession {
             let source = match std::fs::read_to_string(path) {
                 Ok(s) => s,
                 Err(e) => {
-                    output.diagnostics.push(Diagnostic {
+                    let diagnostic = Diagnostic {
                         severity: DiagnosticSeverity::Error,
                         message: format!("Failed to read '{}': {}", path, e),
                         file: Some(path.to_string()),
@@ -75,7 +80,9 @@ impl WatchSession {
                         column: None,
                         help: Some("Check file permissions and that the file exists.".into()),
                         code: DiagnosticCode::IoError,
-                    });
+                    };
+                    output.diagnostics.push(diagnostic.clone());
+                    self.diagnostics.insert(path.clone(), vec![diagnostic]);
                     String::new()
                 }
             };
@@ -107,7 +114,14 @@ impl WatchSession {
         let global = self.global.load();
         let enums: std::collections::BTreeMap<String, Vec<EnumEntry>> =
             global.enums.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        ExtractionOutput { components, enums, diagnostics: vec![], stats: ExtractionStats::default() }
+
+        // DashMap iteration order is arbitrary — sort by path for deterministic output.
+        let mut by_path: Vec<(Utf8PathBuf, Vec<Diagnostic>)> =
+            self.diagnostics.iter().map(|r| (r.key().clone(), r.value().clone())).collect();
+        by_path.sort_by(|a, b| a.0.cmp(&b.0));
+        let diagnostics: Vec<Diagnostic> = by_path.into_iter().flat_map(|(_, ds)| ds).collect();
+
+        ExtractionOutput { components, enums, diagnostics, stats: ExtractionStats::default() }
     }
 
     /// Handle a single file change — re-resolve only affected components.
@@ -164,6 +178,14 @@ impl WatchSession {
             diagnostics.extend(diags);
         }
 
+        // Replace (not append) this file's diagnostics — a fixed file's prior
+        // errors shouldn't linger in subsequent snapshots.
+        if diagnostics.is_empty() {
+            self.diagnostics.remove(changed);
+        } else {
+            self.diagnostics.insert(changed.to_owned(), diagnostics.clone());
+        }
+
         IncrementalUpdate {
             updated_components,
             affected_files: affected.into_iter().collect(),
@@ -218,10 +240,54 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_after_initialize_has_no_diagnostics() {
+    fn snapshot_after_initialize_with_no_files_has_no_diagnostics() {
         let session = WatchSession::new(empty_options());
-        session.initialize();
+        let first = session.initialize();
+        assert!(first.diagnostics.is_empty(), "no files to read means nothing to report");
         let snap = session.snapshot();
         assert!(snap.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn snapshot_surfaces_update_file_diagnostics() {
+        let session = WatchSession::new(empty_options());
+        let _ = session.initialize();
+
+        let missing = camino::Utf8PathBuf::from("/nonexistent/does-not-exist.tsx");
+        let update = session.update_file(&missing);
+        assert!(
+            update.diagnostics.iter().any(|d| d.code == crate::types::DiagnosticCode::IoError),
+            "expected an IoError diagnostic from update_file, got {:?}",
+            update.diagnostics
+        );
+
+        let snap = session.snapshot();
+        assert!(
+            !snap.diagnostics.is_empty(),
+            "snapshot() should surface diagnostics recorded by update_file, not hardcode empty"
+        );
+    }
+
+    #[test]
+    fn update_file_replaces_previous_diagnostics_for_same_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").join("widget.tsx");
+
+        let session = WatchSession::new(empty_options());
+        let _ = session.initialize();
+
+        // File doesn't exist yet — update_file should record an IoError for it.
+        session.update_file(&path);
+        assert!(!session.snapshot().diagnostics.is_empty());
+
+        // Same path now reads successfully — the stale IoError for this path
+        // should be cleared, not accumulated alongside the new (empty) result.
+        std::fs::write(path.as_std_path(), "export const Widget = () => null;").expect("write fixture");
+        let update = session.update_file(&path);
+        assert!(update.diagnostics.is_empty());
+        assert!(
+            session.snapshot().diagnostics.is_empty(),
+            "fixed file's stale diagnostic should be cleared, not linger"
+        );
     }
 }

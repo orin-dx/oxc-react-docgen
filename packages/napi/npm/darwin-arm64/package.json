@@ -1,0 +1,16 @@
+{
+  "name": "@oxc-react-docgen/napi-darwin-arm64",
+  "version": "0.1.0",
+  "cpu": [
+    "arm64"
+  ],
+  "main": "oxc_react_docgen_napi.darwin-arm64.node",
+  "files": [
+    "oxc_react_docgen_napi.darwin-arm64.node"
+  ],
+  "description": "Native Node.js bindings for oxc-react-docgen",
+  "license": "MIT",
+  "os": [
+    "darwin"
+  ]
+}

@@ -1,0 +1,117 @@
+name: Release NAPI packages
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and package everything, but skip npm publish"
+        type: boolean
+        default: true
+
+# UNTESTED SCAFFOLDING — this workflow has never been run. Before relying on it:
+#   1. Verify the aarch64-unknown-linux-gnu cross-compilation step actually links
+#      (cross-compiling without a container is the most likely failure point).
+#   2. Confirm an NPM_TOKEN secret with publish rights for the @oxc-react-docgen
+#      org exists in this repo's settings before flipping dry_run to false.
+#   3. Run once with dry_run: true and inspect the uploaded artifacts/tarballs
+#      before ever running with dry_run: false.
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-13
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # aarch64-unknown-linux-gnu needs a cross-linker — bare cargo build with the
+      # target added is not sufficient on an x86_64 ubuntu-latest runner.
+      - name: Install cross-linker (aarch64-linux-gnu)
+        if: matrix.cross
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build
+        working-directory: packages/napi
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.cross && 'aarch64-linux-gnu-gcc' || '' }}
+          CC_aarch64_unknown_linux_gnu: ${{ matrix.cross && 'aarch64-linux-gnu-gcc' || '' }}
+        run: pnpm exec napi build --platform --release --target ${{ matrix.target }} --cargo-name oxc-react-docgen-napi --manifest-path ../../crates/binding/Cargo.toml
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.target }}
+          path: packages/napi/*.node
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages/napi/artifacts
+
+      - name: Move artifacts into place
+        working-directory: packages/napi
+        run: pnpm exec napi artifacts --output-dir . --npm-dir npm
+
+      - name: Build vite-plugin (depends on napi's index.d.ts)
+        run: pnpm --filter @oxc-react-docgen/vite-plugin build
+
+      - name: Publish (dry run)
+        if: inputs.dry_run
+        working-directory: packages/napi
+        run: pnpm exec napi prepublish -t npm --dry-run
+
+      - name: Publish per-platform packages + main package
+        if: ${{ !inputs.dry_run }}
+        working-directory: packages/napi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm exec napi prepublish -t npm

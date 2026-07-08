@@ -1,0 +1,19 @@
+{
+  "name": "@oxc-react-docgen/napi-linux-x64-gnu",
+  "version": "0.1.0",
+  "cpu": [
+    "x64"
+  ],
+  "main": "oxc_react_docgen_napi.linux-x64-gnu.node",
+  "files": [
+    "oxc_react_docgen_napi.linux-x64-gnu.node"
+  ],
+  "description": "Native Node.js bindings for oxc-react-docgen",
+  "license": "MIT",
+  "os": [
+    "linux"
+  ],
+  "libc": [
+    "glibc"
+  ]
+}

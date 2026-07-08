@@ -17,11 +17,12 @@ The CLI can emit an RDT-compatible shape via `--format rdt` (see [MIGRATING.md](
 ```bash
 git clone https://github.com/castrog/oxc-react-codegen
 cd oxc-react-codegen
-cargo build --release -p oxc-react-docgen-napi   # builds the native addon for your platform
-pnpm install && pnpm --filter @oxc-react-docgen/vite-plugin build
+pnpm install
+pnpm --filter @oxc-react-docgen/napi run build:napi   # builds the native addon for your platform
+pnpm --filter @oxc-react-docgen/vite-plugin build
 ```
 
-`packages/napi/index.js`'s loader only resolves the addon from `../../target/{release,debug}` relative to this checkout, so it works as a monorepo-local dependency but not as an installed package yet. See [MIGRATING.md](MIGRATING.md) if you're moving off `react-docgen-typescript` and want to know exactly what's compatible today.
+`pnpm run build:napi` (not a bare `cargo build`) matters: it invokes `napi build`, which places the compiled addon exactly where `packages/napi/index.js`'s generated loader expects it. This works as a monorepo-local dependency today; there are no published per-platform packages for it to fall back to yet. See [MIGRATING.md](MIGRATING.md) if you're moving off `react-docgen-typescript` and want to know exactly what's compatible today.
 
 ## Vite plugin
 

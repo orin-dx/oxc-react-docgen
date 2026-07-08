@@ -39,10 +39,12 @@ pub enum ReExportStep {
 /// Maps `(consuming_file, local_name)` → import reference.
 /// Built once from `GlobalSourceData`, then used read-only during parallel resolution.
 pub struct ImportResolutionMap {
-    /// `(file_path, local_name)` → specifier + original exported name.
+    /// `file_path` → (`local_name` → specifier + original exported name).
+    /// Nested (rather than a flat `(Utf8PathBuf, CompactString)` key) so lookups can
+    /// borrow `&Utf8Path` directly instead of cloning the whole path per call.
     /// Note: we store the specifier string, not the resolved file path.
     /// The resolver calls `oxc_resolver` to turn specifiers into absolute paths.
-    bindings: FxHashMap<(Utf8PathBuf, CompactString), ImportRef>,
+    bindings: FxHashMap<Utf8PathBuf, FxHashMap<CompactString, ImportRef>>,
 
     /// `barrel_file` → specifiers it wildcard-re-exports from (`export * from "..."`).
     #[allow(dead_code)]
@@ -55,15 +57,15 @@ impl ImportResolutionMap {
     ///
     /// No I/O — pure data transformation.
     pub fn build(global: &GlobalSourceData) -> Self {
-        let mut bindings: FxHashMap<(Utf8PathBuf, CompactString), ImportRef> = FxHashMap::default();
+        let mut bindings: FxHashMap<Utf8PathBuf, FxHashMap<CompactString, ImportRef>> = FxHashMap::default();
         let mut wildcard_sources: FxHashMap<Utf8PathBuf, Vec<String>> = FxHashMap::default();
 
         // ── Populate bindings from import_map ──────────────────────────────
         for (file_path, import_bindings) in &global.import_map {
+            let per_file = bindings.entry(file_path.clone()).or_default();
             for binding in import_bindings {
-                let key = (file_path.clone(), binding.local_name.clone());
-                bindings.insert(
-                    key,
+                per_file.insert(
+                    binding.local_name.clone(),
                     ImportRef {
                         specifier: binding.specifier.clone(),
                         exported_name: binding.exported_name.clone(),
@@ -89,8 +91,7 @@ impl ImportResolutionMap {
     ///
     /// Returns `None` if the name is locally defined (not imported).
     pub fn find_import(&self, file: &Utf8Path, local_name: &str) -> Option<&ImportRef> {
-        let key = (file.to_owned(), CompactString::from(local_name));
-        self.bindings.get(&key)
+        self.bindings.get(file)?.get(local_name)
     }
 
     /// Walk one step of the re-export chain for `barrel_file`.

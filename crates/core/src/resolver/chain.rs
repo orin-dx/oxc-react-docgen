@@ -210,7 +210,7 @@ pub(super) fn resolve_interface_chain(
     }
 
     // ── Resolve own props ────────────────────────────────────────────────────
-    let parent_ref = Some(PropParent { name: iface.name.to_string(), file_name: iface.file_path.to_string() });
+    let parent = PropParent { name: iface.name.to_string(), file_name: iface.file_path.to_string() };
 
     for raw_prop in &iface.props {
         let prop_type = resolve_collected_type(&raw_prop.collected_type, &iface.file_path, ctx, state, depth);
@@ -250,8 +250,8 @@ pub(super) fn resolve_interface_chain(
             default_value,
             description: raw_prop.description.clone(),
             tags: raw_prop.tags.clone(),
-            parent: parent_ref.clone(),
-            declarations: vec![parent_ref.clone().unwrap()],
+            parent: Some(parent.clone()),
+            declarations: vec![parent.clone()],
         });
     }
 

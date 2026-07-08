@@ -23,7 +23,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
 
     let pb = if !quiet {
         let pb = ProgressBar::new_spinner();
-        pb.set_style(ProgressStyle::default_spinner().template("{spinner:.cyan} {msg}").unwrap());
+        pb.set_style(ProgressStyle::default_spinner().template("{spinner:.cyan} {msg}").into_diagnostic()?);
         pb.set_message("Extracting...");
         pb.enable_steady_tick(std::time::Duration::from_millis(80));
         Some(pb)

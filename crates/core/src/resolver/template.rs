@@ -20,8 +20,8 @@ pub(super) fn resolve_template_literal(
     let expanded = try_expand_template_literal(parts, consuming_file, ctx, state, depth);
 
     if let Some(values) = expanded {
-        if values.len() == 1 {
-            return PropType::StringLiteral(values.into_iter().next().unwrap());
+        if let [only] = values.as_slice() {
+            return PropType::StringLiteral(only.clone());
         }
         return PropType::LiteralUnion { members: values, has_default: false };
     }

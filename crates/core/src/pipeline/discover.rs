@@ -39,7 +39,14 @@ pub(super) fn discover_files(src_dirs: &[Utf8PathBuf], extra_excludes: &[String]
             }
 
             if let Ok(utf8) = Utf8PathBuf::from_path_buf(path.to_owned()) {
-                files.push(utf8);
+                // Canonicalize to an absolute path so parent.fileName in output is
+                // stable regardless of invocation context (relative --src, absolute
+                // --src, or cwd inside the src dir all previously produced different
+                // strings for the same file). Fall back to the uncanonicalized path
+                // if canonicalization fails (e.g. a dangling symlink) rather than
+                // dropping the file.
+                let canonical = utf8.canonicalize_utf8().unwrap_or(utf8);
+                files.push(canonical);
             }
         }
     }

@@ -7,6 +7,8 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+use super::diagnostic::Diagnostic;
+
 // ─── Type Aliases ─────────────────────────────────────────────────────────────
 
 /// Compact string used for names, type strings — avoids heap alloc under 24 bytes.
@@ -492,6 +494,11 @@ pub struct SourceData {
 
     /// Re-exports from this file
     pub exports: Vec<LexedExport>,
+
+    /// Non-fatal issues discovered while parsing this file (e.g. excessive nesting,
+    /// TypeScript syntax errors). Drained into the pipeline's top-level diagnostics
+    /// during `GlobalSourceData` merge — never dropped silently.
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 /// A collected interface declaration.

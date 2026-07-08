@@ -22,13 +22,15 @@ pub(super) fn resolve_type_alias_chain(
     depth: u8,
 ) -> ResolvedChain {
     match alias {
-        CollectedTypeAlias::Passthrough { target, file_path } => match target {
-            CollectedType::Named { name, args } => {
-                let raw_args: Vec<String> = args.iter().map(|a| a.to_raw_string()).collect();
-                resolve_props_chain(name.as_str(), &raw_args, file_path, mapping, ctx, state, depth + 1)
-            }
-            _ => ResolvedChain::default(),
-        },
+        // Delegate to the generic CollectedType→chain resolver, which already
+        // handles Named (interfaces/type aliases), Object (inline literals),
+        // Intersection, and Union targets. Previously this arm only matched
+        // `Named` and silently dropped everything else (e.g. an inline
+        // `{ x: string }` object literal used directly as props), which lost
+        // the whole component's props with no diagnostic.
+        CollectedTypeAlias::Passthrough { target, file_path } => {
+            resolve_base_as_chain(target, file_path, mapping, ctx, state, depth)
+        }
 
         CollectedTypeAlias::Omit { base, omitted_keys, file_path } => {
             // Resolve the base type first, then remove omitted keys.

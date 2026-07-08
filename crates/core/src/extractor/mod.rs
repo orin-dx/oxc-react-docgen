@@ -17,7 +17,10 @@ use rustc_hash::FxHashSet;
 
 #[cfg(test)]
 use crate::types::LexedExport;
-use crate::types::{CollectedObjectField, CollectedType, CollectedTypeAlias, ExtendsRef, RawProp, SourceData};
+use crate::types::{
+    CollectedObjectField, CollectedType, CollectedTypeAlias, Diagnostic, DiagnosticCode, DiagnosticSeverity,
+    ExtendsRef, RawProp, SourceData,
+};
 
 mod alias;
 mod component;
@@ -28,11 +31,62 @@ mod visit;
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
+/// Maximum bracket-nesting depth a source file may contain before we refuse to parse it.
+///
+/// `oxc_parser`'s recursive-descent grammar has no depth guard for nested parenthesized
+/// types, object type literals, or conditional types — a file with ~6,000+ levels of
+/// nesting deterministically stack-overflows the parser itself (confirmed via a
+/// standalone parser-only harness). 2000 leaves a wide safety margin.
+const MAX_SOURCE_NESTING_DEPTH: usize = 2000;
+
+/// Cheap linear scan bounding the maximum bracket-nesting depth of `source`.
+///
+/// Only tracks a running max, not full balance — sufficient to bound recursion depth
+/// before handing the source to the real parser.
+fn max_bracket_nesting_depth(source: &str) -> usize {
+    let mut depth: i64 = 0;
+    let mut max_depth: usize = 0;
+    for b in source.bytes() {
+        match b {
+            b'(' | b'{' | b'[' => {
+                depth += 1;
+                if depth as usize > max_depth {
+                    max_depth = depth as usize;
+                }
+            }
+            b')' | b'}' | b']' => depth -= 1,
+            _ => {}
+        }
+    }
+    max_depth
+}
+
 /// Parse a single file and collect all extractable data.
 ///
 /// Completely pure — no I/O, no side effects, no cross-file dependencies.
 /// Safe to call in parallel from rayon workers.
+///
+/// Never panics on malformed input: excessive nesting and TypeScript syntax errors
+/// are reported via `SourceData::diagnostics` rather than failing silently or
+/// letting the parser overrun the stack.
 pub fn parse_file(path: &Utf8Path, source: &str) -> SourceData {
+    let observed_depth = max_bracket_nesting_depth(source);
+    if observed_depth > MAX_SOURCE_NESTING_DEPTH {
+        let mut data = SourceData::default();
+        data.diagnostics.push(Diagnostic {
+            severity: DiagnosticSeverity::Error,
+            message: format!(
+                "File exceeds maximum type nesting depth ({observed_depth} > {MAX_SOURCE_NESTING_DEPTH}), skipped to avoid parser stack overflow"
+            ),
+            file: Some(path.to_string()),
+            line: None,
+            column: None,
+            help: Some("Reduce nested parenthesized/object/conditional types in this file.".into()),
+            code: DiagnosticCode::ExcessiveNesting,
+        });
+        return data;
+    }
+
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap_or_default();
     let ret = Parser::new(&allocator, source, source_type).parse();
@@ -40,6 +94,22 @@ pub fn parse_file(path: &Utf8Path, source: &str) -> SourceData {
     // .d.ts declaration files use the same React.FC / ForwardRefExoticComponent patterns as .tsx
     let is_tsx = source_type.is_jsx() || source_type.is_typescript_definition();
     let mut collector = SourceDataCollector::new(path, source, is_tsx);
+
+    // oxc_parser is error-recovering: `ret.program` is still usable even when
+    // `ret.errors` is non-empty. Surface each error as a diagnostic instead of
+    // silently treating the source as if it parsed cleanly.
+    for err in &ret.errors {
+        collector.data.diagnostics.push(Diagnostic {
+            severity: DiagnosticSeverity::Error,
+            message: err.to_string(),
+            file: Some(path.to_string()),
+            line: None,
+            column: None,
+            help: None,
+            code: DiagnosticCode::ParseError,
+        });
+    }
+
     // Pass comments by cloning them into owned strings before the allocator drops.
     // The comments Vec lives in the arena; we extract them here.
     let comments: Vec<OwnedComment> = ret
@@ -464,6 +534,20 @@ impl<'src> SourceDataCollector<'src> {
                     .insert(scoped, CollectedTypeAlias::Intersection { members, file_path: self.file_path.clone() });
                 Some((bare.into(), vec![]))
             }
+            TSType::TSTypeLiteral(_) => {
+                // Bare inline object type used directly as props, e.g. `FC<{ x: string }>`
+                // or `forwardRef<Elem, { x: string }>`. Synthesize an anonymous passthrough
+                // alias so the resolver's existing alias machinery can resolve it, instead
+                // of silently dropping the whole component (the `_ => None` fallback below).
+                let collected = self.ts_type_to_collected(ty);
+                let bare = format!("__anon_{}", self.data.type_aliases.len());
+                let scoped = self.scoped_key(&bare);
+                self.data.type_aliases.insert(
+                    scoped,
+                    CollectedTypeAlias::Passthrough { target: collected, file_path: self.file_path.clone() },
+                );
+                Some((bare.into(), vec![]))
+            }
             _ => None,
         }
     }
@@ -823,5 +907,40 @@ mod tests {
         let entries = entries.unwrap();
         assert_eq!(entries.len(), 4);
         assert!(entries.iter().any(|e| e.name == "Up"));
+    }
+
+    #[test]
+    fn test_excessive_nesting_guard() {
+        // ~2500 levels of paren nesting — well past MAX_SOURCE_NESTING_DEPTH.
+        // Before the guard, this would hand a deeply nested expression straight to
+        // oxc_parser's recursive-descent parser and risk a stack overflow.
+        let nested = "(".repeat(2500) + &")".repeat(2500);
+        let source = format!("const x = {nested};");
+        let path = Utf8Path::new("/test/deep.ts");
+
+        let data = parse_file(path, &source);
+
+        assert_eq!(data.diagnostics.len(), 1, "expected exactly one diagnostic, got {:?}", data.diagnostics);
+        assert_eq!(data.diagnostics[0].code, DiagnosticCode::ExcessiveNesting);
+        assert!(data.component_mappings.is_empty(), "no components should be extracted from a skipped file");
+        assert!(data.interfaces.is_empty());
+    }
+
+    #[test]
+    fn test_parse_error_surfaced_as_diagnostic() {
+        // Deliberately malformed: unclosed interface body.
+        let source = r#"
+            export interface BrokenProps {
+                label: string;
+        "#;
+        let path = Utf8Path::new("/test/broken.tsx");
+
+        let data = parse_file(path, source);
+
+        assert!(
+            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::ParseError),
+            "expected a ParseError diagnostic; got {:?}",
+            data.diagnostics
+        );
     }
 }

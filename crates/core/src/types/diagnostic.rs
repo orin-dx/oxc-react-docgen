@@ -61,4 +61,8 @@ pub enum DiagnosticCode {
     DiscriminatedUnion,
     /// File could not be read — permission error or file missing.
     IoError,
+    /// Source file exceeds the maximum type-nesting depth; skipped to avoid parser stack overflow.
+    ExcessiveNesting,
+    /// TypeScript syntax error reported by the parser.
+    ParseError,
 }

@@ -224,10 +224,13 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
 
     // Phase 3: Merge into GlobalSourceData (sequential — fast hash-map insertions).
     let mut global = GlobalSourceData::default();
-    for (path, data, io_diag) in source_data_vec {
+    for (path, mut data, io_diag) in source_data_vec {
         if let Some(d) = io_diag {
             diagnostics.push(d);
         }
+        // Surface any diagnostics the extractor raised while parsing this file
+        // (excessive nesting, syntax errors) — never drop them silently.
+        diagnostics.append(&mut data.diagnostics);
         global.merge(&path, data);
     }
     let global = Arc::new(global);

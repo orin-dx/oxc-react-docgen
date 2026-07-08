@@ -8,13 +8,20 @@ React component prop extraction powered by [OXC](https://oxc.rs). Parses TypeScr
 
 `react-docgen-typescript` spins up a full TypeScript `Program` to extract props. On a mid-size design system this takes seconds — enough to noticeably delay Storybook startup and make HMR feel sluggish. OXC parses each file in parallel with no type-checking pass, so cold extraction on a 15-component fixture set (shadcn, MUI, Chakra, Mantine, React Aria, Radix) takes **32ms**.
 
-The output shape is RDT-compatible, so existing Storybook configurations work without changes.
+The CLI can emit an RDT-compatible shape via `--format rdt` (see [MIGRATING.md](MIGRATING.md)). The Vite plugin and NAPI binding currently expose this tool's own canonical format only — not a drop-in RDT replacement at that layer yet.
 
 ## Install
 
+`@oxc-react-docgen/napi` and `@oxc-react-docgen/vite-plugin` are not yet published to npm — there are no per-platform prebuilt binaries to install today. Until a release ships:
+
 ```bash
-npm install -D @oxc-react-docgen/vite-plugin @oxc-react-docgen/napi
+git clone https://github.com/castrog/oxc-react-codegen
+cd oxc-react-codegen
+cargo build --release -p oxc-react-docgen-napi   # builds the native addon for your platform
+pnpm install && pnpm --filter @oxc-react-docgen/vite-plugin build
 ```
+
+`packages/napi/index.js`'s loader only resolves the addon from `../../target/{release,debug}` relative to this checkout, so it works as a monorepo-local dependency but not as an installed package yet. See [MIGRATING.md](MIGRATING.md) if you're moving off `react-docgen-typescript` and want to know exactly what's compatible today.
 
 ## Vite plugin
 

@@ -180,7 +180,7 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
     // result — see crates/core/CLAUDE.md non-negotiable #6.
     let missing_src_dirs: Vec<&Utf8PathBuf> =
         options.src_dirs.iter().filter(|dir| !dir.as_std_path().is_dir()).collect();
-    if missing_src_dirs.len() == options.src_dirs.len() {
+    if !options.src_dirs.is_empty() && missing_src_dirs.len() == options.src_dirs.len() {
         diagnostics.push(Diagnostic {
             severity: DiagnosticSeverity::Error,
             message: format!(

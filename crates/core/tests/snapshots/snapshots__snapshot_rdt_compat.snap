@@ -33,13 +33,13 @@ expression: value
           "name": "defaultValue",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "string"
               },
               {
                 "kind": "array",
-                "0": {
+                "element": {
                   "kind": "string"
                 }
               }
@@ -64,7 +64,7 @@ expression: value
           "name": "onValueChange",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "eventHandler",
                 "eventType": "string"
@@ -124,13 +124,13 @@ expression: value
           "name": "value",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "string"
               },
               {
                 "kind": "array",
-                "0": {
+                "element": {
                   "kind": "string"
                 }
               }
@@ -232,6 +232,53 @@ expression: value
       "tags": {},
       "methods": []
     },
+    "Badge": {
+      "displayName": "Badge",
+      "filePath": "[ROOT]/fixtures/rdt-compat/inline-object-props.tsx",
+      "description": "",
+      "props": {
+        "label": {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "variant": {
+          "name": "variant",
+          "type": {
+            "kind": "union",
+            "members": [
+              {
+                "kind": "stringLiteral",
+                "value": "info"
+              },
+              {
+                "kind": "stringLiteral",
+                "value": "warning"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
     "Box": {
       "displayName": "Box",
       "filePath": "[ROOT]/fixtures/rdt-compat/svg-icon.tsx",
@@ -261,7 +308,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.HTMLProps",
-          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -468,7 +515,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.HTMLAttributes",
-          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -1027,6 +1074,43 @@ expression: value
       "tags": {},
       "methods": []
     },
+    "Toast": {
+      "displayName": "Toast",
+      "filePath": "[ROOT]/fixtures/rdt-compat/inline-object-props.tsx",
+      "description": "",
+      "props": {
+        "duration": {
+          "name": "duration",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "message": {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          },
+          "required": true,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        }
+      },
+      "inheritance": [],
+      "notableInherited": {},
+      "discriminantProp": null,
+      "composes": [],
+      "tags": {},
+      "methods": []
+    },
     "Toggle": {
       "displayName": "Toggle",
       "filePath": "[ROOT]/fixtures/rdt-compat/destructured-defaults.tsx",
@@ -1059,18 +1143,18 @@ expression: value
           "name": "size",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "sm"
+                "value": "sm"
               },
               {
                 "kind": "stringLiteral",
-                "0": "md"
+                "value": "md"
               },
               {
                 "kind": "stringLiteral",
-                "0": "lg"
+                "value": "lg"
               }
             ]
           },
@@ -1361,9 +1445,9 @@ expression: value
     }
   ],
   "stats": {
-    "componentsExtracted": 10,
+    "componentsExtracted": 12,
     "componentsSkipped": 0,
-    "filesParsed": 8,
+    "filesParsed": 9,
     "dtsFilesParsed": 0,
     "dtsCacheHits": 0,
     "durationMs": 0,

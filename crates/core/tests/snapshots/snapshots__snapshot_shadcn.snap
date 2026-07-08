@@ -40,7 +40,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.HTMLAttributes",
-          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -187,7 +187,10 @@ expression: value
             "kind": "boolean"
           },
           "required": false,
-          "defaultValue": null,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
           "description": "",
           "tags": {},
           "parent": {
@@ -261,7 +264,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.ButtonHTMLAttributes",
-          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "button",
           "totalProps": 0
@@ -527,7 +530,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.InputHTMLAttributes",
-          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "input",
           "totalProps": 0

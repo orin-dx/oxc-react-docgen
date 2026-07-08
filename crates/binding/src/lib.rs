@@ -3,7 +3,6 @@ use std::sync::{Arc, LazyLock};
 
 use camino::Utf8Path;
 use dashmap::DashMap;
-use napi::Result as NapiResult;
 use napi_derive::napi;
 
 use oxc_react_docgen_core::pipeline::{
@@ -105,7 +104,7 @@ impl From<JsExtractOptions> for PipelineOptions {
 /// Cold extraction — returns JSON string of ExtractionOutput.
 /// Use for: build-time extraction, CLI backing, one-off runs.
 #[napi]
-pub async fn extract_all(options: JsExtractOptions) -> NapiResult<String> {
+pub async fn extract_all(options: JsExtractOptions) -> napi::Result<String> {
     let pipeline_options = PipelineOptions::from(options);
     tokio::task::spawn_blocking(move || {
         let output = oxc_react_docgen_core::pipeline::extract(&pipeline_options);
@@ -133,7 +132,7 @@ pub async fn extract_file_incremental(
     file_path: String,
     session_id: u32,
     options: JsExtractOptions,
-) -> NapiResult<String> {
+) -> napi::Result<String> {
     let session = SESSIONS
         .entry(session_id)
         .or_insert_with(|| Arc::new(WatchSession::new(PipelineOptions::from(options))))
@@ -152,7 +151,7 @@ pub async fn extract_file_incremental(
 /// Returns JSON string of ExtractionOutput.
 /// Call this after create_session(), in configureServer.
 #[napi]
-pub async fn initialize_session(session_id: u32, options: JsExtractOptions) -> NapiResult<String> {
+pub async fn initialize_session(session_id: u32, options: JsExtractOptions) -> napi::Result<String> {
     let session = match SESSIONS.get(&session_id) {
         Some(s) => s.clone(),
         None => {

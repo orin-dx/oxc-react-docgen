@@ -7,7 +7,7 @@ expression: value
     "Button": {
       "displayName": "Button",
       "filePath": "[ROOT]/fixtures/mui/Button.d.ts",
-      "description": "The variant to use.",
+      "description": "",
       "props": {
         "TouchRippleProps": {
           "name": "TouchRippleProps",
@@ -92,34 +92,34 @@ expression: value
           "name": "color",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "inherit"
+                "value": "inherit"
               },
               {
                 "kind": "stringLiteral",
-                "0": "primary"
+                "value": "primary"
               },
               {
                 "kind": "stringLiteral",
-                "0": "secondary"
+                "value": "secondary"
               },
               {
                 "kind": "stringLiteral",
-                "0": "success"
+                "value": "success"
               },
               {
                 "kind": "stringLiteral",
-                "0": "error"
+                "value": "error"
               },
               {
                 "kind": "stringLiteral",
-                "0": "info"
+                "value": "info"
               },
               {
                 "kind": "stringLiteral",
-                "0": "warning"
+                "value": "warning"
               }
             ]
           },
@@ -447,18 +447,18 @@ expression: value
           "name": "loadingPosition",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "start"
+                "value": "start"
               },
               {
                 "kind": "stringLiteral",
-                "0": "end"
+                "value": "end"
               },
               {
                 "kind": "stringLiteral",
-                "0": "center"
+                "value": "center"
               }
             ]
           },
@@ -507,18 +507,18 @@ expression: value
           "name": "size",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "small"
+                "value": "small"
               },
               {
                 "kind": "stringLiteral",
-                "0": "medium"
+                "value": "medium"
               },
               {
                 "kind": "stringLiteral",
-                "0": "large"
+                "value": "large"
               }
             ]
           },
@@ -566,7 +566,7 @@ expression: value
           "name": "sx",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "cssProperties"
               },
@@ -580,7 +580,7 @@ expression: value
                 "args": [
                   {
                     "kind": "union",
-                    "0": [
+                    "members": [
                       {
                         "kind": "boolean"
                       },
@@ -673,18 +673,18 @@ expression: value
           "name": "variant",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "text"
+                "value": "text"
               },
               {
                 "kind": "stringLiteral",
-                "0": "outlined"
+                "value": "outlined"
               },
               {
                 "kind": "stringLiteral",
-                "0": "contained"
+                "value": "contained"
               }
             ]
           },
@@ -712,7 +712,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.ButtonHTMLAttributes",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "button",
           "totalProps": 0
@@ -1135,30 +1135,30 @@ expression: value
           "name": "color",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "primary"
+                "value": "primary"
               },
               {
                 "kind": "stringLiteral",
-                "0": "secondary"
+                "value": "secondary"
               },
               {
                 "kind": "stringLiteral",
-                "0": "error"
+                "value": "error"
               },
               {
                 "kind": "stringLiteral",
-                "0": "info"
+                "value": "info"
               },
               {
                 "kind": "stringLiteral",
-                "0": "success"
+                "value": "success"
               },
               {
                 "kind": "stringLiteral",
-                "0": "warning"
+                "value": "warning"
               }
             ]
           },
@@ -1385,18 +1385,18 @@ expression: value
           "name": "margin",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "dense"
+                "value": "dense"
               },
               {
                 "kind": "stringLiteral",
-                "0": "normal"
+                "value": "normal"
               },
               {
                 "kind": "stringLiteral",
-                "0": "none"
+                "value": "none"
               }
             ]
           },
@@ -1424,7 +1424,7 @@ expression: value
           "name": "maxRows",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "number"
               },
@@ -1605,7 +1605,7 @@ expression: value
           "name": "rows",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "number"
               },
@@ -1658,14 +1658,14 @@ expression: value
           "name": "size",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "small"
+                "value": "small"
               },
               {
                 "kind": "stringLiteral",
-                "0": "medium"
+                "value": "medium"
               }
             ]
           },
@@ -1693,7 +1693,7 @@ expression: value
           "name": "sx",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "cssProperties"
               },
@@ -1707,7 +1707,7 @@ expression: value
                 "args": [
                   {
                     "kind": "union",
-                    "0": [
+                    "members": [
                       {
                         "kind": "boolean"
                       },
@@ -1788,18 +1788,18 @@ expression: value
           "name": "variant",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "standard"
+                "value": "standard"
               },
               {
                 "kind": "stringLiteral",
-                "0": "filled"
+                "value": "filled"
               },
               {
                 "kind": "stringLiteral",
-                "0": "outlined"
+                "value": "outlined"
               }
             ]
           },

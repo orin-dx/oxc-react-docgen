@@ -59,6 +59,27 @@ pub fn cmd_extract(args: crate::ExtractArgs, json_mode: bool, quiet: bool, confi
     Ok(())
 }
 
+/// RDT's type-name convention for literal unions: `{"name": "enum", "value": [...]}`
+/// instead of inlining the literal text into `type.name` as a plain string. Lets
+/// prop-table renderers that pattern-match `type.name === "enum"` (a common
+/// Storybook addon integration point) show a `<select>` control for the most
+/// common, most curated props in any design system (variant, size, color…).
+fn rdt_type_json(prop_type: &oxc_react_docgen_core::types::PropType) -> serde_json::Value {
+    use oxc_react_docgen_core::types::PropType;
+
+    if prop_type.is_literal_union() {
+        let values: Vec<serde_json::Value> = match prop_type {
+            PropType::Union(members) => members.iter().map(|m| serde_json::json!({"value": m.raw_string()})).collect(),
+            PropType::LiteralUnion { members, .. } => {
+                members.iter().map(|m| serde_json::json!({"value": format!("\"{m}\"")})).collect()
+            }
+            _ => vec![],
+        };
+        return serde_json::json!({ "name": "enum", "value": values });
+    }
+    serde_json::json!({ "name": prop_type.raw_string() })
+}
+
 pub fn serialize_rdt(output: &oxc_react_docgen_core::types::ExtractionOutput) -> String {
     // RDT-compatible shape: flatten to Record<string, ComponentDoc>
     let mut map = serde_json::Map::new();
@@ -69,7 +90,7 @@ pub fn serialize_rdt(output: &oxc_react_docgen_core::types::ExtractionOutput) ->
             .map(|(k, prop)| {
                 let obj = serde_json::json!({
                     "name": prop.name,
-                    "type": { "name": prop.prop_type.raw_string() },
+                    "type": rdt_type_json(&prop.prop_type),
                     "required": prop.required,
                     "defaultValue": prop.default_value.as_ref().map(|d| serde_json::json!({"value": d.value, "computed": d.computed})),
                     "description": prop.description,
@@ -84,6 +105,8 @@ pub fn serialize_rdt(output: &oxc_react_docgen_core::types::ExtractionOutput) ->
                 "displayName": entry.display_name,
                 "props": serde_json::Value::Object(props),
                 "description": entry.description,
+                "methods": [],
+                "tags": entry.tags,
             }),
         );
     }

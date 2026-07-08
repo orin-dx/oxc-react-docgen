@@ -292,29 +292,30 @@ impl PropType {
             PropType::CssProperties => serde_json::json!({"kind": "cssProperties"}),
             PropType::ElementType => serde_json::json!({"kind": "elementType"}),
             PropType::SxProps => serde_json::json!({"kind": "sxProps"}),
-            // Newtype/tuple variants — inner is not a map, so wrap as "0"
-            PropType::StringLiteral(s) => serde_json::json!({"kind": "stringLiteral", "0": s}),
-            PropType::NumberLiteral(n) => serde_json::json!({"kind": "numberLiteral", "0": n}),
-            PropType::BoolLiteral(b) => serde_json::json!({"kind": "boolLiteral", "0": b}),
+            // Newtype/tuple variants — give each a real field name instead of a
+            // positional "0" key, matching the struct-style variants below.
+            PropType::StringLiteral(s) => serde_json::json!({"kind": "stringLiteral", "value": s}),
+            PropType::NumberLiteral(n) => serde_json::json!({"kind": "numberLiteral", "value": n}),
+            PropType::BoolLiteral(b) => serde_json::json!({"kind": "boolLiteral", "value": b}),
             PropType::Union(members) => serde_json::json!({
                 "kind": "union",
-                "0": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
+                "members": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
             }),
             PropType::Intersection(members) => serde_json::json!({
                 "kind": "intersection",
-                "0": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
+                "members": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
             }),
             PropType::Array(inner) => serde_json::json!({
                 "kind": "array",
-                "0": inner.to_tagged_value()
+                "element": inner.to_tagged_value()
             }),
             PropType::Tuple(members) => serde_json::json!({
                 "kind": "tuple",
-                "0": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
+                "elements": members.iter().map(|m| m.to_tagged_value()).collect::<Vec<_>>()
             }),
             PropType::Object(fields) => serde_json::json!({
                 "kind": "object",
-                "0": fields.iter().map(|f| serde_json::json!({
+                "fields": fields.iter().map(|f| serde_json::json!({
                     "name": f.name,
                     "propType": f.prop_type.to_tagged_value(),
                     "required": f.required,
@@ -394,44 +395,44 @@ impl PropType {
             "elementType" | "element_type" => Ok(PropType::ElementType),
             "sxProps" | "sx_props" => Ok(PropType::SxProps),
             "stringLiteral" | "string_literal" => {
-                let s = v["0"].as_str().unwrap_or("").to_owned();
+                let s = v["value"].as_str().unwrap_or("").to_owned();
                 Ok(PropType::StringLiteral(s))
             }
             "numberLiteral" | "number_literal" => {
-                let n = v["0"].as_f64().unwrap_or(0.0);
+                let n = v["value"].as_f64().unwrap_or(0.0);
                 Ok(PropType::NumberLiteral(n))
             }
             "boolLiteral" | "bool_literal" => {
-                let b = v["0"].as_bool().unwrap_or(false);
+                let b = v["value"].as_bool().unwrap_or(false);
                 Ok(PropType::BoolLiteral(b))
             }
             "union" => {
-                let members = v["0"]
+                let members = v["members"]
                     .as_array()
                     .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
                     .unwrap_or(Ok(vec![]))?;
                 Ok(PropType::Union(members))
             }
             "intersection" => {
-                let members = v["0"]
+                let members = v["members"]
                     .as_array()
                     .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
                     .unwrap_or(Ok(vec![]))?;
                 Ok(PropType::Intersection(members))
             }
             "array" => {
-                let inner = Self::from_tagged_value(&v["0"])?;
+                let inner = Self::from_tagged_value(&v["element"])?;
                 Ok(PropType::Array(Box::new(inner)))
             }
             "tuple" => {
-                let members = v["0"]
+                let members = v["elements"]
                     .as_array()
                     .map(|a| a.iter().map(Self::from_tagged_value).collect::<Result<Vec<_>, _>>())
                     .unwrap_or(Ok(vec![]))?;
                 Ok(PropType::Tuple(members))
             }
             "object" => {
-                let fields = v["0"]
+                let fields = v["fields"]
                     .as_array()
                     .map(|a| {
                         a.iter()

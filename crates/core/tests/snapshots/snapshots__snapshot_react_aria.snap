@@ -93,17 +93,17 @@ expression: value
           "name": "aria-expanded",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "boolean"
               },
               {
                 "kind": "stringLiteral",
-                "0": "true"
+                "value": "true"
               },
               {
                 "kind": "stringLiteral",
-                "0": "false"
+                "value": "false"
               }
             ]
           },
@@ -126,37 +126,37 @@ expression: value
           "name": "aria-haspopup",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "boolean"
               },
               {
                 "kind": "stringLiteral",
-                "0": "menu"
+                "value": "menu"
               },
               {
                 "kind": "stringLiteral",
-                "0": "listbox"
+                "value": "listbox"
               },
               {
                 "kind": "stringLiteral",
-                "0": "tree"
+                "value": "tree"
               },
               {
                 "kind": "stringLiteral",
-                "0": "grid"
+                "value": "grid"
               },
               {
                 "kind": "stringLiteral",
-                "0": "dialog"
+                "value": "dialog"
               },
               {
                 "kind": "stringLiteral",
-                "0": "true"
+                "value": "true"
               },
               {
                 "kind": "stringLiteral",
-                "0": "false"
+                "value": "false"
               }
             ]
           },
@@ -219,21 +219,21 @@ expression: value
           "name": "aria-pressed",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "boolean"
               },
               {
                 "kind": "stringLiteral",
-                "0": "true"
+                "value": "true"
               },
               {
                 "kind": "stringLiteral",
-                "0": "false"
+                "value": "false"
               },
               {
                 "kind": "stringLiteral",
-                "0": "mixed"
+                "value": "mixed"
               }
             ]
           },
@@ -256,7 +256,7 @@ expression: value
           "name": "children",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "reactNode"
               },
@@ -285,7 +285,7 @@ expression: value
           "name": "className",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "string"
               },
@@ -314,7 +314,7 @@ expression: value
           "name": "download",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "string"
               },
@@ -766,7 +766,7 @@ expression: value
           "name": "style",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "cssProperties"
               },
@@ -815,18 +815,18 @@ expression: value
           "name": "type",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "button"
+                "value": "button"
               },
               {
                 "kind": "stringLiteral",
-                "0": "submit"
+                "value": "submit"
               },
               {
                 "kind": "stringLiteral",
-                "0": "reset"
+                "value": "reset"
               }
             ]
           },

@@ -94,14 +94,14 @@ expression: value
           "name": "type",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "single"
+                "value": "single"
               },
               {
                 "kind": "stringLiteral",
-                "0": "multiple"
+                "value": "multiple"
               }
             ]
           },
@@ -428,18 +428,18 @@ expression: value
           "name": "variant",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "flat"
+                "value": "flat"
               },
               {
                 "kind": "stringLiteral",
-                "0": "outlined"
+                "value": "outlined"
               },
               {
                 "kind": "stringLiteral",
-                "0": "elevated"
+                "value": "elevated"
               }
             ]
           },
@@ -814,18 +814,18 @@ expression: value
           "name": "type",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "button"
+                "value": "button"
               },
               {
                 "kind": "stringLiteral",
-                "0": "submit"
+                "value": "submit"
               },
               {
                 "kind": "stringLiteral",
-                "0": "reset"
+                "value": "reset"
               }
             ]
           },
@@ -1109,7 +1109,7 @@ expression: value
           "name": "alwaysEnabled",
           "type": {
             "kind": "boolLiteral",
-            "0": true
+            "value": true
           },
           "required": false,
           "defaultValue": null,
@@ -1176,7 +1176,7 @@ expression: value
           "name": "items",
           "type": {
             "kind": "array",
-            "0": {
+            "element": {
               "kind": "string"
             }
           },
@@ -1219,7 +1219,7 @@ expression: value
           "name": "position",
           "type": {
             "kind": "tuple",
-            "0": [
+            "elements": [
               {
                 "kind": "number"
               },
@@ -1247,22 +1247,22 @@ expression: value
           "name": "step",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "numberLiteral",
-                "0": 1.0
+                "value": 1.0
               },
               {
                 "kind": "numberLiteral",
-                "0": 2.0
+                "value": 2.0
               },
               {
                 "kind": "numberLiteral",
-                "0": 4.0
+                "value": 4.0
               },
               {
                 "kind": "numberLiteral",
-                "0": 8.0
+                "value": 8.0
               }
             ]
           },
@@ -1305,13 +1305,13 @@ expression: value
           "name": "tokenStyle",
           "type": {
             "kind": "intersection",
-            "0": [
+            "members": [
               {
                 "kind": "cssProperties"
               },
               {
                 "kind": "object",
-                "0": [
+                "fields": [
                   {
                     "name": "--accent",
                     "propType": {

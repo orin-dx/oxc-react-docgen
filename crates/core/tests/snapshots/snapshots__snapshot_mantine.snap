@@ -7,7 +7,7 @@ expression: value
     "Button": {
       "displayName": "Button",
       "filePath": "[ROOT]/fixtures/mantine/Button.d.ts",
-      "description": "Determines which auto-complete feature the browser offers.",
+      "description": "",
       "props": {
         "autoContrast": {
           "name": "autoContrast",
@@ -152,7 +152,7 @@ expression: value
           "name": "gradient",
           "type": {
             "kind": "object",
-            "0": [
+            "fields": [
               {
                 "name": "from",
                 "propType": {
@@ -292,7 +292,7 @@ expression: value
           "name": "radius",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "literalUnion",
                 "members": [
@@ -356,7 +356,7 @@ expression: value
           "name": "size",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "literalUnion",
                 "members": [
@@ -405,38 +405,38 @@ expression: value
           "name": "variant",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "default"
+                "value": "default"
               },
               {
                 "kind": "stringLiteral",
-                "0": "filled"
+                "value": "filled"
               },
               {
                 "kind": "stringLiteral",
-                "0": "light"
+                "value": "light"
               },
               {
                 "kind": "stringLiteral",
-                "0": "outline"
+                "value": "outline"
               },
               {
                 "kind": "stringLiteral",
-                "0": "subtle"
+                "value": "subtle"
               },
               {
                 "kind": "stringLiteral",
-                "0": "transparent"
+                "value": "transparent"
               },
               {
                 "kind": "stringLiteral",
-                "0": "white"
+                "value": "white"
               },
               {
                 "kind": "stringLiteral",
-                "0": "gradient"
+                "value": "gradient"
               }
             ]
           },
@@ -464,7 +464,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.ButtonHTMLAttributes",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "button",
           "totalProps": 0
@@ -712,7 +712,7 @@ expression: value
     "TextInput": {
       "displayName": "TextInput",
       "filePath": "[ROOT]/fixtures/mantine/TextInput.d.ts",
-      "description": "A ref passed to the underlying `<input>` DOM element.",
+      "description": "",
       "props": {
         "autoComplete": {
           "name": "autoComplete",
@@ -957,22 +957,22 @@ expression: value
             "args": [
               {
                 "kind": "union",
-                "0": [
+                "members": [
                   {
                     "kind": "stringLiteral",
-                    "0": "label"
+                    "value": "label"
                   },
                   {
                     "kind": "stringLiteral",
-                    "0": "input"
+                    "value": "input"
                   },
                   {
                     "kind": "stringLiteral",
-                    "0": "description"
+                    "value": "description"
                   },
                   {
                     "kind": "stringLiteral",
-                    "0": "error"
+                    "value": "error"
                   }
                 ]
               }
@@ -1336,7 +1336,7 @@ expression: value
           "name": "radius",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "literalUnion",
                 "members": [
@@ -1629,18 +1629,18 @@ expression: value
           "name": "variant",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "default"
+                "value": "default"
               },
               {
                 "kind": "stringLiteral",
-                "0": "filled"
+                "value": "filled"
               },
               {
                 "kind": "stringLiteral",
-                "0": "unstyled"
+                "value": "unstyled"
               }
             ]
           },

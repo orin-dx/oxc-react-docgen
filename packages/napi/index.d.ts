@@ -71,14 +71,14 @@ export type PropType =
   | { kind: 'cssProperties' }
   | { kind: 'elementType' }
   | { kind: 'sxProps' }
-  | { kind: 'stringLiteral'; 0: string }
-  | { kind: 'numberLiteral'; 0: number }
-  | { kind: 'boolLiteral'; 0: boolean }
-  | { kind: 'union'; 0: PropType[] }
-  | { kind: 'intersection'; 0: PropType[] }
-  | { kind: 'array'; 0: PropType }
-  | { kind: 'tuple'; 0: PropType[] }
-  | { kind: 'object'; 0: ObjectField[] }
+  | { kind: 'stringLiteral'; value: string }
+  | { kind: 'numberLiteral'; value: number }
+  | { kind: 'boolLiteral'; value: boolean }
+  | { kind: 'union'; members: PropType[] }
+  | { kind: 'intersection'; members: PropType[] }
+  | { kind: 'array'; element: PropType }
+  | { kind: 'tuple'; elements: PropType[] }
+  | { kind: 'object'; fields: ObjectField[] }
   | { kind: 'named'; name: string; args: PropType[] }
   | { kind: 'eventHandler'; eventType: string }
   | { kind: 'ref'; element: string | null }

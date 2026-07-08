@@ -259,14 +259,14 @@ expression: value
           "name": "spinnerPlacement",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "start"
+                "value": "start"
               },
               {
                 "kind": "stringLiteral",
-                "0": "end"
+                "value": "end"
               }
             ]
           },
@@ -294,18 +294,18 @@ expression: value
           "name": "type",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "stringLiteral",
-                "0": "button"
+                "value": "button"
               },
               {
                 "kind": "stringLiteral",
-                "0": "submit"
+                "value": "submit"
               },
               {
                 "kind": "stringLiteral",
-                "0": "reset"
+                "value": "reset"
               }
             ]
           },
@@ -333,7 +333,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "HTMLChakraProps",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "button",
           "totalProps": 0
@@ -586,7 +586,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "HTMLChakraProps",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -796,7 +796,7 @@ expression: value
           "name": "defaultValue",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "string"
               },
@@ -1228,7 +1228,7 @@ expression: value
           "name": "value",
           "type": {
             "kind": "union",
-            "0": [
+            "members": [
               {
                 "kind": "string"
               },
@@ -1285,7 +1285,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "HTMLChakraProps",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "input",
           "totalProps": 0
@@ -1470,7 +1470,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "HTMLChakraProps",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -1614,7 +1614,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "HTMLChakraProps",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -1779,7 +1779,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "HTMLChakraProps",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -1923,7 +1923,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "HTMLChakraProps",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -2088,7 +2088,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "HTMLChakraProps",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/Users/gabe/Projects/oxc-react-codegen/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0

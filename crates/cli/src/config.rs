@@ -1,7 +1,12 @@
+use miette::{IntoDiagnostic, Result};
 use oxc_react_docgen_core::pipeline::PipelineOptions;
 
 /// Find and load docgen.config.ts, walking up from start_dir to workspace root.
-pub fn load_config_file(start_dir: &std::path::Path) -> Option<PipelineOptions> {
+///
+/// Returns `Ok(None)` when no config file exists anywhere between `start_dir` and the
+/// workspace root — callers fall back to [`PipelineOptions::default`]. Returns `Err` when
+/// a config file IS found but can't be honored; see [`try_load_config`].
+pub fn load_config_file(start_dir: &std::path::Path) -> Result<Option<PipelineOptions>> {
     let mut dir = start_dir;
     loop {
         let candidate = dir.join("docgen.config.ts");
@@ -11,14 +16,23 @@ pub fn load_config_file(start_dir: &std::path::Path) -> Option<PipelineOptions> 
         // Stop at workspace root signals
         for signal in &["pnpm-workspace.yaml", "turbo.json", ".moon/workspace.yml"] {
             if dir.join(signal).exists() {
-                return None;
+                return Ok(None);
             }
         }
-        dir = dir.parent()?;
+        let Some(parent) = dir.parent() else { return Ok(None) };
+        dir = parent;
     }
 }
 
-pub fn try_load_config(path: &std::path::Path) -> Option<PipelineOptions> {
+/// Execute and validate `docgen.config.ts` at `path`.
+///
+/// Mapping the config's JSON schema onto [`PipelineOptions`] isn't implemented yet, so a
+/// config that evaluates successfully still can't be honored. Returning `Ok(None)` here
+/// would mean a config a user explicitly wrote (e.g. with different `srcDirs`) gets
+/// silently ignored in favor of defaults — a plausible-looking but wrong result forever
+/// (crates/core/CLAUDE.md non-negotiable #6: never fail silently). So any config file that
+/// is *found* is a hard error until schema mapping ships.
+pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>> {
     use std::io::Write;
 
     // Pass the config path via environment variable to avoid any path content
@@ -36,22 +50,33 @@ pub fn try_load_config(path: &std::path::Path) -> Option<PipelineOptions> {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .ok()?;
+        .into_diagnostic()?;
 
     // Write the script to stdin, then close stdin to signal EOF.
-    child.stdin.as_mut()?.write_all(script.as_bytes()).ok()?;
-    drop(child.stdin.take());
+    let mut stdin =
+        child.stdin.take().ok_or_else(|| miette::miette!("failed to open stdin for the node subprocess"))?;
+    stdin.write_all(script.as_bytes()).into_diagnostic()?;
+    drop(stdin);
 
-    let output = child.wait_with_output().ok()?;
+    let output = child.wait_with_output().into_diagnostic()?;
 
     if !output.status.success() {
-        return None;
+        return Err(miette::miette!(
+            help = "Check docgen.config.ts for syntax errors, or remove it to use defaults.",
+            "docgen.config.ts at {} failed to evaluate ({})",
+            path.display(),
+            output.status,
+        ));
     }
 
-    // Parse as JSON value to validate; full mapping is a future TODO
-    serde_json::from_slice::<serde_json::Value>(&output.stdout).ok()?;
-    // TODO: map JSON fields to PipelineOptions
-    None // stub — returns None until full config schema is mapped
+    // Parse as JSON to confirm the config at least evaluates to a valid object.
+    serde_json::from_slice::<serde_json::Value>(&output.stdout).into_diagnostic()?;
+
+    Err(miette::miette!(
+        help = "Remove docgen.config.ts (or drop --config) to use CLI flags and defaults instead.",
+        "docgen.config.ts was found at {} but config file support is not yet implemented in this version",
+        path.display(),
+    ))
 }
 
 pub fn build_options(
@@ -60,10 +85,12 @@ pub fn build_options(
     react_version: Option<&str>,
     cache_dir: Option<&str>,
     config_path: Option<&str>,
-) -> PipelineOptions {
+) -> Result<PipelineOptions> {
     let cwd = std::env::current_dir().unwrap_or_default();
-    let config_override =
-        config_path.map(std::path::PathBuf::from).and_then(|p| try_load_config(&p)).or_else(|| load_config_file(&cwd));
+    let config_override = match config_path {
+        Some(p) => try_load_config(std::path::Path::new(p))?,
+        None => load_config_file(&cwd)?,
+    };
 
     let mut opts = config_override.unwrap_or_default();
 
@@ -84,5 +111,5 @@ pub fn build_options(
         opts.cache_dir = Some(dir.into());
     }
 
-    opts
+    Ok(opts)
 }

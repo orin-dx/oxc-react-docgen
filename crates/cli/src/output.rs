@@ -1,3 +1,6 @@
+/// Human-readable extraction summary. Always written to stderr — stdout is reserved for the
+/// JSON payload (canonical/RDT/storybook), in every mode, so `oxc-react-docgen extract | jq .`
+/// never sees this interleaved with the data.
 pub fn print_summary(output: &oxc_react_docgen_core::types::ExtractionOutput, quiet: bool) {
     if quiet {
         return;
@@ -15,8 +18,8 @@ pub fn print_summary(output: &oxc_react_docgen_core::types::ExtractionOutput, qu
         .filter(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Warning))
         .count();
 
-    println!();
-    println!(
+    eprintln!();
+    eprintln!(
         "  {}  {} components  ·  {} enums  ·  {}  ·  {}  ·  {}ms",
         "⚡".yellow(),
         output.stats.components_extracted.to_string().bold(),
@@ -25,9 +28,10 @@ pub fn print_summary(output: &oxc_react_docgen_core::types::ExtractionOutput, qu
         if errors > 0 { format!("{errors} errors").red().to_string() } else { format!("{errors} errors") },
         output.stats.duration_ms.to_string().bold(),
     );
-    println!();
+    eprintln!();
 }
 
+/// Human-readable diagnostic list. Always written to stderr — see [`print_summary`].
 pub fn print_diagnostics(diagnostics: &[oxc_react_docgen_core::types::Diagnostic]) {
     use owo_colors::OwoColorize;
     for d in diagnostics {
@@ -38,12 +42,12 @@ pub fn print_diagnostics(diagnostics: &[oxc_react_docgen_core::types::Diagnostic
             _ => "info".dimmed().to_string(),
         };
         if let Some(ref file) = d.file {
-            println!("  [{prefix}] {file}:{}", d.message);
+            eprintln!("  [{prefix}] {file}:{}", d.message);
         } else {
-            println!("  [{prefix}] {}", d.message);
+            eprintln!("  [{prefix}] {}", d.message);
         }
         if let Some(ref help) = d.help {
-            println!("    {} {}", "help:".dimmed(), help);
+            eprintln!("    {} {}", "help:".dimmed(), help);
         }
     }
 }

@@ -12,7 +12,7 @@ pub fn cmd_extract(args: crate::ExtractArgs, json_mode: bool, quiet: bool, confi
         args.react_version.as_deref(),
         args.cache_dir.as_deref(),
         config_path,
-    );
+    )?;
 
     let pb = if !quiet && !json_mode {
         let pb = ProgressBar::new_spinner();

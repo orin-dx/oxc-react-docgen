@@ -175,6 +175,38 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
     let start = Instant::now();
     let mut diagnostics = Vec::new();
 
+    // Phase 0: Validate that configured source directories exist. A typo'd --src (or a
+    // stale docgen.config.ts srcDirs) must not silently produce an empty-but-valid-looking
+    // result — see crates/core/CLAUDE.md non-negotiable #6.
+    let missing_src_dirs: Vec<&Utf8PathBuf> =
+        options.src_dirs.iter().filter(|dir| !dir.as_std_path().is_dir()).collect();
+    if missing_src_dirs.len() == options.src_dirs.len() {
+        diagnostics.push(Diagnostic {
+            severity: DiagnosticSeverity::Error,
+            message: format!(
+                "None of the configured source directories exist: {}",
+                options.src_dirs.iter().map(|dir| dir.as_str()).collect::<Vec<_>>().join(", ")
+            ),
+            file: options.src_dirs.first().map(ToString::to_string),
+            line: None,
+            column: None,
+            help: Some("Check --src (or docgen.config.ts srcDirs) for a typo'd or stale path.".into()),
+            code: DiagnosticCode::IoError,
+        });
+    } else {
+        for dir in missing_src_dirs {
+            diagnostics.push(Diagnostic {
+                severity: DiagnosticSeverity::Warning,
+                message: format!("Source directory does not exist: {dir}"),
+                file: Some(dir.to_string()),
+                line: None,
+                column: None,
+                help: Some("Check --src (or docgen.config.ts srcDirs) for a typo'd or stale path.".into()),
+                code: DiagnosticCode::IoError,
+            });
+        }
+    }
+
     // Load the DTS parse-result cache (silently empty if missing/stale).
     let cache = Arc::new(DtsCache::load_from_disk(options.cache_dir.as_deref()));
     let cache_ref = Arc::clone(&cache);
@@ -400,6 +432,31 @@ mod tests {
         assert!(output.diagnostics.is_empty(), "no diagnostics from empty dir");
         assert_eq!(output.stats.files_parsed, 0);
         assert_eq!(output.stats.components_extracted, 0);
+    }
+
+    // ── test_extract_missing_src_dir ──────────────────────────────────────────
+
+    #[test]
+    fn test_extract_missing_src_dir() {
+        // A typo'd/stale --src must surface as an Error diagnostic, not silently
+        // produce an empty-but-valid-looking result (crates/core/CLAUDE.md #6).
+        let tmp = TempDir::new().unwrap();
+        let missing = Utf8PathBuf::from_path_buf(tmp.path().join("does-not-exist")).unwrap();
+
+        let options = PipelineOptions {
+            src_dirs: vec![missing.clone()],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let error = output
+            .diagnostics
+            .iter()
+            .find(|d| matches!(d.severity, DiagnosticSeverity::Error) && d.code == DiagnosticCode::IoError)
+            .expect("missing src dir should produce an Error/IoError diagnostic");
+        assert!(error.message.contains(missing.as_str()), "message should name the missing path");
     }
 
     // ── test_pipeline_options_default ─────────────────────────────────────────

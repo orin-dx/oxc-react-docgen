@@ -4,7 +4,7 @@ use crate::config::build_options;
 use crate::output::{print_diagnostics, print_summary};
 
 pub fn cmd_check(args: crate::CheckArgs, quiet: bool, config_path: Option<&str>) -> Result<()> {
-    let options = build_options(&args.src, false, None, None, config_path);
+    let options = build_options(&args.src, false, None, None, config_path)?;
     let output = oxc_react_docgen_core::pipeline::extract(&options);
 
     let errors: Vec<_> = output

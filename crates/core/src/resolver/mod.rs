@@ -647,6 +647,103 @@ mod tests {
         assert!(warnings.is_empty(), "Expected no warnings, got {:?}", warnings);
     }
 
+    // ── Test 10b2: Two distinct Partial<X> extends targets on one interface ───
+    // Regression test for the Blueprint Table pattern:
+    //   interface TableProps extends Partial<RowHeights>, Partial<ColumnWidths> {}
+    // resolve_props_chain's cycle-detection visited-key was built from the bare
+    // type name alone ("Partial"), ignoring type_args — so the second Partial<X>
+    // extends target collided with the first's visited-key and silently resolved
+    // to nothing, with zero diagnostic.
+
+    #[test]
+    fn test_two_distinct_partial_extends_targets_both_resolve() {
+        let file_path = Utf8PathBuf::from("/test/table.tsx");
+
+        let mut global = GlobalSourceData::default();
+
+        global.interfaces.insert(
+            format!("{}:RowHeights", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:RowHeights", file_path),
+                name: "RowHeights".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "defaultRowHeight".into(),
+                    collected_type: CollectedType::Number,
+                    required: true,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interfaces.insert(
+            format!("{}:ColumnWidths", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:ColumnWidths", file_path),
+                name: "ColumnWidths".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "defaultColumnWidth".into(),
+                    collected_type: CollectedType::Number,
+                    required: true,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interfaces.insert(
+            format!("{}:TableProps", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:TableProps", file_path),
+                name: "TableProps".into(),
+                file_path: file_path.clone(),
+                props: vec![],
+                extends: vec![
+                    ExtendsRef::SameFile { name: "Partial".into(), type_args: vec!["RowHeights".into()] },
+                    ExtendsRef::SameFile { name: "Partial".into(), type_args: vec!["ColumnWidths".into()] },
+                ],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Table".into(),
+            props_type_name: "TableProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, _diagnostics) = resolve_component(&mapping, &ctx);
+
+        assert!(
+            entry.props.contains_key("defaultRowHeight"),
+            "Expected 'defaultRowHeight' from the first Partial<X> target, got props: {:?}",
+            entry.props.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            entry.props.contains_key("defaultColumnWidth"),
+            "Expected 'defaultColumnWidth' from the second Partial<X> target — it must not be dropped due to a visited-key collision with the first, got props: {:?}",
+            entry.props.keys().collect::<Vec<_>>()
+        );
+    }
+
     // ── Test 10c: User-defined generic type alias substitution (Ark UI `Assign<T, U>`) ─
     // Regression test for: `type Assign<T, U> = Omit<T, keyof U> & U` used with
     // concrete call-site arguments. Before substitution was implemented, `T`/`U`

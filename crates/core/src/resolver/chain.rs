@@ -40,7 +40,10 @@ pub(super) fn resolve_props_chain(
     }
 
     // Cycle detection — scoped by file so same type name in different files is OK.
-    let visit_key: CompactString = format!("{}:{}", consuming_file, type_name).into();
+    // Must include type_args: distinct instantiations of the same generic alias
+    // (e.g. `Partial<RowHeights>` vs `Partial<ColumnWidths>` in the same interface's
+    // extends list) are not the same visit and must not collide on the bare name alone.
+    let visit_key: CompactString = format!("{}:{}<{}>", consuming_file, type_name, type_args.join(",")).into();
     if !state.visited.insert(visit_key) {
         return ResolvedChain::default();
     }

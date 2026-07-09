@@ -84,13 +84,14 @@ impl<'src> SourceDataCollector<'src> {
                     return None;
                 }
                 let (props_name, type_args) = self.extract_props_arg(&tr.type_arguments)?;
+                let (description, tags) = self.find_jsdoc_with_tags(span_start);
                 Some(ComponentMapping {
                     component_name: name.to_owned(),
                     props_type_name: props_name,
                     props_type_args: type_args,
                     file_path: self.file_path.clone(),
-                    description: self.find_jsdoc(span_start),
-                    tags: self.extract_jsdoc_tags(span_start),
+                    description,
+                    tags,
                     span_start,
                     span_end,
                     param_defaults: init_params.map(|p| self.extract_param_defaults(p)).unwrap_or_default(),
@@ -136,14 +137,15 @@ impl<'src> SourceDataCollector<'src> {
             _ => None,
         };
         let param_defaults = render_params.map(|p| self.extract_param_defaults(p)).unwrap_or_default();
+        let (description, tags) = self.find_jsdoc_with_tags(decl.span.start);
 
         Some(ComponentMapping {
             component_name: name.to_owned(),
             props_type_name: props_name,
             props_type_args: type_args,
             file_path: self.file_path.clone(),
-            description: self.find_jsdoc(decl.span.start),
-            tags: self.extract_jsdoc_tags(decl.span.start),
+            description,
+            tags,
             span_start: decl.span.start,
             span_end: decl.span.end,
             param_defaults,
@@ -172,13 +174,14 @@ impl<'src> SourceDataCollector<'src> {
                     let type_params = inner.type_arguments.as_ref()?;
                     if type_params.params.len() >= 2 {
                         let (props_name, type_args) = self.extract_type_name_from_type(&type_params.params[1])?;
+                        let (description, tags) = self.find_jsdoc_with_tags(decl.span.start);
                         return Some(ComponentMapping {
                             component_name: name.to_owned(),
                             props_type_name: props_name,
                             props_type_args: type_args,
                             file_path: self.file_path.clone(),
-                            description: self.find_jsdoc(decl.span.start),
-                            tags: self.extract_jsdoc_tags(decl.span.start),
+                            description,
+                            tags,
                             span_start: decl.span.start,
                             span_end: decl.span.end,
                             param_defaults: Default::default(),
@@ -208,14 +211,15 @@ impl<'src> SourceDataCollector<'src> {
         let (props_name, type_args) = self.extract_type_name_from_type(&type_ann.type_annotation)?;
 
         let param_defaults = self.extract_param_defaults(params);
+        let (description, tags) = self.find_jsdoc_with_tags(decl.span.start);
 
         Some(ComponentMapping {
             component_name: name.to_owned(),
             props_type_name: props_name,
             props_type_args: type_args,
             file_path: self.file_path.clone(),
-            description: self.find_jsdoc(decl.span.start),
-            tags: self.extract_jsdoc_tags(decl.span.start),
+            description,
+            tags,
             span_start: decl.span.start,
             span_end: decl.span.end,
             param_defaults,

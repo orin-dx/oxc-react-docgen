@@ -119,8 +119,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
         // Claim the interface's own leading comment before descending into props —
         // otherwise a short interface's first prop (processed next) can steal it via
         // find_jsdoc's proximity match, leaving the interface's own description empty.
-        let description = self.find_jsdoc(node.span.start);
-        let tags = self.extract_jsdoc_tags(node.span.start);
+        let (description, tags) = self.find_jsdoc_with_tags(node.span.start);
 
         let props: Vec<RawProp> =
             node.body.body.iter().filter_map(|sig| self.collect_property_signature(sig)).collect();
@@ -247,8 +246,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                             if let Some((props_name, type_args)) =
                                 self.extract_type_name_from_type(&type_ann.type_annotation)
                             {
-                                let description = self.find_jsdoc(func.span.start);
-                                let tags = self.extract_jsdoc_tags(func.span.start);
+                                let (description, tags) = self.find_jsdoc_with_tags(func.span.start);
                                 let param_defaults = self.extract_param_defaults(&func.params);
                                 self.data.component_mappings.push(ComponentMapping {
                                     component_name: name.to_owned(),

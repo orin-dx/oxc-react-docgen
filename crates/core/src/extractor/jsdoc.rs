@@ -12,11 +12,24 @@ impl<'src> SourceDataCollector<'src> {
     ///
     /// Marks the comment as consumed so subsequent calls for a different span cannot
     /// return the same comment (prevents prop JSDoc leaking into component descriptions).
+    pub(super) fn find_jsdoc(&mut self, span_start: u32) -> String {
+        self.find_jsdoc_with_tags(span_start).0
+    }
+
+    /// Find the JSDoc comment immediately preceding the given byte offset and return
+    /// both its description and its `@tag` map from a single lookup.
+    ///
+    /// Description and tags must come from the same consumed-tracking pass: an earlier
+    /// version called a separate (non-consuming) tag scan after `find_jsdoc`, so a
+    /// comment already claimed for one element's description was still visible to a
+    /// later, unrelated element's tag scan — e.g. a `@deprecated` tag on one prop would
+    /// bleed onto sibling props with no JSDoc of their own. Sharing the same consumed-set
+    /// lookup for both makes that impossible.
     ///
     /// `self.comments` is sorted by span (source order), so the candidate window is
     /// located via binary search rather than a linear scan — callers run one of these
     /// per prop/interface/component, and a full rescan-per-call is quadratic in file size.
-    pub(super) fn find_jsdoc(&mut self, span_start: u32) -> String {
+    pub(super) fn find_jsdoc_with_tags(&mut self, span_start: u32) -> (String, BTreeMap<String, String>) {
         const PROXIMITY_THRESHOLD: u32 = 120; // bytes — enough for blank lines + decorator
 
         let upper = self.comments.partition_point(|c| c.span_end <= span_start);
@@ -34,41 +47,16 @@ impl<'src> SourceDataCollector<'src> {
             }
         }
 
-        match found {
-            Some(i) => {
-                let c = &self.comments[i];
-                let span_end = c.span_end;
-                let raw = &self.source[c.span_start as usize..c.span_end as usize];
-                let text = parse_jsdoc_text(raw);
-                if !text.is_empty() {
-                    self.consumed_jsdoc.insert(span_end);
-                }
-                text
-            }
-            None => String::new(),
+        let Some(i) = found else { return (String::new(), BTreeMap::new()) };
+        let c = &self.comments[i];
+        let span_end = c.span_end;
+        let raw = &self.source[c.span_start as usize..c.span_end as usize];
+        let text = parse_jsdoc_text(raw);
+        let tags = extract_jsdoc_tags(raw);
+        if !text.is_empty() || !tags.is_empty() {
+            self.consumed_jsdoc.insert(span_end);
         }
-    }
-
-    /// Extract JSDoc @tags from the comment preceding the given byte offset.
-    pub(super) fn extract_jsdoc_tags(&self, span_start: u32) -> BTreeMap<String, String> {
-        const PROXIMITY_THRESHOLD: u32 = 120;
-
-        let upper = self.comments.partition_point(|c| c.span_end <= span_start);
-        let comment = (0..upper).rev().find_map(|i| {
-            let c = &self.comments[i];
-            if span_start - c.span_end > PROXIMITY_THRESHOLD {
-                return None;
-            }
-            c.is_block.then_some(c)
-        });
-
-        match comment {
-            Some(c) => {
-                let raw = &self.source[c.span_start as usize..c.span_end as usize];
-                extract_jsdoc_tags(raw)
-            }
-            None => BTreeMap::new(),
-        }
+        (text, tags)
     }
 }
 

@@ -596,8 +596,7 @@ impl<'src> SourceDataCollector<'src> {
                     .map(|ta| self.ts_type_to_collected(&ta.type_annotation))
                     .unwrap_or(CollectedType::Any);
 
-                let description = self.find_jsdoc(ps.span.start);
-                let tags = self.extract_jsdoc_tags(ps.span.start);
+                let (description, tags) = self.find_jsdoc_with_tags(ps.span.start);
 
                 Some(RawProp {
                     name,
@@ -611,8 +610,7 @@ impl<'src> SourceDataCollector<'src> {
             }
             TSSignature::TSMethodSignature(ms) => {
                 let name = ms.key.static_name()?.to_string();
-                let description = self.find_jsdoc(ms.span.start);
-                let tags = self.extract_jsdoc_tags(ms.span.start);
+                let (description, tags) = self.find_jsdoc_with_tags(ms.span.start);
                 let params: Vec<CollectedType> = ms
                     .params
                     .items
@@ -940,6 +938,44 @@ interface ButtonProps {
             data.type_aliases.contains_key(&qualified_key),
             "expected type_aliases to contain '{qualified_key}', got keys: {:?}",
             data.type_aliases.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_deprecated_tag_does_not_bleed_to_sibling_props_without_jsdoc() {
+        // Ant Design's real pattern: one prop has a real @deprecated JSDoc comment;
+        // adjacent sibling props (declared close enough to fall within find_jsdoc's
+        // proximity window) have no JSDoc of their own at all. Only the annotated
+        // prop should carry the tag.
+        let source = r#"
+            interface ButtonProps {
+                /** @deprecated use iconPlacement instead */
+                iconPosition?: 'start' | 'end';
+                shape?: 'default' | 'circle' | 'round';
+                size?: 'small' | 'middle' | 'large';
+            }
+        "#;
+        let path = Utf8Path::new("/test/button.tsx");
+        let data = parse_file(path, source);
+
+        let key = format!("{path}:ButtonProps");
+        let iface = data.interfaces.get(&key).expect("ButtonProps interface not collected");
+
+        let icon_position = iface.props.iter().find(|p| p.name == "iconPosition").expect("iconPosition not found");
+        assert!(icon_position.tags.contains_key("deprecated"), "iconPosition should carry its own @deprecated tag");
+
+        let shape = iface.props.iter().find(|p| p.name == "shape").expect("shape not found");
+        assert!(
+            !shape.tags.contains_key("deprecated"),
+            "shape has no JSDoc of its own and must not inherit iconPosition's @deprecated tag, got tags: {:?}",
+            shape.tags
+        );
+
+        let size = iface.props.iter().find(|p| p.name == "size").expect("size not found");
+        assert!(
+            !size.tags.contains_key("deprecated"),
+            "size has no JSDoc of its own and must not inherit iconPosition's @deprecated tag, got tags: {:?}",
+            size.tags
         );
     }
 

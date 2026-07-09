@@ -286,6 +286,29 @@ impl<'src> SourceDataCollector<'src> {
         })
     }
 
+    /// Rename an already-collected component mapping to its real public export name
+    /// when the mapping's own identifier is immediately wrapped by an *unrecognized*
+    /// call and reassigned to a new binding — e.g. Headless UI's real
+    /// `export let ListboxButton = forwardRefWithAs(ButtonFn) as X`. `forwardRefWithAs`
+    /// is a library-defined wrapper, not `React.forwardRef` itself, so `try_forward_ref`
+    /// never matches it; meanwhile `ButtonFn` — a standalone top-level function
+    /// declaration — was already independently collected as its own component by the
+    /// `visit_function` Pattern 4 check, under the wrong (inner, implementation-only)
+    /// name. Without this, the real export name never appears at all.
+    pub(super) fn try_rename_identifier_wrapped_component<'a>(&mut self, decl: &VariableDeclarator<'a>, name: &str) {
+        let Some(init) = decl.init.as_ref() else { return };
+        let Expression::CallExpression(call) = unwrap_as_expression(init) else { return };
+        let Some(Argument::Identifier(id)) = call.arguments.first() else { return };
+        let inner_name = id.name.as_str();
+
+        for mapping in &mut self.data.component_mappings {
+            if mapping.component_name == inner_name {
+                mapping.component_name = name.to_owned();
+                return;
+            }
+        }
+    }
+
     /// Extract the callee name of a call expression (simple ident or member expr).
     pub(super) fn extract_callee_name<'a>(&self, call: &CallExpression<'a>) -> Option<String> {
         match &call.callee {

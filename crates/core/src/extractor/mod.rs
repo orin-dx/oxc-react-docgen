@@ -931,6 +931,37 @@ interface ButtonProps {
     }
 
     #[test]
+    fn test_identifier_wrapped_component_renamed_to_export_binding() {
+        // Headless UI's real pattern: a standalone top-level function declaration
+        // (already independently detected as its own component by Pattern 4) is
+        // later wrapped by a same-file custom wrapper — not React's own forwardRef,
+        // a library-defined one — and referenced by bare identifier, not inlined.
+        // Before this fix, `ButtonFn` stayed visible under its own inner name
+        // instead of being recognized as `ListboxButton`'s real implementation.
+        let source = r#"
+            interface ButtonProps { disabled?: boolean; }
+            function ButtonFn(props: ButtonProps) {
+                return null;
+            }
+            export let ListboxButton = forwardRefWithAs(ButtonFn) as unknown as SomeExportedType;
+        "#;
+        let path = Utf8Path::new("/test/listbox.tsx");
+        let data = parse_file(path, source);
+
+        let names: Vec<&str> = data.component_mappings.iter().map(|m| m.component_name.as_str()).collect();
+        assert!(
+            names.contains(&"ListboxButton"),
+            "expected ListboxButton (the real export name) among component mappings, got {:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"ButtonFn"),
+            "ButtonFn should be renamed to its real export name, not left visible as a separate/wrong component, got {:?}",
+            names
+        );
+    }
+
+    #[test]
     fn test_type_alias_omit() {
         let source = r#"
             interface FullProps { a: string; b: number; c: boolean; }

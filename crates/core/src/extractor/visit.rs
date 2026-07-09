@@ -231,6 +231,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                         self.data.component_mappings.push(mapping);
                         continue;
                     }
+                    self.try_rename_identifier_wrapped_component(declarator, &name);
                 }
             }
             // Pattern 5: declare const Button: React.ForwardRefExoticComponent<ButtonProps & RefAttributes<E>>

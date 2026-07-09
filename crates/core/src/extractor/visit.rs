@@ -150,6 +150,25 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
         }
     }
 
+    fn visit_ts_module_declaration(&mut self, node: &TSModuleDeclaration<'a>) {
+        // `declare module "foo"` (string-literal id) isn't a dotted-name namespace
+        // like `namespace Foo { ... }` — its members aren't referenced as `foo.Bar`,
+        // so only push an identifier-named namespace onto the qualifying stack.
+        let pushed = match &node.id {
+            TSModuleDeclarationName::Identifier(id) => {
+                self.namespace_stack.push(id.name.as_str().into());
+                true
+            }
+            TSModuleDeclarationName::StringLiteral(_) => false,
+        };
+
+        walk::walk_ts_module_declaration(self, node);
+
+        if pushed {
+            self.namespace_stack.pop();
+        }
+    }
+
     fn visit_ts_enum_declaration(&mut self, node: &TSEnumDeclaration<'a>) {
         let enum_name = node.id.name.as_str();
         let key = self.scoped_key(enum_name);

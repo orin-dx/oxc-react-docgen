@@ -147,6 +147,11 @@ pub(super) struct SourceDataCollector<'src> {
     /// Tracks which JSDoc comment spans have already been consumed (by span_end).
     /// Prevents the same comment from leaking to both a component description and its first prop.
     pub(super) consumed_jsdoc: FxHashSet<u32>,
+    /// Enclosing `namespace X { ... }` names, outermost first. Type references to a
+    /// namespace member are always fully qualified (`X.Y`, per `ts_type_name_str`'s
+    /// `TSTypeName::QualifiedName` handling) — so storage keys must match, or a same-file
+    /// reference to a namespace member can never resolve.
+    pub(super) namespace_stack: Vec<CompactString>,
 }
 
 impl<'src> SourceDataCollector<'src> {
@@ -159,11 +164,16 @@ impl<'src> SourceDataCollector<'src> {
             comments: Vec::new(),
             imported_names: FxHashSet::default(),
             consumed_jsdoc: FxHashSet::default(),
+            namespace_stack: Vec::new(),
         }
     }
 
     pub(super) fn scoped_key(&self, name: &str) -> String {
-        format!("{}:{}", self.file_path, name)
+        if self.namespace_stack.is_empty() {
+            format!("{}:{}", self.file_path, name)
+        } else {
+            format!("{}:{}.{}", self.file_path, self.namespace_stack.join("."), name)
+        }
     }
 
     fn finish(self) -> SourceData {
@@ -908,6 +918,29 @@ interface ButtonProps {
             }
             other => panic!("Expected Omit, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_namespace_member_stored_under_qualified_name() {
+        // Base UI's real pattern: `namespace MenuRoot { export type Props<Payload> = ... }`,
+        // referenced elsewhere in the same file as `MenuRoot.Props<SomePayload>`. The
+        // resolver looks up references by their fully-qualified dotted name (confirmed via
+        // ts_type_name_str's TSTypeName::QualifiedName handling), so storage must key on
+        // the same qualified name, not the bare member name.
+        let source = r#"
+            namespace MenuRoot {
+                export type Props<Payload> = { open?: boolean; payload?: Payload };
+            }
+        "#;
+        let path = Utf8Path::new("/test/menu-root.tsx");
+        let data = parse_file(path, source);
+
+        let qualified_key = format!("{path}:MenuRoot.Props");
+        assert!(
+            data.type_aliases.contains_key(&qualified_key),
+            "expected type_aliases to contain '{qualified_key}', got keys: {:?}",
+            data.type_aliases.keys().collect::<Vec<_>>()
+        );
     }
 
     #[test]

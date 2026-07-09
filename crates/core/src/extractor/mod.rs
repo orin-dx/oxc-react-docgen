@@ -926,6 +926,48 @@ interface ButtonProps {
     }
 
     #[test]
+    fn test_forward_ref_component_annotation_with_as_cast() {
+        // Fluent UI's real pattern: no explicit forwardRef<Ref, Props> type args, and
+        // no type annotation on the render function's own props param — the props type
+        // is only ever spelled out via the wrapper annotation and the matching trailing
+        // `as` cast (both point at the same ForwardRefComponent<ButtonProps>).
+        let source = r#"
+            import * as React from "react";
+            interface ButtonProps { label: string; disabled?: boolean }
+            type ForwardRefComponent<P> = (props: P) => React.ReactElement | null;
+            export const Button: ForwardRefComponent<ButtonProps> = React.forwardRef((props, ref) => (
+                <button ref={ref}>{props.label}</button>
+            )) as ForwardRefComponent<ButtonProps>;
+        "#;
+        let path = Utf8Path::new("/test/button.tsx");
+        let data = parse_file(path, source);
+        let mapping = data.component_mappings.iter().find(|m| m.component_name == "Button");
+        assert!(mapping.is_some(), "Button not detected via ForwardRefComponent<Props> annotation + as-cast");
+        let mapping = mapping.unwrap();
+        assert_eq!(mapping.props_type_name, "ButtonProps");
+    }
+
+    #[test]
+    fn test_forward_ref_explicit_generics_survives_as_cast() {
+        // Defensive generalization: an explicit forwardRef<Ref, Props>(fn) call can also
+        // be wrapped in a trailing `as` cast (e.g. to a component-family union type).
+        let source = r#"
+            import { forwardRef } from "react";
+            interface ButtonProps { label: string }
+            type AnyComponent = unknown;
+            export const Button = forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => (
+                <button ref={ref}>{props.label}</button>
+            )) as AnyComponent;
+        "#;
+        let path = Utf8Path::new("/test/button2.tsx");
+        let data = parse_file(path, source);
+        let mapping = data.component_mappings.iter().find(|m| m.component_name == "Button");
+        assert!(mapping.is_some(), "Button not detected via explicit forwardRef<Ref, Props> wrapped in an as-cast");
+        let mapping = mapping.unwrap();
+        assert_eq!(mapping.props_type_name, "ButtonProps");
+    }
+
+    #[test]
     fn test_memo_forward_ref_detected() {
         let source = r#"
             import React, { memo, forwardRef } from "react";

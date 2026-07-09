@@ -8,6 +8,19 @@ use crate::types::ComponentMapping;
 
 use super::{is_pascal_case, SourceDataCollector};
 
+/// Peel any wrapping `as X` casts down to the real expression underneath.
+/// Needed because component libraries commonly cast a forwardRef/HOC call to a
+/// hand-rolled wrapper type instead of relying on `@types/react`'s own generics
+/// (Fluent UI's own source notes this is "required due to lack of distributive
+/// union to support unions on @types/react").
+fn unwrap_as_expression<'a, 'b>(expr: &'b Expression<'a>) -> &'b Expression<'a> {
+    let mut expr = expr;
+    while let Expression::TSAsExpression(as_expr) = expr {
+        expr = &as_expr.expression;
+    }
+    expr
+}
+
 impl<'src> SourceDataCollector<'src> {
     // ─── Component detection helpers ──────────────────────────────────────────
 
@@ -60,8 +73,14 @@ impl<'src> SourceDataCollector<'src> {
                 let type_name = self.extract_type_ref_name(tr);
                 // Strip React. prefix for matching
                 let bare_name = type_name.strip_prefix("React.").unwrap_or(&type_name);
-                if !matches!(bare_name, "FC" | "FunctionComponent" | "ComponentType" | "VFC" | "VoidFunctionComponent")
-                {
+                if !matches!(
+                    bare_name,
+                    "FC" | "FunctionComponent"
+                        | "ComponentType"
+                        | "VFC"
+                        | "VoidFunctionComponent"
+                        | "ForwardRefComponent"
+                ) {
                     return None;
                 }
                 let (props_name, type_args) = self.extract_props_arg(&tr.type_arguments)?;
@@ -91,7 +110,7 @@ impl<'src> SourceDataCollector<'src> {
         name: &str,
     ) -> Option<ComponentMapping> {
         let init = decl.init.as_ref()?;
-        let call = match init {
+        let call = match unwrap_as_expression(init) {
             Expression::CallExpression(ce) => ce,
             _ => return None,
         };
@@ -138,7 +157,7 @@ impl<'src> SourceDataCollector<'src> {
         name: &str,
     ) -> Option<ComponentMapping> {
         let init = decl.init.as_ref()?;
-        let call = match init {
+        let call = match unwrap_as_expression(init) {
             Expression::CallExpression(ce) => ce,
             _ => return None,
         };

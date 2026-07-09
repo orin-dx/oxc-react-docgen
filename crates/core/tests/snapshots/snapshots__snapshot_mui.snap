@@ -574,7 +574,7 @@ expression: value
               {
                 "kind": "eventHandler",
                 "eventType": "T",
-                "paramName": null
+                "paramName": "theme"
               },
               {
                 "kind": "named",
@@ -592,7 +592,7 @@ expression: value
                       {
                         "kind": "eventHandler",
                         "eventType": "T",
-                        "paramName": null
+                        "paramName": "theme"
                       },
                       {
                         "kind": "null"
@@ -1711,7 +1711,7 @@ expression: value
               {
                 "kind": "eventHandler",
                 "eventType": "T",
-                "paramName": null
+                "paramName": "theme"
               },
               {
                 "kind": "named",
@@ -1729,7 +1729,7 @@ expression: value
                       {
                         "kind": "eventHandler",
                         "eventType": "T",
-                        "paramName": null
+                        "paramName": "theme"
                       },
                       {
                         "kind": "null"

@@ -383,7 +383,17 @@ expression: value
       }
     ]
   },
-  "diagnostics": [],
+  "diagnostics": [
+    {
+      "severity": "warning",
+      "message": "Cannot resolve '../styled-system/types' from '[ROOT]/fixtures/panda/button.tsx'",
+      "file": "[ROOT]/fixtures/panda/button.tsx",
+      "line": null,
+      "column": null,
+      "help": "Resolution error: Cannot find module '../styled-system/types'",
+      "code": "UNRESOLVABLE_IMPORT"
+    }
+  ],
   "stats": {
     "componentsExtracted": 1,
     "componentsSkipped": 0,

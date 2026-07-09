@@ -188,14 +188,15 @@ pub(super) fn resolve_base_as_chain(
             chain
         }
         CollectedType::Union(members) => {
-            // Union base: merge all members together.
-            // This handles `Omit<A | B, K>` and similar patterns.
-            let mut chain = ResolvedChain::default();
-            for member in members {
-                let sub = resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
-                chain.merge_parent(sub);
-            }
-            chain
+            // Delegate to the same discriminant-detection merge used for a
+            // directly-aliased union (`type X = A | B`). A union doesn't stop being
+            // discriminated just because it's wrapped in an intersection
+            // (`type X = Base & (A | B)`, e.g. react-day-picker's real
+            // `DayPickerProps`) or used as `Omit<A | B, K>`'s base — falling back to
+            // a naive per-member merge here silently lost the discriminant and
+            // collapsed each prop's type to whichever branch happened to be seen
+            // last instead of a proper union across all branches.
+            resolve_union_alias(members, file_path, mapping, ctx, state, depth)
         }
         _ => ResolvedChain::default(),
     }

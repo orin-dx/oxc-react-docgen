@@ -220,6 +220,14 @@ impl ResolvedChain {
         for (name, prop) in parent.inherited_by_name {
             self.inherited_by_name.entry(name).or_insert(prop);
         }
+
+        // A discriminated union nested inside an intersection (e.g. `Base & (A | B)`)
+        // surfaces its discriminant on the union member's own chain — propagate it
+        // up rather than silently dropping it in favor of the fresh, empty chain
+        // being merged into.
+        if self.discriminant_prop.is_none() {
+            self.discriminant_prop = parent.discriminant_prop;
+        }
     }
 }
 
@@ -511,6 +519,275 @@ mod tests {
         ];
         let discriminant = chain::find_discriminant_prop(&members);
         assert_eq!(discriminant, Some("variant".to_string()));
+    }
+
+    // ── Test 9b: Discriminated union wrapped in an intersection ───────────────
+    // Regression test for the Day Picker pattern:
+    //   type DayPickerProps = PropsBase & (PropsSingle | PropsMulti)
+    // Discriminant detection only ran for a type alias whose RHS is *directly*
+    // a union; wrapped in an intersection, the union member fell into a naive
+    // merge-first-wins path with no discriminant detection at all.
+
+    #[test]
+    fn test_discriminant_detected_through_intersection_wrapped_union() {
+        let file_path = Utf8PathBuf::from("/test/day-picker.tsx");
+
+        let mut global = GlobalSourceData::default();
+
+        global.interfaces.insert(
+            format!("{}:PropsBase", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:PropsBase", file_path),
+                name: "PropsBase".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "id".into(),
+                    collected_type: CollectedType::String,
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interfaces.insert(
+            format!("{}:PropsSingle", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:PropsSingle", file_path),
+                name: "PropsSingle".into(),
+                file_path: file_path.clone(),
+                props: vec![
+                    RawProp {
+                        name: "mode".into(),
+                        collected_type: CollectedType::StringLiteral("single".into()),
+                        required: true,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                    RawProp {
+                        name: "selected".into(),
+                        collected_type: CollectedType::String,
+                        required: false,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                ],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interfaces.insert(
+            format!("{}:PropsMulti", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:PropsMulti", file_path),
+                name: "PropsMulti".into(),
+                file_path: file_path.clone(),
+                props: vec![
+                    RawProp {
+                        name: "mode".into(),
+                        collected_type: CollectedType::StringLiteral("multi".into()),
+                        required: true,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                    RawProp {
+                        name: "selected".into(),
+                        collected_type: CollectedType::Array(Box::new(CollectedType::String)),
+                        required: false,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                ],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        // type DayPickerProps = PropsBase & (PropsSingle | PropsMulti)
+        global.type_aliases.insert(
+            format!("{}:DayPickerProps", file_path),
+            CollectedTypeAlias::Intersection {
+                members: vec![
+                    CollectedType::Named { name: "PropsBase".into(), args: vec![] },
+                    CollectedType::Union(vec![
+                        CollectedType::Named { name: "PropsSingle".into(), args: vec![] },
+                        CollectedType::Named { name: "PropsMulti".into(), args: vec![] },
+                    ]),
+                ],
+                file_path: file_path.clone(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "DayPicker".into(),
+            props_type_name: "DayPickerProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, _diagnostics) = resolve_component(&mapping, &ctx);
+
+        assert_eq!(
+            entry.discriminant_prop,
+            Some("mode".to_string()),
+            "Expected 'mode' to be detected as the discriminant even though the union is wrapped in an intersection"
+        );
+
+        let selected = entry.props.get("selected").expect("'selected' prop not found");
+        assert!(
+            matches!(&selected.prop_type, PropType::Union(members) if members.len() == 2),
+            "Expected 'selected' to merge both branches' types into a union, got {:?} (this is the exact bug: \
+             the union fell into a naive merge that keeps only the first branch's type)",
+            selected.prop_type
+        );
+    }
+
+    // ── Test 9c: Double-discriminated union (repeated single-field values) ────
+    // Real Day Picker's union is discriminated jointly on `mode` AND `required` —
+    // `PropsSingle` and `PropsSingleRequired` both have `mode: "single"`, and are
+    // only distinguished by `required`. `mode` alone can't identify the variant
+    // (`"single"` is ambiguous between the two), so declining to name it as *the*
+    // discriminant is correct, not a bug — verify that's still true, and that the
+    // real bug (prop types collapsing to a single branch instead of merging into a
+    // union across every branch) stays fixed for this messier, real-world shape too.
+    // Wrapped in an intersection with a trivial base, matching Day Picker's real
+    // `PropsBase & (union)` shape, so this actually exercises the fix rather than
+    // the already-working direct-union path.
+
+    #[test]
+    fn test_repeated_discriminant_values_decline_gracefully_but_still_merge_types() {
+        let file_path = Utf8PathBuf::from("/test/day-picker-repeated.tsx");
+
+        let mut global = GlobalSourceData::default();
+
+        for (iface_name, mode, required) in [("PropsSingle", "single", false), ("PropsSingleRequired", "single", true)]
+        {
+            global.interfaces.insert(
+                format!("{}:{}", file_path, iface_name),
+                CollectedInterface {
+                    scoped_key: format!("{}:{}", file_path, iface_name),
+                    name: iface_name.into(),
+                    file_path: file_path.clone(),
+                    props: vec![
+                        RawProp {
+                            name: "mode".into(),
+                            collected_type: CollectedType::StringLiteral(mode.into()),
+                            required: true,
+                            description: String::new(),
+                            tags: BTreeMap::new(),
+                            span_start: 0,
+                            span_end: 0,
+                        },
+                        RawProp {
+                            name: "required".into(),
+                            collected_type: CollectedType::BoolLiteral(required),
+                            required: true,
+                            description: String::new(),
+                            tags: BTreeMap::new(),
+                            span_start: 0,
+                            span_end: 0,
+                        },
+                        RawProp {
+                            name: "selected".into(),
+                            collected_type: if required { CollectedType::String } else { CollectedType::Undefined },
+                            required,
+                            description: String::new(),
+                            tags: BTreeMap::new(),
+                            span_start: 0,
+                            span_end: 0,
+                        },
+                    ],
+                    extends: vec![],
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                },
+            );
+        }
+
+        global.interfaces.insert(
+            format!("{}:PropsBase", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:PropsBase", file_path),
+                name: "PropsBase".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "id".into(),
+                    collected_type: CollectedType::String,
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        // type DayPickerProps = PropsBase & (PropsSingle | PropsSingleRequired)
+        global.type_aliases.insert(
+            format!("{}:DayPickerProps", file_path),
+            CollectedTypeAlias::Intersection {
+                members: vec![
+                    CollectedType::Named { name: "PropsBase".into(), args: vec![] },
+                    CollectedType::Union(vec![
+                        CollectedType::Named { name: "PropsSingle".into(), args: vec![] },
+                        CollectedType::Named { name: "PropsSingleRequired".into(), args: vec![] },
+                    ]),
+                ],
+                file_path: file_path.clone(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "DayPicker".into(),
+            props_type_name: "DayPickerProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, _diagnostics) = resolve_component(&mapping, &ctx);
+
+        assert_eq!(
+            entry.discriminant_prop, None,
+            "'mode' repeats the same value across branches and can't identify a variant alone — \
+             declining to name a discriminant here is correct"
+        );
+
+        let selected = entry.props.get("selected").expect("'selected' prop not found");
+        assert!(
+            matches!(&selected.prop_type, PropType::Union(members) if members.len() == 2),
+            "Expected 'selected' to still merge both branches' distinct types into a union even \
+             without a usable discriminant, got {:?}",
+            selected.prop_type
+        );
     }
 
     // ── Test 10: Extends resolution — InheritedLayer populated ───────────────

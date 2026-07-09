@@ -7,3 +7,5 @@ afe = "afe"
 sme = "sme"
 # ratatui is a real Rust TUI library
 ratatui = "ratatui"
+# beng is a real Unicode CLDR numbering-system identifier (Bengali)
+beng = "beng"

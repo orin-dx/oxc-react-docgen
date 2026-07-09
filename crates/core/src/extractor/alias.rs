@@ -114,6 +114,12 @@ impl<'src> SourceDataCollector<'src> {
             TSType::TSTypeLiteral(_) => {
                 Some(CollectedTypeAlias::Passthrough { target: self.ts_type_to_collected(ty), file_path: fp })
             }
+            // Bare function type: `type Handler<T> = (arg: T) => void`. Same
+            // silent-vanishing bug as TSTypeLiteral above — real-world callback type
+            // aliases (react-day-picker's `OnSelectHandler<T>`) use this shape.
+            TSType::TSFunctionType(_) => {
+                Some(CollectedTypeAlias::Passthrough { target: self.ts_type_to_collected(ty), file_path: fp })
+            }
             _ => None,
         }
     }

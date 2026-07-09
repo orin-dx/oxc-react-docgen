@@ -722,6 +722,31 @@ type ToastVariant = { message: string; kind?: 'info' | 'error' };
     }
 
     #[test]
+    fn test_bare_function_type_alias_not_silently_dropped() {
+        // react-day-picker's real pattern: `type OnSelectHandler<T> = (selected: T, ...) => void`
+        // — a bare function type as the alias body, previously falling through
+        // classify_type_alias's `_ => None` and vanishing from data.type_aliases with
+        // no diagnostic, so every `OnSelectHandler<Date>` reference resolved as unknown.
+        let source = r#"
+type OnSelectHandler<T> = (selected: T, triggerDate: Date) => void;
+"#;
+        let path = Utf8Path::new("/fixtures/function-alias.tsx");
+        let data = parse_file(path, source);
+
+        let key = format!("{path}:OnSelectHandler");
+        let alias = data.type_aliases.get(&key).unwrap_or_else(|| {
+            panic!("expected type_aliases to contain '{key}', got keys: {:?}", data.type_aliases.keys())
+        });
+
+        match alias {
+            CollectedTypeAlias::Passthrough { target: CollectedType::Function { params, .. }, .. } => {
+                assert_eq!(params.len(), 2, "expected 2 params, got {params:?}");
+            }
+            other => panic!("expected Passthrough{{Function}}, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_shadcn_button() {
         let fixture = fixture_path("shadcn/button.tsx");
         let source =

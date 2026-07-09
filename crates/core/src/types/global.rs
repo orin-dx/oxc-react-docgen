@@ -6,6 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::collected::{
     CollectedInterface, CollectedTypeAlias, ComponentMapping, EnumEntry, ImportBinding, LexedExport, SourceData,
+    TypeName,
 };
 use super::diagnostic::Diagnostic;
 
@@ -36,6 +37,10 @@ pub struct GlobalSourceData {
     /// All type aliases across all files.
     /// Key: "${absolute_file_path}:${name}"
     pub type_aliases: FxHashMap<String, CollectedTypeAlias>,
+
+    /// Declared type parameter names for generic type alias declarations — see
+    /// `SourceData::type_alias_params`. Key: "${absolute_file_path}:${name}"
+    pub type_alias_params: FxHashMap<String, Vec<TypeName>>,
 
     /// All enum-like definitions across all files.
     /// Key: "${absolute_file_path}:${name}"
@@ -68,6 +73,7 @@ impl GlobalSourceData {
             }
         }
         self.type_aliases.extend(data.type_aliases);
+        self.type_alias_params.extend(data.type_alias_params);
         self.enums.extend(data.enums);
         self.import_map.insert(file_path.to_owned(), data.imports);
         self.re_export_map.insert(file_path.to_owned(), data.exports);
@@ -79,6 +85,7 @@ impl GlobalSourceData {
         let prefix = format!("{}:", file_path);
         self.interfaces.retain(|k, _| !k.starts_with(&prefix));
         self.type_aliases.retain(|k, _| !k.starts_with(&prefix));
+        self.type_alias_params.retain(|k, _| !k.starts_with(&prefix));
         self.enums.retain(|k, _| !k.starts_with(&prefix));
         self.import_map.remove(file_path);
         self.re_export_map.remove(file_path);

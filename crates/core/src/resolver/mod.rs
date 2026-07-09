@@ -33,6 +33,7 @@ mod import;
 mod named;
 mod primitives;
 mod react;
+mod substitute;
 mod template;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -644,6 +645,152 @@ mod tests {
         let warnings: Vec<_> =
             diagnostics.iter().filter(|d| matches!(d.severity, DiagnosticSeverity::Warning)).collect();
         assert!(warnings.is_empty(), "Expected no warnings, got {:?}", warnings);
+    }
+
+    // ── Test 10c: User-defined generic type alias substitution (Ark UI `Assign<T, U>`) ─
+    // Regression test for: `type Assign<T, U> = Omit<T, keyof U> & U` used with
+    // concrete call-site arguments. Before substitution was implemented, `T`/`U`
+    // resolved as literal (unresolvable) type names and the component's props came
+    // back completely empty. Expected result: `U`'s own fields are present, `T`'s
+    // fields are present minus whatever `U` overrides (here, `title`).
+
+    #[test]
+    fn test_generic_type_alias_substitution() {
+        let file_path = Utf8PathBuf::from("/test/types.ts");
+
+        let mut global = GlobalSourceData::default();
+
+        // interface Base { id: string; title: string }  (stands in for HTMLProps<'div'>)
+        let base_key = format!("{}:Base", file_path);
+        global.interfaces.insert(
+            base_key,
+            CollectedInterface {
+                scoped_key: format!("{}:Base", file_path),
+                name: "Base".into(),
+                file_path: file_path.clone(),
+                props: vec![
+                    RawProp {
+                        name: "id".into(),
+                        collected_type: CollectedType::String,
+                        required: true,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                    RawProp {
+                        name: "title".into(),
+                        collected_type: CollectedType::String,
+                        required: false,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                ],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        // interface Overrides { title: number; extra: boolean }  (stands in for SelectRootBaseProps<T>)
+        let overrides_key = format!("{}:Overrides", file_path);
+        global.interfaces.insert(
+            overrides_key,
+            CollectedInterface {
+                scoped_key: format!("{}:Overrides", file_path),
+                name: "Overrides".into(),
+                file_path: file_path.clone(),
+                props: vec![
+                    RawProp {
+                        name: "title".into(),
+                        collected_type: CollectedType::Number,
+                        required: false,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                    RawProp {
+                        name: "extra".into(),
+                        collected_type: CollectedType::Boolean,
+                        required: false,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                ],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        // type Assign<T, U> = Omit<T, keyof U> & U
+        let assign_key = format!("{}:Assign", file_path);
+        global.type_aliases.insert(
+            assign_key.clone(),
+            CollectedTypeAlias::Intersection {
+                members: vec![
+                    CollectedType::Named {
+                        name: "Omit".into(),
+                        args: vec![
+                            CollectedType::Named { name: "T".into(), args: vec![] },
+                            CollectedType::KeyOf(Box::new(CollectedType::Named { name: "U".into(), args: vec![] })),
+                        ],
+                    },
+                    CollectedType::Named { name: "U".into(), args: vec![] },
+                ],
+                file_path: file_path.clone(),
+            },
+        );
+        global.type_alias_params.insert(assign_key, vec!["T".into(), "U".into()]);
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+
+        // A component whose props type is `Assign<Base, Overrides>` directly.
+        let mapping = ComponentMapping {
+            component_name: "Widget".into(),
+            props_type_name: "Assign".into(),
+            props_type_args: vec!["Base".to_string(), "Overrides".to_string()],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, _diagnostics) = resolve_component(&mapping, &ctx);
+
+        // `id` survives from Base/T (not omitted — Overrides/U doesn't declare it).
+        assert!(
+            entry.props.contains_key("id"),
+            "Expected 'id' prop from T, got: {:?}",
+            entry.props.keys().collect::<Vec<_>>()
+        );
+
+        // `title` comes from Overrides/U (number), not Base/T (string) — U wins,
+        // and Omit<T, keyof U> must have actually removed T's `title`.
+        let title = entry.props.get("title").expect("expected 'title' prop");
+        assert_eq!(title.prop_type, PropType::Number, "Expected U's 'title: number' to win over T's 'title: string'");
+
+        // `extra` comes from Overrides/U.
+        assert!(
+            entry.props.contains_key("extra"),
+            "Expected 'extra' prop from U, got: {:?}",
+            entry.props.keys().collect::<Vec<_>>()
+        );
+
+        // Exactly 3 props: T's title was omitted via `keyof U`, not duplicated.
+        assert_eq!(
+            entry.props.len(),
+            3,
+            "Expected exactly 3 props (id, title, extra), got: {:?}",
+            entry.props.keys().collect::<Vec<_>>()
+        );
     }
 
     // ── Test 11: Array type ───────────────────────────────────────────────────

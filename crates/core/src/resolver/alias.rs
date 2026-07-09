@@ -32,14 +32,33 @@ pub(super) fn resolve_type_alias_chain(
             resolve_base_as_chain(target, file_path, mapping, ctx, state, depth)
         }
 
-        CollectedTypeAlias::Omit { base, omitted_keys, file_path } => {
+        CollectedTypeAlias::Omit { base, omitted_keys, omitted_keys_of, file_path } => {
             // Resolve the base type first, then remove omitted keys.
             let mut chain = resolve_base_as_chain(base, file_path, mapping, ctx, state, depth);
-            let omitted_set: FxHashSet<&str> = omitted_keys.iter().map(|k| k.as_str()).collect();
+
+            let mut all_omitted: Vec<String> = omitted_keys.clone();
+            if let Some(keys_of) = omitted_keys_of {
+                // `Omit<Base, keyof Other>` — `Other`'s key set isn't known statically.
+                // Purely structural, not type inference: resolve `Other` as its own
+                // props chain (the same machinery used for `base` above) and take its
+                // field names as the omitted set.
+                //
+                // Branch on a cloned `visited` set (same pattern as `resolve_union_alias`'s
+                // discriminant probe below): `Other` is very often *also* resolved for real
+                // elsewhere in the same alias (e.g. the `& U` half of `Omit<T, keyof U> & U`).
+                // Sharing the main cycle-detection set would mark it visited here and make
+                // that later, legitimate resolution come back empty.
+                let mut branch_state = ResolveState { visited: state.visited.clone(), diagnostics: vec![] };
+                let other_chain = resolve_base_as_chain(keys_of, file_path, mapping, ctx, &mut branch_state, depth);
+                state.diagnostics.extend(branch_state.diagnostics);
+                all_omitted.extend(other_chain.props.into_iter().map(|p| p.name));
+            }
+
+            let omitted_set: FxHashSet<&str> = all_omitted.iter().map(|k| k.as_str()).collect();
             chain.props.retain(|p| !omitted_set.contains(p.name.as_str()));
             // Record omitted keys in the relevant inheritance layer.
             for layer in &mut chain.inheritance {
-                for key in omitted_keys {
+                for key in &all_omitted {
                     if !layer.omitted.contains(key) {
                         layer.omitted.push(key.clone());
                     }
@@ -106,9 +125,41 @@ pub(super) fn resolve_base_as_chain(
 ) -> ResolvedChain {
     match base {
         CollectedType::Named { name, args } => {
+            // Omit/Pick/Partial/Readonly applied to a *structured* reference — e.g. a
+            // member of `Omit<T, keyof U> & U` after `T`/`U` were substituted with real
+            // types (see resolver/substitute.rs). Handled directly here, rather than via
+            // the string-based `resolve_props_chain` path below, so nested generics and
+            // `keyof` operands survive structurally instead of being flattened to a
+            // single opaque display string first.
+            if let Some(alias) = super::substitute::synthesize_utility_alias(name.as_str(), args, file_path) {
+                return resolve_type_alias_chain(&alias, file_path, mapping, ctx, state, depth);
+            }
+
+            // A user-defined generic alias referenced with structured (possibly
+            // cross-file, possibly nested-generic) arguments — e.g.
+            // `SelectRootBaseProps<T>` used as `Assign<T, U>`'s own `U` argument.
+            // Substituted and resolved directly here so the nested generic survives,
+            // rather than falling through to the string-based path below (which would
+            // flatten it to a single opaque display string before substitution ever ran).
+            if let Some(alias) = super::substitute::generic_alias_with_structured_args(
+                name.as_str(),
+                args,
+                file_path,
+                ctx,
+                &mut state.diagnostics,
+            ) {
+                return resolve_type_alias_chain(&alias, file_path, mapping, ctx, state, depth + 1);
+            }
+
             let raw_args: Vec<String> = args.iter().map(|a| a.to_raw_string()).collect();
             resolve_props_chain(name.as_str(), &raw_args, file_path, mapping, ctx, state, depth + 1)
         }
+        // Generic-alias substitution marker (see resolver/substitute.rs and the
+        // `CollectedType::AtFile` doc comment): `inner` was written in `file`, not
+        // whatever file this call chain has been resolving relative to — e.g. a
+        // type argument substituted from the caller's scope into a callee alias
+        // declared in a different file. Switch file context and continue.
+        CollectedType::AtFile { file, inner } => resolve_base_as_chain(inner, file, mapping, ctx, state, depth),
         CollectedType::Intersection(members) => {
             let mut chain = ResolvedChain::default();
             for member in members {

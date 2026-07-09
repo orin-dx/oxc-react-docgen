@@ -15,26 +15,23 @@
  * forwardRef + generic-render-function export pattern used throughout
  * Ark UI's components.
  *
- * One further deviation from real Ark, and why: the real prop composition is
+ * `SelectRootProps<T>` uses the real Ark composition pattern —
  *   type SelectRootProps<T> = Assign<HTMLProps<'div'>, SelectRootBaseProps<T>>
  * i.e. `Omit<HTMLProps<'div'>, keyof SelectRootBaseProps<T>> & SelectRootBaseProps<T>`
  * (see `Assign`/`Optional`/`HTMLProps` in ./types.ts — kept there verbatim for
- * reference). oxc-react-docgen does not yet substitute type arguments into
- * user-defined generic type aliases (confirmed: routing through `Assign<T,U>`
- * or `Optional<T,K>` here makes it emit `Cannot resolve type 'T'/'U'`
- * diagnostics and extract zero props), nor does it expand `Omit<>` applied to
- * a locally-defined generic interface. Below, the same *resulting* prop set
- * is instead composed via plain interface `extends` (proven to flatten
- * correctly through generic interface chains) plus a direct
- * `React.ComponentPropsWithoutRef<'div'>` extends (a well-known type the
- * resolver already recognizes) rather than going through those aliases.
+ * reference), rather than the flattened plain-`extends` workaround this fixture
+ * used previously. Restored once oxc-react-docgen gained structural
+ * substitution of type arguments into user-defined generic type aliases
+ * (`Assign<T, U>`) plus `keyof`-argument expansion for `Omit<>`.
  */
 import * as React from "react"
 import {
+  type Assign,
   type CollectionItem,
   type ElementIds,
   type FocusOutsideEvent,
   type HighlightChangeDetails,
+  type HTMLProps,
   type InteractOutsideEvent,
   type IntlTranslations,
   type ListCollection,
@@ -99,9 +96,7 @@ export interface SelectRootBaseProps<T extends CollectionItem>
     UsePresenceProps,
     PolymorphicProps {}
 
-export interface SelectRootProps<T extends CollectionItem>
-  extends SelectRootBaseProps<T>,
-    React.ComponentPropsWithoutRef<"div"> {}
+export type SelectRootProps<T extends CollectionItem> = Assign<HTMLProps<"div">, SelectRootBaseProps<T>>
 
 const SelectImpl = <T extends CollectionItem>(props: SelectRootProps<T>, ref: React.Ref<HTMLDivElement>) => {
   const {

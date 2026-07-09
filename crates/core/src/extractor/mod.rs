@@ -364,11 +364,19 @@ impl<'src> SourceDataCollector<'src> {
                 self.ts_type_to_collected(&p.type_annotation)
             }
 
-            // TSTypeOperatorType covers keyof, unique, readonly
-            TSType::TSTypeOperatorType(op) => {
-                let raw = self.source[op.span.start as usize..op.span.end as usize].to_owned();
-                CollectedType::Raw(raw)
-            }
+            // TSTypeOperatorType covers keyof, unique, readonly. `keyof` is kept
+            // structured (its operand may itself need substitution or resolution —
+            // see `CollectedType::KeyOf`); `unique`/`readonly` fall back to raw
+            // source text as before, since nothing consumes them structurally.
+            TSType::TSTypeOperatorType(op) => match op.operator {
+                TSTypeOperatorOperator::Keyof => {
+                    CollectedType::KeyOf(Box::new(self.ts_type_to_collected(&op.type_annotation)))
+                }
+                TSTypeOperatorOperator::Unique | TSTypeOperatorOperator::Readonly => {
+                    let raw = self.source[op.span.start as usize..op.span.end as usize].to_owned();
+                    CollectedType::Raw(raw)
+                }
+            },
 
             TSType::TSInferType(i) => {
                 let raw = self.source[i.span.start as usize..i.span.end as usize].to_owned();

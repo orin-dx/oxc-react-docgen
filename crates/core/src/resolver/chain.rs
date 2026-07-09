@@ -69,6 +69,7 @@ pub(super) fn resolve_props_chain(
                 Some(CollectedTypeAlias::Omit {
                     base,
                     omitted_keys: parse_string_union_keys(&type_args[1]),
+                    omitted_keys_of: None,
                     file_path: consuming_file.to_owned(),
                 })
             }
@@ -163,6 +164,10 @@ pub(super) fn resolve_props_chain(
 
     // ── Step 4: Type alias (Omit, Pick, Partial, Union, etc.) ────────────────
     if let Some(alias) = ctx.global.type_aliases.get(&scoped_key).cloned() {
+        // Substitute declared type parameters (`type Assign<T, U> = ...`) with the
+        // call site's concrete `type_args` before resolving the body. No-op for
+        // non-generic aliases (the common case) — see resolver/substitute.rs.
+        let alias = super::substitute::apply_generic_args(alias, &scoped_key, type_args, consuming_file, ctx);
         return resolve_type_alias_chain(&alias, consuming_file, mapping, ctx, state, depth);
     }
 

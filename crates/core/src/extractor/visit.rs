@@ -6,6 +6,7 @@ use oxc_syntax::scope::ScopeFlags;
 
 use crate::types::{
     CollectedInterface, ComponentMapping, EnumEntry, EnumValue, ExtendsRef, ImportBinding, LexedExport, RawProp,
+    TypeName,
 };
 
 use super::{declaration_name, is_pascal_case, SourceDataCollector};
@@ -144,8 +145,19 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
         let name = node.id.name.as_str();
         let key = self.scoped_key(name);
 
-        if let Some(alias) = self.classify_type_alias(name, &node.type_annotation) {
-            self.data.type_aliases.insert(key, alias);
+        let Some(alias) = self.classify_type_alias(name, &node.type_annotation) else {
+            return;
+        };
+        self.data.type_aliases.insert(key.clone(), alias);
+
+        // Record declared type parameter names (`type Assign<T, U> = ...` → ["T", "U"])
+        // so the resolver can substitute call-site arguments into the alias body —
+        // see `resolver/substitute.rs`. Absent entry = non-generic alias.
+        if let Some(type_parameters) = &node.type_parameters {
+            let params: Vec<TypeName> = type_parameters.params.iter().map(|p| p.name.name.as_str().into()).collect();
+            if !params.is_empty() {
+                self.data.type_alias_params.insert(key, params);
+            }
         }
     }
 

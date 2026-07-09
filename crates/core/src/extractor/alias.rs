@@ -25,8 +25,8 @@ impl<'src> SourceDataCollector<'src> {
                             name: base_name,
                             args: base_args.into_iter().map(CollectedType::Raw).collect(),
                         };
-                        let omitted_keys = self.collect_string_union_keys(&tp.params[1]);
-                        Some(CollectedTypeAlias::Omit { base, omitted_keys, file_path: fp })
+                        let (omitted_keys, omitted_keys_of) = self.collect_omit_keys(&tp.params[1]);
+                        Some(CollectedTypeAlias::Omit { base, omitted_keys, omitted_keys_of, file_path: fp })
                     }
                     "Pick" => {
                         let tp = tr.type_arguments.as_ref()?;
@@ -69,12 +69,18 @@ impl<'src> SourceDataCollector<'src> {
                         Some(CollectedTypeAlias::Passthrough { target, file_path: fp })
                     }
                     _ => {
-                        // Simple passthrough: `type Size = SomeOtherType`
-                        let args = self.extract_type_args(&tr.type_arguments);
-                        let target = CollectedType::Named {
-                            name: ref_name.into(),
-                            args: args.into_iter().map(CollectedType::Raw).collect(),
-                        };
+                        // Simple passthrough: `type Foo<T, U> = SomeOtherType<T, U>`. Args
+                        // are kept structured (not stringified) so that when `SomeOtherType`
+                        // is itself a generic alias, the resolver's call-site substitution
+                        // can walk into them — see resolver/substitute.rs. Stringifying here
+                        // (the old behavior) collapsed nested generics like `Bar<T>` into an
+                        // opaque display string before substitution ever ran.
+                        let args: Vec<CollectedType> = tr
+                            .type_arguments
+                            .as_ref()
+                            .map(|ta| ta.params.iter().map(|p| self.ts_type_to_collected(p)).collect())
+                            .unwrap_or_default();
+                        let target = CollectedType::Named { name: ref_name.into(), args };
                         Some(CollectedTypeAlias::Passthrough { target, file_path: fp })
                     }
                 }
@@ -121,6 +127,18 @@ impl<'src> SourceDataCollector<'src> {
             },
             TSType::TSUnionType(u) => u.types.iter().flat_map(|t| self.collect_string_union_keys(t)).collect(),
             _ => vec![],
+        }
+    }
+
+    /// Classify `Omit<_, Keys>`'s second type argument: a literal key union
+    /// (`'a' | 'b'`), or `keyof SomeType` — in the latter case the key set can't
+    /// be known until `SomeType` is resolved, so the operand is captured
+    /// structurally for the resolver to expand later (see
+    /// `CollectedTypeAlias::Omit::omitted_keys_of`).
+    pub(super) fn collect_omit_keys<'a>(&mut self, ty: &TSType<'a>) -> (Vec<String>, Option<Box<CollectedType>>) {
+        match self.ts_type_to_collected(ty) {
+            CollectedType::KeyOf(inner) => (vec![], Some(inner)),
+            other => (other.as_string_union_keys(), None),
         }
     }
 }

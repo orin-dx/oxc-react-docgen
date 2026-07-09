@@ -55,6 +55,27 @@ pub enum CollectedType {
     // ── `typeof X` — reference to the type of a value
     TypeOf(CompactString),
 
+    // ── `keyof X` — the union of X's own key names. Fully resolved only when
+    // consumed by `Omit`'s key argument (`CollectedTypeAlias::Omit::omitted_keys_of`
+    // resolves X as a props chain and reads its field names); standalone usage
+    // degrades to `PropType::Opaque` since we don't (yet) have a general
+    // type-to-key-names resolver outside the chain machinery.
+    KeyOf(Box<CollectedType>),
+
+    // ── Resolver-internal only (the extractor never produces this): pins `inner`
+    // to the file it was written in. TypeScript resolves a generic alias's type
+    // *arguments* in the caller's scope, not the callee's — e.g. in
+    // `type SelectRootProps<T> = Assign<HTMLProps<'div'>, SelectRootBaseProps<T>>`,
+    // `SelectRootBaseProps` must resolve relative to the file declaring
+    // `SelectRootProps`, even though `Assign`'s own body (`Omit<T, keyof U> & U`)
+    // lives in a different file. Every `CollectedType` the resolver's generic-alias
+    // substitution (resolver/substitute.rs) splices into a callee's body gets
+    // wrapped in this so later name lookups switch back to the correct file.
+    AtFile {
+        file: Utf8PathBuf,
+        inner: Box<CollectedType>,
+    },
+
     // ── Indexed access: Type["key"] or Type[K]
     IndexedAccess {
         obj: Box<CollectedType>,
@@ -98,6 +119,19 @@ impl CollectedType {
         matches!(self, CollectedType::Conditional { .. } | CollectedType::Mapped { .. })
     }
 
+    /// Extract literal string keys from a type shaped like `'a' | 'b'` or a bare
+    /// `'a'`. Used for `Pick`/`Omit`'s key argument. Returns an empty vec for
+    /// anything else — notably `keyof T`, which can't be read as a string list
+    /// (see `CollectedTypeAlias::Omit::omitted_keys_of`, which resolves the
+    /// operand as a props chain instead).
+    pub fn as_string_union_keys(&self) -> Vec<std::string::String> {
+        match self {
+            CollectedType::StringLiteral(s) => vec![s.to_string()],
+            CollectedType::Union(members) => members.iter().flat_map(CollectedType::as_string_union_keys).collect(),
+            _ => vec![],
+        }
+    }
+
     /// Produce a raw string representation for diagnostics and fallback display.
     pub fn to_raw_string(&self) -> std::string::String {
         match self {
@@ -125,6 +159,8 @@ impl CollectedType {
                 format!("{}<{}>", name, args.iter().map(|a| a.to_raw_string()).collect::<Vec<_>>().join(", "))
             }
             CollectedType::TypeOf(name) => format!("typeof {}", name),
+            CollectedType::KeyOf(inner) => format!("keyof {}", inner.to_raw_string()),
+            CollectedType::AtFile { inner, .. } => inner.to_raw_string(),
             CollectedType::IndexedAccess { obj, key } => {
                 format!("{}[{}]", obj.to_raw_string(), key.to_raw_string())
             }
@@ -218,6 +254,13 @@ impl CollectedType {
             }),
             // TypeOf: {"to": name}
             CollectedType::TypeOf(name) => serde_json::json!({"to": name.as_str()}),
+            // KeyOf: {"keyof": inner}
+            CollectedType::KeyOf(inner) => serde_json::json!({"keyof": inner.to_json_value()}),
+            // AtFile is resolver-internal only (see the variant doc comment) — the
+            // extractor's `SourceData` (the only thing ever cached/serialized) never
+            // contains one, so there's nothing meaningful to round-trip. Serialize
+            // transparently as `inner` so this stays total rather than panicking.
+            CollectedType::AtFile { inner, .. } => inner.to_json_value(),
             // IndexedAccess: {"ia": {o, k}}
             CollectedType::IndexedAccess { obj, key } => serde_json::json!({
                 "ia": {"o": obj.to_json_value(), "k": key.to_json_value()}
@@ -319,6 +362,9 @@ impl CollectedType {
                 }
                 if let Some(name) = map.get("to").and_then(|v| v.as_str()) {
                     return Ok(CollectedType::TypeOf(name.into()));
+                }
+                if let Some(inner) = map.get("keyof") {
+                    return Ok(CollectedType::KeyOf(Box::new(Self::from_json_value(inner)?)));
                 }
                 if let Some(inner) = map.get("ia") {
                     let obj = Self::from_json_value(inner.get("o").unwrap_or(&serde_json::Value::Null))?;
@@ -499,6 +545,12 @@ pub struct SourceData {
     /// Key: "${absolute_file_path}:${type_name}"
     pub type_aliases: FxHashMap<std::string::String, CollectedTypeAlias>,
 
+    /// Declared type parameter names for generic type alias declarations, e.g.
+    /// `type Assign<T, U> = ...` records `["T", "U"]` here. Keyed identically to
+    /// `type_aliases`. Absent (no entry) for the common non-generic alias — the
+    /// resolver only attempts call-site substitution when an entry exists.
+    pub type_alias_params: FxHashMap<std::string::String, Vec<TypeName>>,
+
     /// Enum-like values found in this file.
     /// Key: "${absolute_file_path}:${name}"
     pub enums: FxHashMap<std::string::String, Vec<EnumEntry>>,
@@ -574,6 +626,12 @@ pub enum CollectedTypeAlias {
     Omit {
         base: CollectedType,
         omitted_keys: Vec<std::string::String>,
+        /// `Omit<Base, keyof Other>` — `Other`'s key names aren't known statically
+        /// (unlike a literal `'a' | 'b'` union), so the operand is kept structured
+        /// here for the resolver to expand: resolve `Other` as its own props chain
+        /// and treat its field names as additional omitted keys. `None` for the
+        /// literal-union case (the common one, captured in `omitted_keys` instead).
+        omitted_keys_of: Option<Box<CollectedType>>,
         file_path: Utf8PathBuf,
     },
     Pick {

@@ -80,6 +80,16 @@ pub fn resolve_collected_type(
         // ── typeof X ─────────────────────────────────────────────────────────
         CollectedType::TypeOf(name) => resolve_typeof(name, consuming_file, ctx, &mut state.diagnostics),
 
+        // ── keyof X — only meaningful as Omit's key argument (handled structurally
+        // there, see resolver/alias.rs); standalone usage needs a general
+        // type-to-key-names resolver we don't have, so degrade gracefully.
+        CollectedType::KeyOf(_) => PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::MappedType },
+
+        // ── Generic-alias substitution marker — switch file context to where
+        // `inner` was actually written (see the `CollectedType::AtFile` doc
+        // comment) and continue resolving from there.
+        CollectedType::AtFile { file, inner } => resolve_collected_type(inner, file, ctx, state, depth),
+
         // ── Indexed access ───────────────────────────────────────────────────
         CollectedType::IndexedAccess { obj, key } => {
             resolve_indexed_access(obj, key, consuming_file, ctx, state, depth)

@@ -416,6 +416,27 @@ mod tests {
     }
 
     #[test]
+    fn test_less_common_event_handler_names_recognized_as_builtin() {
+        // @types/react defines these identically to the ~19 *EventHandler names
+        // already recognized (`type XEventHandler<T> = EventHandler<XEvent<T>>`) —
+        // found missing from is_react_builtin while investigating whether fully
+        // resolving @types/react's real HTMLAttributes/DOMAttributes chain was
+        // tractable. Without this, each one falls through to same-file/imported
+        // type resolution, fails (they're real @types/react types, not local), and
+        // degrades to opaque instead of a proper EventHandler PropType.
+        let ctx = empty_ctx();
+        for handler_name in ["ReactEventHandler", "SubmitEventHandler", "InputEventHandler", "ToggleEventHandler"] {
+            let ct = CollectedType::Named { name: handler_name.into(), args: vec![] };
+            let result = resolve_type(&ct, &ctx);
+            assert!(
+                matches!(&result, PropType::EventHandler { .. }),
+                "Expected {handler_name} to resolve as PropType::EventHandler, got {:?}",
+                result
+            );
+        }
+    }
+
+    #[test]
     fn test_element_type() {
         let ctx = empty_ctx();
         let ct = CollectedType::Named { name: "ElementType".into(), args: vec![] };

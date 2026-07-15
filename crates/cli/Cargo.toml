@@ -23,6 +23,7 @@ tracing-subscriber.workspace = true
 owo-colors.workspace      = true
 watchexec.workspace       = true
 tokio.workspace           = true
+serde.workspace           = true
 serde_json.workspace      = true
 camino.workspace          = true
 comfy-table               = "7.0"
@@ -30,3 +31,4 @@ crossterm                 = "0.28"
 
 [dev-dependencies]
 insta.workspace           = true
+tempfile.workspace        = true

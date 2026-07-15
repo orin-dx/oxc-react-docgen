@@ -1,5 +1,78 @@
 use miette::{IntoDiagnostic, Result};
-use oxc_react_docgen_core::pipeline::PipelineOptions;
+use oxc_react_docgen_core::pipeline::{HtmlAttributeMode, PipelineOptions};
+use serde::Deserialize;
+
+/// The JSON-facing shape of `docgen.config.ts`'s default export.
+///
+/// A deliberate subset of `PipelineOptions` — everything except the fields that
+/// need complex map/object values (`extraPaths`, `knownTypeOverrides`,
+/// `extraBuiltins`), which aren't supported via config file yet. `deny_unknown_fields`
+/// means a config using one of those (or a typo'd key) gets a clear error naming
+/// the field, not a silently-ignored setting — same reasoning as this module's
+/// existing "found but unsupported" hard error above.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DocgenConfigSchema {
+    src_dirs: Option<Vec<String>>,
+    exclude_patterns: Option<Vec<String>>,
+    exclude_prefixes: Option<Vec<String>>,
+    react_version: Option<String>,
+    cross_package: Option<bool>,
+    pandacss_outdir: Option<String>,
+    variant_functions: Option<Vec<String>>,
+    html_attributes: Option<String>,
+    tsconfig_path: Option<String>,
+    vanilla_extract: Option<bool>,
+    cache_dir: Option<String>,
+}
+
+impl DocgenConfigSchema {
+    fn into_pipeline_options(self) -> PipelineOptions {
+        let mut opts = PipelineOptions::default();
+        if let Some(dirs) = self.src_dirs {
+            opts.src_dirs = dirs.into_iter().map(Into::into).collect();
+        }
+        if let Some(patterns) = self.exclude_patterns {
+            opts.exclude_patterns = patterns;
+        }
+        if let Some(prefixes) = self.exclude_prefixes {
+            opts.exclude_prefixes = prefixes;
+        }
+        if let Some(v) = self.react_version.as_deref() {
+            opts.react_version = if v == "react18" {
+                oxc_react_docgen_core::react_types::REACT_18
+            } else {
+                oxc_react_docgen_core::react_types::REACT_19
+            };
+        }
+        if let Some(cross_package) = self.cross_package {
+            opts.cross_package = cross_package;
+        }
+        if let Some(dir) = self.pandacss_outdir {
+            opts.pandacss_outdir = Some(dir.into());
+        }
+        if let Some(fns) = self.variant_functions {
+            opts.variant_functions = fns;
+        }
+        if let Some(mode) = self.html_attributes.as_deref() {
+            opts.html_attributes = match mode {
+                "full" => HtmlAttributeMode::Full,
+                "none" => HtmlAttributeMode::None,
+                _ => HtmlAttributeMode::Curated,
+            };
+        }
+        if let Some(path) = self.tsconfig_path {
+            opts.tsconfig_path = Some(path.into());
+        }
+        if let Some(vanilla_extract) = self.vanilla_extract {
+            opts.vanilla_extract = vanilla_extract;
+        }
+        if let Some(dir) = self.cache_dir {
+            opts.cache_dir = Some(dir.into());
+        }
+        opts
+    }
+}
 
 /// Find and load docgen.config.ts, walking up from start_dir to workspace root.
 ///
@@ -24,14 +97,15 @@ pub fn load_config_file(start_dir: &std::path::Path) -> Result<Option<PipelineOp
     }
 }
 
-/// Execute and validate `docgen.config.ts` at `path`.
+/// Execute `docgen.config.ts` at `path` and map its default export onto
+/// [`PipelineOptions`].
 ///
-/// Mapping the config's JSON schema onto [`PipelineOptions`] isn't implemented yet, so a
-/// config that evaluates successfully still can't be honored. Returning `Ok(None)` here
-/// would mean a config a user explicitly wrote (e.g. with different `srcDirs`) gets
-/// silently ignored in favor of defaults — a plausible-looking but wrong result forever
-/// (crates/core/CLAUDE.md non-negotiable #6: never fail silently). So any config file that
-/// is *found* is a hard error until schema mapping ships.
+/// A config file that fails to evaluate, or evaluates to something that doesn't
+/// match [`DocgenConfigSchema`] (a typo'd key, wrong value type, or a field this
+/// module doesn't support yet), is a hard error rather than silently falling back
+/// to defaults — crates/core/CLAUDE.md non-negotiable #6: never fail silently. A
+/// config a user explicitly wrote getting quietly ignored is a plausible-looking
+/// but wrong result forever.
 pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>> {
     use std::io::Write;
 
@@ -42,15 +116,23 @@ pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>
         const m = await import(pathToFileURL(p).href);\
         process.stdout.write(JSON.stringify(m.default ?? m));";
 
-    let mut child = std::process::Command::new("node")
+    let mut command = std::process::Command::new("node");
+    command
         .args(["--input-type=module"])
         .env("NODE_OPTIONS", "--import=tsx/esm")
         .env("__DOCGEN_CONFIG_PATH", path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .into_diagnostic()?;
+        .stderr(std::process::Stdio::null());
+    // Resolve `tsx` (and anything the config file itself imports) relative to the
+    // config file's own directory, not wherever the CLI happened to be invoked
+    // from — matters for `--config ../other-project/docgen.config.ts` pointing
+    // outside the current project, and for a project whose `tsx` devDependency
+    // isn't hoisted to whatever the caller's own cwd happens to be.
+    if let Some(dir) = path.parent() {
+        command.current_dir(dir);
+    }
+    let mut child = command.spawn().into_diagnostic()?;
 
     // Write the script to stdin, then close stdin to signal EOF.
     let mut stdin =
@@ -69,14 +151,19 @@ pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>
         ));
     }
 
-    // Parse as JSON to confirm the config at least evaluates to a valid object.
-    serde_json::from_slice::<serde_json::Value>(&output.stdout).into_diagnostic()?;
+    let schema: DocgenConfigSchema = serde_json::from_slice(&output.stdout).map_err(|e| {
+        miette::miette!(
+            help = "Check docgen.config.ts's exported fields against the supported schema \
+                    (srcDirs, excludePatterns, excludePrefixes, reactVersion, crossPackage, \
+                    pandacssOutdir, variantFunctions, htmlAttributes, tsconfigPath, \
+                    vanillaExtract, cacheDir).",
+            "docgen.config.ts at {} doesn't match the expected shape: {}",
+            path.display(),
+            e,
+        )
+    })?;
 
-    Err(miette::miette!(
-        help = "Remove docgen.config.ts (or drop --config) to use CLI flags and defaults instead.",
-        "docgen.config.ts was found at {} but config file support is not yet implemented in this version",
-        path.display(),
-    ))
+    Ok(Some(schema.into_pipeline_options()))
 }
 
 pub fn build_options(
@@ -120,4 +207,78 @@ pub fn build_options(
     }
 
     Ok(opts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_schema_maps_recognized_fields_onto_pipeline_options() {
+        let json = r#"{
+            "srcDirs": ["app/components"],
+            "crossPackage": false,
+            "htmlAttributes": "full",
+            "reactVersion": "react18"
+        }"#;
+        let schema: DocgenConfigSchema = serde_json::from_str(json).expect("valid config JSON");
+        let opts = schema.into_pipeline_options();
+
+        assert_eq!(opts.src_dirs, vec![camino::Utf8PathBuf::from("app/components")]);
+        assert!(!opts.cross_package);
+        assert_eq!(opts.html_attributes, HtmlAttributeMode::Full);
+        // react18: children implicit, ref requires forwardRef.
+        assert!(opts.react_version.implicit_children);
+        assert!(!opts.react_version.ref_as_prop);
+    }
+
+    #[test]
+    fn config_schema_rejects_unknown_fields() {
+        // Matches this module's "never fail silently" stance: a typo'd or
+        // not-yet-supported key must be a clear error, not silently dropped.
+        let json = r#"{ "srcDirs": ["src"], "totallyMadeUpField": true }"#;
+        let result: std::result::Result<DocgenConfigSchema, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "expected an unknown field to be rejected");
+    }
+
+    #[test]
+    fn config_schema_defaults_are_used_when_a_field_is_absent() {
+        let schema: DocgenConfigSchema = serde_json::from_str("{}").expect("empty object is valid");
+        let opts = schema.into_pipeline_options();
+        let defaults = PipelineOptions::default();
+
+        assert_eq!(opts.src_dirs, defaults.src_dirs);
+        assert_eq!(opts.html_attributes, defaults.html_attributes);
+    }
+
+    #[test]
+    fn try_load_config_maps_a_real_docgen_config_ts_file() {
+        // Real end-to-end proof: an actual docgen.config.ts, evaluated by the real
+        // node+tsx subprocess this module spawns, not just the pure schema mapping
+        // tested above. Placed under apps/validate/ (not a bare system tempdir) —
+        // tsx is only a devDependency there, not hoisted to the repo root, and the
+        // subprocess resolves it via Node's own ancestor-walking package resolution
+        // starting from the config file's directory.
+        let validate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/validate");
+        let tmp = tempfile::TempDir::new_in(&validate_dir).unwrap();
+        let config_path = tmp.path().join("docgen.config.ts");
+        std::fs::write(
+            &config_path,
+            r#"
+export default {
+  srcDirs: ["src/components"],
+  htmlAttributes: "full",
+  crossPackage: false,
+};
+"#,
+        )
+        .unwrap();
+
+        let opts = try_load_config(&config_path).expect("real config file should load successfully");
+        let opts = opts.expect("expected Some(PipelineOptions)");
+
+        assert_eq!(opts.src_dirs, vec![camino::Utf8PathBuf::from("src/components")]);
+        assert_eq!(opts.html_attributes, HtmlAttributeMode::Full);
+        assert!(!opts.cross_package);
+    }
 }

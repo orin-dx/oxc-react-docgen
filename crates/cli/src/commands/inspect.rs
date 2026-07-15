@@ -6,7 +6,7 @@ pub fn cmd_inspect(args: crate::InspectArgs, config_path: Option<&str>) -> Resul
     use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table};
     use owo_colors::OwoColorize;
 
-    let options = build_options(&args.src, false, None, None, config_path)?;
+    let options = build_options(&args.src, false, None, None, None, config_path)?;
     let output = oxc_react_docgen_core::pipeline::extract(&options);
 
     let component = output.components.get(&args.component).ok_or_else(|| {

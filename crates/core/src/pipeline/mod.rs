@@ -289,7 +289,19 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
     // as any other .d.ts — this cost is paid once per @types/react version, not
     // per extraction run.
     if options.html_attributes == HtmlAttributeMode::Full {
-        let from_dir = options.src_dirs.first().map_or_else(|| Utf8PathBuf::from("."), Clone::clone);
+        // Must match what discovered file paths look like (always absolute — the
+        // `ignore` walker absolutizes them regardless of whether --src was given
+        // as relative or absolute), since the resolver looks this same specifier
+        // up again per-component relative to each file's own absolute directory.
+        // A relative src_dirs entry has too few path components for oxc_resolver's
+        // ancestor walk to ever reach the real node_modules tree, so it silently
+        // finds nothing instead of the intended real @types/react.
+        let from_dir = options
+            .src_dirs
+            .first()
+            .and_then(|dir| std::fs::canonicalize(dir).ok())
+            .and_then(|p| Utf8PathBuf::from_path_buf(p).ok())
+            .unwrap_or_else(|| Utf8PathBuf::from("."));
         match crate::resolver::resolve_package_dts_path(&from_dir, "react") {
             Some(react_dts_path) => {
                 let react_dts_path = Utf8PathBuf::from(react_dts_path);

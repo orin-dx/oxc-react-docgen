@@ -7,7 +7,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
     use indicatif::{ProgressBar, ProgressStyle};
     use owo_colors::OwoColorize;
 
-    let options = build_options(&args.src, false, None, None, config_path)?;
+    let options = build_options(&args.src, false, None, None, None, config_path)?;
 
     if !quiet {
         println!();

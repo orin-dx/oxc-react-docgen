@@ -85,6 +85,10 @@ pub struct ExtractArgs {
     /// Cache directory
     #[arg(long)]
     pub cache_dir: Option<String>,
+
+    /// How much of an inherited HTML element's attributes to expose
+    #[arg(long, value_enum)]
+    pub html_attributes: Option<HtmlAttributeModeArg>,
 }
 
 #[derive(clap::ValueEnum, Clone)]
@@ -95,6 +99,16 @@ pub enum OutputFormat {
     Rdt,
     /// Storybook __docgenInfo blocks
     Storybook,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy)]
+pub enum HtmlAttributeModeArg {
+    /// ~15-20 curated, commonly-documented attributes per element [default]
+    Curated,
+    /// All of @types/react's real attributes for the element (matches RDT)
+    Full,
+    /// No inherited HTML attributes at all — own props only
+    None,
 }
 
 #[derive(clap::Args)]

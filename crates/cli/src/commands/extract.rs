@@ -6,11 +6,17 @@ use crate::output::{print_diagnostics, print_summary};
 pub fn cmd_extract(args: crate::ExtractArgs, json_mode: bool, quiet: bool, config_path: Option<&str>) -> Result<()> {
     use indicatif::{ProgressBar, ProgressStyle};
 
+    let html_attributes = args.html_attributes.map(|m| match m {
+        crate::HtmlAttributeModeArg::Curated => "curated",
+        crate::HtmlAttributeModeArg::Full => "full",
+        crate::HtmlAttributeModeArg::None => "none",
+    });
     let options = build_options(
         &args.src,
         args.no_cross_package,
         args.react_version.as_deref(),
         args.cache_dir.as_deref(),
+        html_attributes,
         config_path,
     )?;
 

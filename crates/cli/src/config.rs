@@ -84,6 +84,7 @@ pub fn build_options(
     no_cross_package: bool,
     react_version: Option<&str>,
     cache_dir: Option<&str>,
+    html_attributes: Option<&str>,
     config_path: Option<&str>,
 ) -> Result<PipelineOptions> {
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -109,6 +110,13 @@ pub fn build_options(
     }
     if let Some(dir) = cache_dir {
         opts.cache_dir = Some(dir.into());
+    }
+    if let Some(mode) = html_attributes {
+        opts.html_attributes = match mode {
+            "full" => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Full,
+            "none" => oxc_react_docgen_core::pipeline::HtmlAttributeMode::None,
+            _ => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Curated,
+        };
     }
 
     Ok(opts)

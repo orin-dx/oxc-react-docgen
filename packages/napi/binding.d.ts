@@ -37,7 +37,7 @@ export interface JsExtractOptions {
   crossPackage?: boolean
   pandacssOutdir?: string
   variantFunctions?: Array<string>
-  skipHtmlProps?: boolean
+  htmlAttributes?: 'curated' | 'full' | 'none'
   tsconfigPath?: string
   extraBuiltins?: Array<string>
   vanillaExtract?: boolean

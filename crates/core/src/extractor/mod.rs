@@ -366,15 +366,19 @@ impl<'src> SourceDataCollector<'src> {
 
             // TSTypeOperatorType covers keyof, unique, readonly. `keyof` is kept
             // structured (its operand may itself need substitution or resolution —
-            // see `CollectedType::KeyOf`); `unique`/`readonly` fall back to raw
-            // source text as before, since nothing consumes them structurally.
+            // see `CollectedType::KeyOf`). `readonly`/`unique` are peeled
+            // transparently to their operand — docgen doesn't track mutability or
+            // symbol uniqueness, so there's nothing to preserve — rather than
+            // capturing the whole modified type as raw source text, which used to
+            // make `readonly string[]` (real @types/react's ButtonHTMLAttributes
+            // `defaultValue`/`value` shape) degrade to Opaque even though the
+            // element type is fully knowable.
             TSType::TSTypeOperatorType(op) => match op.operator {
                 TSTypeOperatorOperator::Keyof => {
                     CollectedType::KeyOf(Box::new(self.ts_type_to_collected(&op.type_annotation)))
                 }
                 TSTypeOperatorOperator::Unique | TSTypeOperatorOperator::Readonly => {
-                    let raw = self.source[op.span.start as usize..op.span.end as usize].to_owned();
-                    CollectedType::Raw(raw)
+                    self.ts_type_to_collected(&op.type_annotation)
                 }
             },
 
@@ -696,6 +700,32 @@ mod tests {
     fn fixture_path(rel: &str) -> std::path::PathBuf {
         let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         manifest_dir.join("../../fixtures").join(rel)
+    }
+
+    #[test]
+    fn test_readonly_array_type_operator_peeled_transparently() {
+        // `readonly string[]` (the type-operator form, not the `Readonly<T>` utility
+        // type — already handled separately) captured its entire span as raw source
+        // text unconditionally, found while investigating whether fully resolving
+        // @types/react's real HTMLAttributes chain was tractable: ButtonHTMLAttributes'
+        // real `defaultValue`/`value` fields use exactly this shape. Downstream
+        // heuristics reject a raw string containing a space, so it degraded to
+        // Opaque even though the actual element type (`string`) is fully knowable.
+        let source = r#"
+interface Props { items: readonly string[]; }
+"#;
+        let path = Utf8Path::new("/fixtures/readonly-array.tsx");
+        let data = parse_file(path, source);
+
+        let key = format!("{path}:Props");
+        let iface = data.interfaces.get(&key).unwrap_or_else(|| panic!("expected interfaces to contain '{key}'"));
+        let items = iface.props.iter().find(|p| p.name == "items").expect("'items' prop not found");
+
+        assert!(
+            matches!(&items.collected_type, CollectedType::Array(inner) if matches!(**inner, CollectedType::String)),
+            "expected Array(String), got {:?}",
+            items.collected_type
+        );
     }
 
     #[test]

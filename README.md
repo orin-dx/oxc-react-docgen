@@ -2,7 +2,7 @@
 
 React component prop extraction powered by [OXC](https://oxc.rs). Parses TypeScript natively in Rust — no TypeScript compiler program, no type-checking pass, no startup tax.
 
-> **Status:** Core extraction, NAPI bindings, Vite plugin, and CLI are complete. Config file loading is the next milestone.
+> **Status:** Core extraction, NAPI bindings, Vite plugin, CLI, and `docgen.config.ts` loading are complete.
 
 ## Why
 
@@ -80,7 +80,13 @@ oxc-react-docgen watch --src src/
 
 # Shell completions
 oxc-react-docgen completions zsh > ~/.zsh/completions/_oxc-react-docgen
+
+# Full HTML attribute expansion instead of the default curated subset
+oxc-react-docgen extract --src src/ --html-attributes full
 ```
+
+Settings can also live in `docgen.config.ts` (`srcDirs`, `htmlAttributes`, `reactVersion`, `crossPackage`, and
+more — see `crates/cli/src/config.rs` for the full schema) instead of CLI flags.
 
 ## Output shape
 

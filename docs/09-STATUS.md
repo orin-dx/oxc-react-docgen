@@ -1,9 +1,18 @@
 # oxc-react-docgen — Project Status
 
-**Last updated:** 2026-06-25  
-**Branch:** master  
-**Tests:** 114 passing, 0 failing (100 Rust unit/snapshot + 14 TypeScript)  
-**Build:** clean (cargo clippy -D warnings passes)
+**Last updated:** 2026-07-15
+**Branch:** main
+**Tests:** 134 Rust (122 core unit + 8 core snapshot + 4 cli) passing, 0 failing
+**Build:** clean (cargo clippy --workspace --all-targets -D warnings passes)
+
+Phases 0-6 below predate 2026-06-25 and are unchanged. Since then: two rounds of
+real-world validation (15 total fixture libraries — see `docs/rdt-coverage.md`
+for the full list and every bug found/fixed), a `docgen.config.ts` schema
+mapping (config file loading is no longer stubbed), and an opt-in
+`HtmlAttributeMode::Full` that actually resolves `@types/react`'s real
+HTMLAttributes/AriaAttributes/DOMAttributes chain instead of only ever
+synthesizing a curated subset. Full changelog of what got fixed and why lives
+in `docs/rdt-coverage.md`, not duplicated here.
 
 ---
 

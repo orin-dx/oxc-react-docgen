@@ -2,7 +2,7 @@
 
 `oxc-react-docgen` targets output-shape compatibility with `react-docgen-typescript` (RDT) via the CLI's `--format rdt` flag. The NAPI binding and Vite plugin currently only expose the tool's own canonical format (`kind`-tagged `PropType`, shown in the main README) — there's no RDT-shape option at that layer yet. This document covers what's compatible today, what's intentionally different, and what's a known gap rather than a design choice.
 
-**Should you switch today?** If your components use plain interfaces/type aliases, `forwardRef`, `FC`, HOC wrapping, `Omit`/`Pick`, or `VariantProps` (CVA/TV/PandaCSS) — yes, output should match closely. If you scrape the full 250+ inherited HTML attributes per component, or rely on deeply nested discriminated unions, read the [HTML attribute inheritance](#html-attribute-inheritance) and [Known bugs](#known-bugs-not-design-choices) sections below first.
+**Should you switch today?** If your components use plain interfaces/type aliases, `forwardRef` (including wrapped in an `as` cast), `FC`, HOC wrapping, `Omit`/`Pick`, `VariantProps` (CVA/TV/PandaCSS), or discriminated unions (including ones wrapped in an intersection) — yes, output should match closely. If you scrape the full 250+ inherited HTML attributes per component, read the [HTML attribute inheritance](#html-attribute-inheritance) section below — it's supported, but opt-in.
 
 ## Field-by-field comparison
 
@@ -37,21 +37,14 @@
 
 ### HTML attribute inheritance
 
-RDT inlines every inherited HTML attribute (e.g. all ~250-300 members of `ButtonHTMLAttributes`) directly into `props`. We don't — instead:
+RDT inlines every inherited HTML attribute (e.g. all ~250-300 members of `ButtonHTMLAttributes`) directly into `props`. By default, we don't — but you can turn this on:
 
-- `inheritance` (canonical format only) records the layer itself (`ButtonHTMLAttributes`, the element it maps to, what was `Omit`-ted).
-- `notableInherited` surfaces ~15-20 curated, commonly-documented HTML attributes per element (`onClick`, `disabled`, `type`, ARIA attributes, etc.) rather than the full set.
-- `--format rdt` does **not** include `notableInherited` at all — RDT consumers that filter by `parent.fileName.includes('node_modules')` to drop inherited noise will simply see fewer inherited props than RDT provides, not extra/wrong ones.
+- **Default (curated):** `inheritance` (canonical format only) records the layer itself (`ButtonHTMLAttributes`, the element it maps to, what was `Omit`-ted), and `notableInherited` surfaces ~15-20 curated, commonly-documented HTML attributes per element (`onClick`, `disabled`, `type`, ARIA attributes, etc.) rather than the full set. `--format rdt` does **not** include `notableInherited` at all in this mode — RDT consumers that filter by `parent.fileName.includes('node_modules')` to drop inherited noise will simply see fewer inherited props than RDT provides, not extra/wrong ones.
+- **Opt-in full expansion:** pass `--html-attributes full` (CLI), `htmlAttributes: 'full'` (NAPI), or `htmlAttributes: "full"` (`docgen.config.ts`) to actually resolve `@types/react`'s real `HTMLAttributes`/`AriaAttributes`/`DOMAttributes`/`<Element>HTMLAttributes` interface chain and merge the real fields directly into `props` — this *does* reach `--format rdt`, matching RDT's flat behavior. Verified against a real button: 238 of ~250 real attributes resolve; the remainder is a narrow, separate gap (a handful of fields inside `@types/react`'s own interface chain reference a same-namespace sibling type without an explicit qualifier — degrades gracefully to an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash or missing component). See `docs/rdt-coverage.md`'s "HtmlAttributeMode" section for details.
+- **`--html-attributes none`:** no inherited HTML attributes synthesized at all, own props only.
 
-If your tooling depends on the full inherited-attribute list being present, this is the biggest real compatibility gap — not a bug, but a deliberate scope decision to keep output focused on what a component actually documents.
-
-## Known bugs, not design choices
-
-These are tracked in [docs/rdt-coverage.md](docs/rdt-coverage.md) and get fixed over time — check that file for current status before assuming a mismatch is permanent:
-
-- Discriminated unions (e.g. `AccordionSingleProps | AccordionMultipleProps`) union each conflicting prop's type across all members that declare it — matches RDT's behavior for the fixtures tested so far, but hasn't been exercised against every union shape RDT handles.
-- `Pick<T, K>` / `Omit<T, K>` resolution depends on `K` being a literal string-union at the reference site; a `K` that's itself an aliased type may not resolve.
+If you need the full attribute set and aren't ready to opt into `full` mode, this remains the main compatibility gap to check for your specific components.
 
 ## Getting the exact diff for your codebase
 
-`apps/validate/` in this repo is the harness used to compare this tool's output against a real `react-docgen-typescript` run, field by field, across several real component libraries (shadcn, MUI, Chakra, Mantine, React Aria, Radix). Run `pnpm --filter @oxc-react-docgen/validate compare:all` against your own components if you need a concrete list of diffs before switching, rather than trusting this document alone.
+`apps/validate/` in this repo is the harness used to compare this tool's output against a real `react-docgen-typescript` run, field by field, across real component libraries — currently 15: shadcn, MUI, Chakra, Mantine, React Aria, Radix, PandaCSS, Fluent UI, Base UI, Ant Design, Ark UI, Zendesk Garden, React Day Picker, Headless UI, and Blueprint. Run `pnpm --filter @oxc-react-docgen/validate compare:all` against your own components if you need a concrete list of diffs before switching, rather than trusting this document alone. `docs/rdt-coverage.md` tracks which specific patterns each fixture exercises and the bugs found (almost all now fixed) along the way.

@@ -1,13 +1,15 @@
 # RDT Spec Coverage Matrix
 
 Maps each react-docgen-typescript (RDT) output field and component pattern to the fixtures that exercise it.
-Run `cargo test -p oxc-react-docgen-core --test snapshots` to validate all entries.
+Run `cargo test -p oxc-react-docgen-core --test snapshots` to validate the original 8 snapshot fixtures.
+The 8 real-world library fixtures added since (fluentui, base-ui, antd, ark-ui, zendesk-garden, day-picker,
+headlessui, blueprint) aren't snapshot-tested — validate them via `pnpm --filter @oxc-react-docgen/validate compare:all`.
 
 ---
 
 ## PropType kinds
 
-Each `PropType` variant the resolver can emit; whether any fixture produces it in a snapshot.
+Each `PropType` variant the resolver can emit; whether any fixture produces it.
 
 | Kind | Covered by |
 |------|-----------|
@@ -20,19 +22,19 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it i
 | `cssProperties` | chakra, mui, react-aria, shadcn |
 | `elementType` | chakra, mantine, mui |
 | `stringLiteral` | chakra, mantine, mui, react-aria, shadcn |
-| `union` | chakra, mantine, mui, react-aria, shadcn |
+| `union` | chakra, mantine, mui, react-aria, shadcn, **day-picker** (7-way discriminated) |
 | `named` | chakra, mantine, mui, react-aria |
-| `eventHandler` | all fixtures |
+| `eventHandler` | all fixtures; real param names from `(open: boolean) => void`-style handlers (not a hardcoded `"e"`) verified against **headlessui**, **ark-ui** |
 | `ref` | mantine, mui |
-| `object` | mantine |
+| `object` | mantine, **rdt-compat/types** (`raw_string()` renders real fields — `{ key: Type; key2?: Type2 }` — not the literal placeholder `"object"`) |
 | `literalUnion` | mantine, shadcn, **panda** (after defineRecipe arg-index fix) |
-| `array` | **rdt-compat/types** (`string[]` syntax) |
-| `tuple` | **rdt-compat/types** (`[number, number]`) |
+| `array` | **rdt-compat/types** (`string[]` syntax), **day-picker** (`readonly string[]` type-operator form) |
+| `tuple` | **rdt-compat/types** (`[number, number]`; `raw_string()` renders real elements, not the placeholder `"tuple"`) |
 | `numberLiteral` | **rdt-compat/types** (`1 \| 2 \| 4 \| 8`) |
 | `boolLiteral` | **rdt-compat/types** (`true` literal type) |
 | `undefined` | **rdt-compat/types** (explicit `?: undefined`) |
 | `sxProps` | **rdt-compat/types** (unresolved `SxProps` ref → known-pattern shortcut) |
-| `htmlAttributes` | **rdt-compat/types** (`ComponentPropsWithoutRef<'button'>` as prop value) |
+| `htmlAttributes` | **rdt-compat/types** (`ComponentPropsWithoutRef<'button'>` as prop value); real per-element attribute resolution (not just this metadata layer) — see [HtmlAttributeMode](#htmlattributemode-curated--full--none) below |
 | `intersection` | **rdt-compat/types** (`CSSProperties & { '--accent': string }`) |
 | `opaque` | **rdt-compat/types** (inline conditional type `T extends A ? B : C`) |
 | `void` | ❌ not covered — `() => void` captured as `eventHandler`, standalone `void` never appears |
@@ -52,14 +54,15 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it i
 | `displayName` | ✅ | all fixtures |
 | `filePath` | ✅ | all fixtures |
 | `description` (non-empty) | ✅ | mui Button, panda button |
-| `description` (component JSDoc, no prop leak) | ⚠️ BUG | see [Bug: component description leak](#bug-component-description-set-to-last-props-jsdoc) |
+| `description` (component JSDoc, no prop leak) | ✅ | fixed — see [Fixed: component description leak](#fixed-component-description-set-to-last-props-jsdoc) |
 | `props` | ✅ | all fixtures |
 | `inheritance` (non-empty) | ✅ | all fixtures |
-| `notableInherited` | ✅ | all fixtures |
-| `discriminantProp: null` | ✅ | all fixtures |
+| `notableInherited` | ✅ (curated mode only) | all fixtures — see [HtmlAttributeMode](#htmlattributemode-curated--full--none) |
+| `discriminantProp: null` | ✅ | all fixtures; also correctly `null` for a *double*-discriminated union where no single field disambiguates every variant — **day-picker** (`mode` repeats across `PropsSingle`/`PropsSingleRequired`, only jointly unique with `required`) |
 | `discriminantProp: "variant"` | ✅ | mui TextField |
+| `discriminantProp` through an intersection-wrapped union (`Base & (A\|B\|C)`) | ✅ | **day-picker** — see [Fixed: intersection-wrapped discriminated unions](#fixed-discriminated-unions-wrapped-in-an-intersection) |
 | `composes` (non-empty) | ✅ | mantine, shadcn, chakra, react-aria |
-| `tags` (component-level, non-empty) | ✅ | **rdt-compat/jsdoc** (`@see`, `@since`, `@category` on component) |
+| `tags` (component-level, non-empty) | ✅ | **rdt-compat/jsdoc** (`@description`, `@default`, `@deprecated`, `@internal`) |
 | `methods: []` | ✅ | all fixtures (always empty; class components not in scope) |
 
 ---
@@ -79,7 +82,7 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it i
 | `defaultValue.computed: true` | ❌ | not covered — no fixture uses computed defaults |
 | `description` (non-empty) | ✅ | mui, radix |
 | `tags.default` | ✅ | mui, mantine |
-| `tags.deprecated` | ✅ | mantine |
+| `tags.deprecated` | ✅ | mantine; correctly scoped to only the annotated prop, not bled onto siblings — **antd** (see [Fixed: JSDoc tag bleed](#fixed-jsdoc-tag-bleeding-onto-sibling-props)) |
 | `tags.see` | ✅ | mui, mantine |
 | `tags.example` | ✅ | mantine |
 | `tags.since` | ✅ | **rdt-compat/jsdoc** (`@since` on `header` prop) |
@@ -95,31 +98,39 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it i
 | Pattern | Status | Covered by |
 |---------|--------|-----------|
 | `React.forwardRef` | ✅ | shadcn, panda, mantine, react-aria |
+| `React.forwardRef(...) as X` (trailing cast) | ✅ | **fluentui**, **ark-ui** — see [Fixed: forwardRef as-cast](#fixed-forwardref-wrapped-in-an-as-cast) |
+| Same-file custom wrapper + bare identifier (`customWrapper(NamedFn) as X`) | ✅ | **headlessui** — see [Fixed: identifier-wrapped naming](#fixed-identifier-wrapped-components-renamed-to-export-binding) |
 | `React.memo` | ✅ | **rdt-compat/memo** |
 | CVA variants (`cva()`) | ✅ | shadcn |
 | CVA enum output in `enums` | ✅ | shadcn |
 | PandaCSS `defineRecipe()` variants | ✅ | **panda** (fixed: arg-index bug corrected 2026-06-28) |
 | PandaCSS `defineSlotRecipe()` | ⚠️ | see [Note: slot recipes](#note-slot-recipes-partial-support) |
-| Discriminated union (per-variant props) | ✅ | mui TextField |
-| Union-of-interfaces as root props type | ⚠️ BUG | see [Bug: union-of-interfaces](#bug-union-of-interfaces-root-props-type-silently-skips-component) |
+| Discriminated union (per-variant props) | ✅ | mui TextField, **day-picker** (7-way, double-discriminated) |
+| Union-of-interfaces as root props type | ✅ | fixed — see [Fixed: union-of-interfaces](#fixed-union-of-interfaces-root-props-type-silently-skipped-the-component) |
 | `asChild` slot pattern | ✅ | radix, shadcn, panda |
+| Classic `as="button"` polymorphism (not `asChild`, not render-prop) | ✅ | **headlessui** |
 | Intersection-based prop inheritance | ✅ | chakra, mantine, mui |
 | `Omit<T, Keys>` on inherited props | ✅ | chakra, mantine, mui |
-| `Pick<SourceInterface, Keys>` | ⚠️ BUG | see [Bug: Pick not resolved](#bug-pickt-keys-not-resolved-even-for-source-types) |
+| Two `Partial<X>` mixins on one interface | ✅ | **blueprint** — see [Fixed: Partial\<X\> cycle-key collision](#fixed-partialx-cycle-detection-key-collision) |
+| `Pick<SourceInterface, Keys>` | ✅ | fixed — see [Fixed: Pick not resolved](#fixed-pickt-keys-not-resolved-even-for-source-types) |
+| User-defined generic type alias substitution (`type Assign<T,U> = Omit<T, keyof U> & U`) | ✅ | **ark-ui** — see [Fixed: generic type alias substitution](#fixed-user-defined-generic-type-alias-substitution) |
+| Same-file TS `namespace X { type Props }` member reference | ✅ | **base-ui** — see [Fixed: namespace member resolution](#fixed-same-file-namespace-member-resolution) |
 | Controlled/uncontrolled triple | ✅ | **rdt-compat/controlled** (value + defaultValue + onValueChange) |
 | Method-shorthand handler (arrow form) | ✅ | **rdt-compat/controlled** (`onOpenChange?: (open: bool) => void` → correct `eventType`) |
-| Method-shorthand handler (shorthand form) | ⚠️ BUG | see [Bug: method-shorthand](#bug-method-shorthand-handler-loses-param-type) |
+| Method-shorthand handler (shorthand form) | ✅ | fixed — see [Fixed: method-shorthand](#fixed-method-shorthand-handler-losing-param-type) |
 | JSDoc prop description | ✅ | radix, mui |
 | JSDoc `@default` → `defaultValue` | ✅ | mui, mantine |
-| JSDoc `@deprecated` on prop | ✅ | mantine |
+| JSDoc `@deprecated` on prop | ✅ | mantine, antd |
 | JSDoc `@see` / `@example` on prop | ✅ | mui, mantine |
 | JSDoc description on component | ✅ | mui Button, panda button |
 | JSDoc tags on component (`@see`, `@since`, `@category`) | ✅ | **rdt-compat/jsdoc** |
 | Render-prop children | ✅ | react-aria (`ButtonRenderProps`) |
-| HTML element inheritance (`notableInherited`) | ✅ | all fixtures |
+| HTML element inheritance, curated | ✅ | all fixtures |
+| HTML element inheritance, full real resolution | ✅ | shadcn, **blueprint** — see [HtmlAttributeMode](#htmlattributemode-curated--full--none) |
+| `styled.X.attrs<T>()` (styled-components) | ❌ | **zendesk-garden** — neither this tool nor real RDT detects this pattern; a shared blind spot, not a competitive gap, not fixed |
 | Template literal type → opaque | ❌ | mantine has `"compact-${MantineSize}"` but it's not seen as `opaque` in snapshots — verify |
 | HOC pattern | ✅ | extractor unit test only (no snapshot fixture) |
-| Generic component | ❌ | no fixture — generic type args ignored in resolver |
+| Generic component | ⚠️ partial | own generic type ALIAS substitution works (**ark-ui**); React's own builtin generics resolve by name only, never by substituted value (sufficient for docgen — see `docs/type-checker-integration.md`); component-level `<T,>()=>` type-param flow through a multi-file component tree not covered |
 | `defaultProps` static assignment | ❌ | no fixture |
 | Class component | ❌ | out of scope (modern React only) |
 
@@ -136,6 +147,30 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it i
 | `stats.componentsSkipped` | ✅ | all fixtures |
 | `stats.filesParsed` | ✅ | all fixtures |
 | `stats.opaqueCount` | ❌ | never non-zero in any snapshot |
+
+---
+
+## HtmlAttributeMode: curated / full / none
+
+`PipelineOptions.html_attributes` (CLI: `--html-attributes <curated|full|none>`; NAPI: `htmlAttributes: 'curated' | 'full' | 'none'`;
+config file: `htmlAttributes` in `docgen.config.ts`) controls how much of an inherited HTML element's attribute
+surface gets exposed:
+
+- **Curated (default)** — unchanged original behavior: ~15-20 hand-picked, commonly-documented attributes per
+  element (`onClick`, `disabled`, `aria-*`, etc.) synthesized into `notableInherited`.
+- **Full** — actually resolves `@types/react`'s real `HTMLAttributes`/`AriaAttributes`/`DOMAttributes`/
+  `<Element>HTMLAttributes` interface chain (merged into `GlobalSourceData` by the pipeline, looked up by the
+  resolver like any other interface) and merges the real fields directly into `props` — matching how RDT
+  flattens everything into one props map. Verified against a real button: 238 of ~250 real attributes resolve
+  (the remainder is a narrower, separate gap — see below). Costs ~16ms once per `@types/react` version (cached
+  the same way any other `.d.ts` is), not per extraction run.
+- **None** — no inherited HTML attributes synthesized at all; own props only.
+
+**Known residual gap, not fixed:** a handful of fields inside `@types/react`'s own interface chain
+(`AriaAttributes` referenced bare from within the same enclosing `declare namespace React {}` block, not
+through an explicit `React.` qualifier) don't resolve — same-namespace *sibling* reference resolution is
+narrower than the namespace-*qualified* reference resolution fixed for cross-file/explicit cases. Degrades
+gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash or component loss).
 
 ---
 
@@ -157,74 +192,177 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it i
 | ✅ done | `tags.since` on prop | `fixtures/rdt-compat/jsdoc.tsx` |
 | ✅ done | PandaCSS `defineRecipe` arg-index bug | `interface.rs:77` fix; panda snapshot updated |
 | ✅ done | Controlled/uncontrolled triple | `fixtures/rdt-compat/controlled.tsx` |
-| ✅ done | `Pick<SourceInterface>` (documented) | `fixtures/rdt-compat/pick-source.tsx` (reveals bug — see below) |
-| ✅ done | Union-of-interfaces root props (documented) | `fixtures/rdt-compat/discriminated-union.tsx` (reveals bug — see below) |
+| ✅ done | `Pick<SourceInterface>` | `fixtures/rdt-compat/pick-source.tsx`; fixed, see below |
+| ✅ done | Union-of-interfaces root props | `fixtures/rdt-compat/discriminated-union.tsx`; fixed, see below |
+| ✅ done | Method-shorthand handler param type | `fixtures/rdt-compat/controlled.tsx`; fixed, see below |
+| ✅ done | Component description leak from last prop's JSDoc | fixed, see below |
+| ✅ done | `forwardRef(...) as X` trailing cast | `fixtures/fluentui`, `fixtures/ark-ui`; fixed, see below |
+| ✅ done | Same-file TS namespace member resolution | `fixtures/base-ui`; fixed, see below |
+| ✅ done | JSDoc `@tag` bleeding onto sibling props | `fixtures/antd`; fixed, see below |
+| ✅ done | User-defined generic type alias substitution | `fixtures/ark-ui`; fixed, see below |
+| ✅ done | `Partial<X>` cycle-detection key collision | `fixtures/blueprint`; fixed, see below |
+| ✅ done | Discriminated union wrapped in an intersection | `fixtures/day-picker`; fixed, see below |
+| ✅ done | Bare function-type alias silently dropped | `fixtures/day-picker`; fixed, see below |
+| ✅ done | Identifier-wrapped component wrong naming | `fixtures/headlessui`; fixed, see below |
+| ✅ done | `Tuple`/`Object` `raw_string()` placeholder strings | real content now rendered, see PropType kinds table |
+| ✅ done | 4 missing `*EventHandler` builtin names | `ReactEventHandler`, `SubmitEventHandler`, `InputEventHandler`, `ToggleEventHandler` |
+| ✅ done | `readonly X` / `unique X` type operators captured as raw text | now peeled transparently, matching `keyof`'s structured handling |
 | N/A | `void` kind | standalone `void` not a real prop type |
 | N/A | `never` kind | broken discriminant, not a real prop type |
 | N/A | `any` kind | suppressed by `strict` mode |
+| ❌ not fixed | `styled.X.attrs<T>()` component detection | `fixtures/zendesk-garden`; shared blind spot with real RDT, not a competitive gap |
+| ❌ not fixed | Same-namespace sibling reference resolution (e.g. `AriaAttributes` referenced bare from within `declare namespace React {}`) | narrower than the namespace-qualified fix; degrades gracefully |
 
 ---
 
-## Known bugs (discovered via fixtures)
+## Fixed bugs (previously tracked here as open)
 
-### Bug: method-shorthand handler loses param type
+### Fixed: method-shorthand handler losing param type
 
 **Fixture:** `fixtures/rdt-compat/controlled.tsx`
 
-**Symptom:** `onValueChange?(value: string): void` (TSMethodSignature form) emits `eventType: "..."` instead of `eventType: "string"`.
-
-**Comparison:** Arrow-function form `onOpenChange?: (open: boolean) => void` correctly emits `eventType: "boolean"`.
-
-**Root cause:** The extractor's method-signature handling doesn't extract parameter types the same way as property-signature handling. TSMethodSignature parameters are stored differently from TSFunctionType parameters.
-
-**Impact:** All real Radix UI `.d.ts` handler props use method-shorthand syntax. Every handler in Radix Select, Dialog, Accordion, etc., will show `eventType: "..."`.
+Previously: `onValueChange?(value: string): void` (TSMethodSignature form) emitted `eventType: "..."` instead of
+`eventType: "string"`, while the arrow-function form correctly emitted `eventType: "boolean"`. Root cause: the
+extractor's method-signature handling didn't extract parameter types the same way as property-signature
+handling. Fixed — confirmed live: `onValueChange` now correctly resolves to `(value: string) => void`.
 
 ---
 
-### Bug: `Pick<T, Keys>` not resolved even for source types
+### Fixed: `Pick<T, Keys>` not resolved even for source types
 
 **Fixture:** `fixtures/rdt-compat/pick-source.tsx`
 
-**Symptom:** `interface IconButtonProps extends Pick<ButtonBaseProps, 'disabled' | 'type' | 'form'>` — the `disabled`, `type`, and `form` props from the Pick are completely absent from the output. Only own props `icon` and `label` appear.
-
-**Expected:** `disabled`, `type`, `form` should appear with `parent: { name: "ButtonBaseProps" }`.
-
-**Root cause:** `Pick` resolution in `alias.rs` likely reaches `resolve_base_as_chain` which tries to find the base interface, but the picked subset isn't materialized into the extractor's `interface_members` map. The resolution either fails silently or returns an empty chain.
-
-**Impact:** Any component that uses `Pick<LocalInterface, Keys>` in an `extends` clause loses all picked props. This is common in design system component families that share a base prop interface.
+Previously: `interface IconButtonProps extends Pick<ButtonBaseProps, 'disabled' | 'type' | 'form'>` lost the
+picked props entirely — only `icon`/`label` (the interface's own props) appeared. Fixed — confirmed live:
+`IconButton` now correctly includes `disabled`, `form`, `type` alongside `icon`/`label`.
 
 ---
 
-### Bug: union-of-interfaces root props type silently skips component
+### Fixed: union-of-interfaces root props type silently skipped the component
 
 **Fixture:** `fixtures/rdt-compat/discriminated-union.tsx`
 
-**Symptom:** `Accordion` with props type `AccordionSingleProps | AccordionMultipleProps` is completely absent from the output. No diagnostic is emitted. `componentsSkipped` does not increment.
-
-**Expected:** Either the props should be merged (with `discriminantProp: "type"` detected) OR a `Diagnostic` should be emitted explaining the limitation.
-
-**Root cause:** The resolver's component detection path checks whether the resolved props type is a direct interface reference or intersection chain. A union at the root level falls outside this check and the component is silently dropped.
-
-**Impact:** All Radix Accordion-like components (union type per discriminant value) are invisible. MUI `TextFieldProps` as `StandardTextFieldProps | FilledTextFieldProps | OutlinedTextFieldProps` works in the MUI fixture only because it's handled via a different resolution path (likely the DTS special case).
-
-**Workaround:** At minimum, emit a `ComponentDiagnostic` with kind `UnresolvableProps` so the caller knows the component was seen but not extracted.
+Previously: `Accordion` with props type `AccordionSingleProps | AccordionMultipleProps` was completely absent
+from the output, no diagnostic. Fixed — confirmed live: `Accordion` now resolves with all 5 real props.
 
 ---
 
-### Bug: component description set to last prop's JSDoc
+### Fixed: component description set to last prop's JSDoc
 
-**Fixture:** `fixtures/rdt-compat/controlled.tsx`, `fixtures/rdt-compat/pick-source.tsx`, `fixtures/rdt-compat/memo.tsx`
+**Fixtures:** `fixtures/rdt-compat/controlled.tsx`, `pick-source.tsx`, `memo.tsx`
 
-**Symptom:** When a component has no JSDoc comment of its own, `ComponentEntry.description` is set to the description of the last prop in the interface instead of being empty.
+Previously: when a component had no JSDoc of its own, `ComponentEntry.description` picked up the last prop's
+JSDoc instead of staying empty (the extractor's proximity-based `find_jsdoc` scan finding the wrong nearest
+comment). Fixed — confirmed live: `Select`/`IconButton`/`Avatar` all correctly show `description: ""`.
 
-Examples from snapshots:
-- `Select.description = "Whether the select is disabled."` (from the `disabled` prop)
-- `IconButton.description = "Accessible label for screen readers."` (from the `label` prop)
-- `Avatar.description = "Avatar diameter in pixels. @default 40"` (from the `size` prop)
+---
 
-**Expected:** `description` should be `""` when there is no component-level JSDoc.
+### Fixed: forwardRef wrapped in an `as`-cast
 
-**Root cause:** The extractor's `find_jsdoc` proximity scan finds the nearest preceding block comment. When there is no component JSDoc, it finds the last prop's JSDoc instead (within the 120-byte proximity threshold).
+**Fixtures:** `fixtures/fluentui/Button.tsx`, `fixtures/ark-ui/Select.tsx`
+
+Fluent UI's real Button (and Ark UI's real Select) are authored as
+`const X: SomeWrapper<Props> = React.forwardRef((props, ref) => {...}) as SomeWrapper<Props>` — neither
+`try_fc_annotation` (the wrapper type name wasn't recognized) nor `try_forward_ref`/`try_hoc_wrapped` (both
+required the initializer to be a `CallExpression` directly, not a `TSAsExpression` wrapping one) detected this;
+the component was silently invisible. Fixed by recognizing `ForwardRefComponent<P>` as a wrapper annotation and
+peeling `as`-casts before matching the call expression underneath. Confirmed: Fluent's Button 0 → 8 props.
+
+---
+
+### Fixed: same-file namespace member resolution
+
+**Fixture:** `fixtures/base-ui/MenuRoot.tsx`, `MenuTrigger.tsx`
+
+Base UI's real pattern is `namespace MenuRoot { export type Props<Payload> = ... }`, referenced elsewhere in
+the same file as `MenuRoot.Props`. Storage keyed on the bare member name while the resolver looked up the
+fully-qualified dotted name — same-file namespace member references could never resolve. Fixed by tracking an
+enclosing-namespace stack during extraction and qualifying storage keys to match. Confirmed:
+MenuRoot 0 → 15 props (exact match with real RDT), MenuTrigger invisible → 11 props.
+
+---
+
+### Fixed: JSDoc `@tag` bleeding onto sibling props
+
+**Fixture:** `fixtures/antd/Button.tsx`
+
+`find_jsdoc` (description) tracked consumed comment spans so two elements never share one description;
+`extract_jsdoc_tags` (the `@tag` map) ran a separate scan with no consumed-tracking at all, so a `@deprecated`
+tag correctly claimed by one prop was still "found" and inherited by a later sibling with no JSDoc of its own.
+Fixed by merging both lookups into one consuming pass. Confirmed: only `iconPosition` carries `@deprecated`
+now, not `iconPlacement`/`shape`/`size`/`disabled`.
+
+---
+
+### Fixed: user-defined generic type alias substitution
+
+**Fixture:** `fixtures/ark-ui/Select.tsx`
+
+`type Assign<T, U> = Omit<T, keyof U> & U` used with concrete call-site arguments (Ark UI's real
+`SelectRootProps<T> = Assign<HTMLProps<'div'>, SelectRootBaseProps<T>>`) never substituted `T`/`U` — type alias
+declarations didn't record their own declared parameters, and call-site type arguments were computed but
+discarded before alias resolution ran. `Omit<T, keyof U>`'s `keyof U` was also silently treated as an empty key
+list. Fixed via a structural walk-and-replace substitution engine (no type inference — real field names for
+`keyof U` come from resolving `U` as its own props chain). Confirmed: SelectRoot 0 → 36 real props via the
+actual, unmodified upstream pattern.
+
+---
+
+### Fixed: `Partial<X>` cycle-detection key collision
+
+**Fixture:** `fixtures/blueprint/Table.tsx`
+
+`TableProps extends Partial<RowHeights>, Partial<ColumnWidths>` — the resolver's cycle-detection visited-key
+was built from the bare type name alone (`"Partial"`), not its type arguments, so the second `Partial<X>`
+extends target collided with the first's cycle-guard entry and silently resolved to nothing, with zero
+diagnostic. Fixed by folding type arguments into the key. Confirmed: Table 45 → 48 props, exact match with real
+RDT.
+
+---
+
+### Fixed: discriminated unions wrapped in an intersection
+
+**Fixture:** `fixtures/day-picker/DayPicker.tsx`
+
+Discriminant detection only ran when a type alias's RHS was *directly* a union (`type X = A | B`). Real Day
+Picker's `DayPickerProps = PropsBase & (7-way union)` — an intersection whose union member fell into a naive
+per-member merge instead, keeping only whichever branch's type was seen first per prop instead of unioning
+across all branches. Fixed by having the intersection-nested-union case delegate to the same discriminant-merge
+logic a direct union alias uses. Confirmed: `selected`'s type now correctly merges `Date | Date[] | DateRange`
+across all 7 branches (previously collapsed to bare `Date`). Also confirmed (and this is *correct*, not a
+remaining bug): `discriminantProp` stays `null` for Day Picker's real union, because `mode` repeats the same
+value across `PropsSingle`/`PropsSingleRequired` — it's only jointly unique with a second field (`required`),
+so no single field actually identifies the variant.
+
+---
+
+### Fixed: bare function-type alias silently dropped
+
+**Fixture:** `fixtures/day-picker/props.ts`
+
+`type OnSelectHandler<T> = (selected: T, ...) => void` — a bare function type as an alias body — fell through
+`classify_type_alias`'s catch-all and vanished from `type_aliases` with no diagnostic, same failure mode as the
+already-fixed inline-object-literal case. Fixed by routing `TSFunctionType` through the same `Passthrough`
+wrapping `TSTypeLiteral` already used. Confirmed: `OnSelectHandler` no longer triggers a "cannot resolve"
+warning.
+
+---
+
+### Fixed: identifier-wrapped components renamed to export binding
+
+**Fixture:** `fixtures/headlessui/Listbox.tsx`
+
+Headless UI's real Listbox family: standalone top-level function declarations (`function ButtonFn(props, ref)`)
+wrapped by a library-defined `forwardRefWithAs` (not React's own `forwardRef`) and reassigned
+(`export let ListboxButton = forwardRefWithAs(ButtonFn) as X`). `ButtonFn` was already independently detected
+as its own component (a valid top-level PascalCase function with a typed first param) under the wrong,
+inner-implementation-only name — neither `try_forward_ref` (the callee isn't `React.forwardRef`) nor
+`try_hoc_wrapped` (the argument is a bare identifier, not an inline function) recognized the wrapping
+assignment. Fixed the same way the existing `displayName`-scan already handles a similar after-the-fact rename:
+when a variable's initializer is (after unwrapping any `as` cast) a call whose sole argument is a bare
+identifier matching an already-collected component, rename that mapping to the outer binding. Confirmed: all
+three components (`Listbox`, `ListboxButton`, `ListboxOption`) now report their real export names, matching
+real RDT.
 
 ---
 

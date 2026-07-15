@@ -237,8 +237,21 @@ impl PropType {
             PropType::Union(members) => members.iter().map(|m| m.raw_string()).collect::<Vec<_>>().join(" | "),
             PropType::Intersection(members) => members.iter().map(|m| m.raw_string()).collect::<Vec<_>>().join(" & "),
             PropType::Array(inner) => format!("{}[]", inner.raw_string()),
-            PropType::Tuple(_) => "tuple".into(),
-            PropType::Object(_) => "object".into(),
+            PropType::Tuple(members) => {
+                format!("[{}]", members.iter().map(|m| m.raw_string()).collect::<Vec<_>>().join(", "))
+            }
+            PropType::Object(fields) => {
+                let fields_str = fields
+                    .iter()
+                    .map(|f| {
+                        let name = if is_valid_identifier(&f.name) { f.name.clone() } else { format!("'{}'", f.name) };
+                        let optional = if f.required { "" } else { "?" };
+                        format!("{}{}: {}", name, optional, f.prop_type.raw_string())
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                format!("{{ {} }}", fields_str)
+            }
             PropType::LiteralUnion { members, .. } => {
                 members.iter().map(|m| format!(r#""{}""#, m)).collect::<Vec<_>>().join(" | ")
             }
@@ -532,6 +545,16 @@ fn element_to_type_name(element: &str) -> &'static str {
     }
 }
 
+/// Whether `name` can appear bare as an object-type field key in TypeScript
+/// source (`{ name: T }`) or must be quoted (`{ 'name': T }`) — e.g. CSS custom
+/// property names (`--accent`) and dashed HTML attributes (`data-testid`).
+fn is_valid_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else { return false };
+    (first.is_alphabetic() || first == '_' || first == '$')
+        && chars.all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+}
+
 /// Why a type could not be resolved.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -580,4 +603,48 @@ pub struct ExtractionStats {
     pub tier1_count: u32,
     pub tier3_count: u32,
     pub opaque_count: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tuple_raw_string_renders_real_elements_not_a_placeholder() {
+        let ty = PropType::Tuple(vec![PropType::Number, PropType::Number]);
+        assert_eq!(ty.raw_string(), "[number, number]");
+    }
+
+    #[test]
+    fn object_raw_string_renders_real_fields_not_a_placeholder() {
+        // Matches the real rdt-compat/types.tsx `tokenStyle` fixture shape:
+        // `CSSProperties & { '--accent': string }` — the object side must render
+        // its real field, not the literal placeholder "object".
+        let ty = PropType::Object(vec![ObjectField {
+            name: "--accent".into(),
+            prop_type: PropType::String,
+            required: true,
+            description: String::new(),
+        }]);
+        assert_eq!(ty.raw_string(), "{ '--accent': string }");
+    }
+
+    #[test]
+    fn object_raw_string_quotes_non_identifier_keys_only() {
+        let ty = PropType::Object(vec![
+            ObjectField {
+                name: "label".into(),
+                prop_type: PropType::String,
+                required: true,
+                description: String::new(),
+            },
+            ObjectField {
+                name: "data-testid".into(),
+                prop_type: PropType::String,
+                required: false,
+                description: String::new(),
+            },
+        ]);
+        assert_eq!(ty.raw_string(), "{ label: string; 'data-testid'?: string }");
+    }
 }

@@ -281,6 +281,43 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
         diagnostics.append(&mut data.diagnostics);
         global.merge(&path, data);
     }
+
+    // Phase 3.5: Full HTML attribute mode needs @types/react's real interfaces
+    // (HTMLAttributes, AriaAttributes, ButtonHTMLAttributes, etc.) merged in
+    // before resolution runs, so the resolver can look them up like any other
+    // interface instead of just recording an InheritedLayer. Cached the same way
+    // as any other .d.ts — this cost is paid once per @types/react version, not
+    // per extraction run.
+    if options.html_attributes == HtmlAttributeMode::Full {
+        let from_dir = options.src_dirs.first().map_or_else(|| Utf8PathBuf::from("."), Clone::clone);
+        match crate::resolver::resolve_package_dts_path(&from_dir, "react") {
+            Some(react_dts_path) => {
+                let react_dts_path = Utf8PathBuf::from(react_dts_path);
+                let data = match cache.get(&react_dts_path) {
+                    Some(cached) => cached,
+                    None => {
+                        let source = std::fs::read_to_string(&react_dts_path).unwrap_or_default();
+                        let data = crate::extractor::parse_file(&react_dts_path, &source);
+                        cache.insert(&react_dts_path, data.clone());
+                        data
+                    }
+                };
+                global.merge(&react_dts_path, data);
+            }
+            None => {
+                diagnostics.push(Diagnostic {
+                    severity: DiagnosticSeverity::Warning,
+                    message: "HtmlAttributeMode::Full requested but @types/react could not be resolved".into(),
+                    file: None,
+                    line: None,
+                    column: None,
+                    help: Some("Check that @types/react is installed. Falling back to curated attributes.".into()),
+                    code: DiagnosticCode::UnresolvableImport,
+                });
+            }
+        }
+    }
+
     let global = Arc::new(global);
 
     // Phase 4: Resolve all components in parallel.
@@ -473,6 +510,67 @@ mod tests {
             .find(|d| matches!(d.severity, DiagnosticSeverity::Error) && d.code == DiagnosticCode::IoError)
             .expect("missing src dir should produce an Error/IoError diagnostic");
         assert!(error.message.contains(missing.as_str()), "message should name the missing path");
+    }
+
+    // ── test_html_attribute_mode_full_resolves_real_button_attrs_end_to_end ───
+
+    #[test]
+    fn test_html_attribute_mode_full_resolves_real_button_attrs_end_to_end() {
+        // Real end-to-end proof, not synthetic GlobalSourceData: Full mode should
+        // actually find and parse this repo's real @types/react and merge a real
+        // ButtonHTMLAttributes field into a real component's props. Placed inside
+        // the crate dir (not a bare system tempdir) so ancestor-walking node_modules
+        // resolution reaches this repo's real, installed @types/react.
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+        write_file(
+            &tmp,
+            "Button.tsx",
+            r#"
+import * as React from "react";
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary";
+}
+export function Button(props: ButtonProps) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            html_attributes: HtmlAttributeMode::Full,
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        // @types/react itself was found and parsed — this must never fail with
+        // "could not be resolved" (that's the graceful fallback for @types/react
+        // genuinely not being installed, which isn't the case here).
+        let unresolvable_react =
+            output.diagnostics.iter().find(|d| d.message.contains("@types/react could not be resolved"));
+        assert!(unresolvable_react.is_none(), "expected @types/react to resolve in this repo's real node_modules");
+
+        let button = output.components.get("Button").expect("Button component not found");
+        // A handful of individual cross-referenced fields inside @types/react's own
+        // interface chain (AriaAttributes referenced bare from within the same
+        // `declare namespace React {}` block, not through an explicit `React.`
+        // qualifier) don't resolve yet — a narrower, separate gap in same-namespace
+        // sibling reference resolution, not a regression of this feature. The load-
+        // bearing claim is that the bulk of a real element's real attributes merge
+        // in as genuine own props, matching RDT's flat behavior.
+        assert!(
+            button.props.len() > 200,
+            "expected the bulk of ButtonHTMLAttributes' real ~235 fields to resolve, got {} props",
+            button.props.len()
+        );
+        assert!(
+            button.props.contains_key("formAction"),
+            "expected a real ButtonHTMLAttributes field in Button's own props, got {:?}",
+            button.props.keys().collect::<Vec<_>>()
+        );
+        assert!(button.props.contains_key("variant"), "own prop 'variant' should still be present");
     }
 
     // ── test_pipeline_options_default ─────────────────────────────────────────

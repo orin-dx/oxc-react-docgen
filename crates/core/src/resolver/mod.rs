@@ -93,6 +93,22 @@ impl ResolutionContext {
     }
 }
 
+/// Resolve `package_name` (e.g. "react") to its real `.d.ts` file path, for
+/// callers outside the resolver — the pipeline's `HtmlAttributeMode::Full`
+/// wiring needs this to know which file to parse and merge, before a
+/// `ResolutionContext` (which needs the already-merged `GlobalSourceData`) can
+/// exist yet.
+pub fn resolve_package_dts_path(from_dir: &camino::Utf8Path, package_name: &str) -> Option<String> {
+    let resolve_options = ResolveOptions {
+        condition_names: vec!["types".into(), "import".into(), "require".into(), "default".into()],
+        main_fields: vec!["types".into(), "typings".into(), "module".into(), "main".into()],
+        extensions: vec![".ts".into(), ".tsx".into(), ".d.ts".into(), ".js".into()],
+        ..ResolveOptions::default()
+    };
+    let resolver = Resolver::new(resolve_options);
+    react::resolve_package_types_file(&resolver, from_dir, package_name)
+}
+
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
 /// Resolve a `ComponentMapping` to a complete `ComponentEntry`.

@@ -108,9 +108,16 @@ fn real_html_attrs_chain(
     state: &mut ResolveState,
     depth: u8,
 ) -> Option<ResolvedChain> {
+    // @types/react declares all of these inside `declare namespace React { ... }`,
+    // so once merged they're stored under the namespace-qualified key regardless
+    // of how the consuming file referenced them (`ButtonHTMLAttributes` via a named
+    // import, or `React.ButtonHTMLAttributes` via a namespace import) — try the
+    // qualified form first since that's the real, common case, falling back to the
+    // bare form for resilience.
     let bare_name = name.strip_prefix("React.").unwrap_or(name);
-    let key = format!("{react_file}:{bare_name}");
-    let iface = ctx.global.interfaces.get(&key)?.clone();
+    let qualified_key = format!("{react_file}:React.{bare_name}");
+    let bare_key = format!("{react_file}:{bare_name}");
+    let iface = ctx.global.interfaces.get(&qualified_key).or_else(|| ctx.global.interfaces.get(&bare_key))?.clone();
     let react_file_path = Utf8Path::new(react_file);
     Some(resolve_interface_chain(&iface, &[], react_file_path, mapping, ctx, state, depth + 1))
 }

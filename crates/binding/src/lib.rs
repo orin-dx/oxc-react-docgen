@@ -34,7 +34,8 @@ pub struct JsExtractOptions {
     pub cross_package: Option<bool>,
     pub pandacss_outdir: Option<String>,
     pub variant_functions: Option<Vec<String>>,
-    pub skip_html_props: Option<bool>,
+    #[napi(ts_type = "'curated' | 'full' | 'none'")]
+    pub html_attributes: Option<String>,
     // Fields from architectural review:
     pub tsconfig_path: Option<String>,
     pub extra_builtins: Option<Vec<String>>,
@@ -86,7 +87,11 @@ impl From<JsExtractOptions> for PipelineOptions {
             variant_functions: js
                 .variant_functions
                 .unwrap_or_else(|| vec!["cva".into(), "tv".into(), "defineRecipe".into(), "recipe".into()]),
-            skip_html_props: js.skip_html_props.unwrap_or(false),
+            html_attributes: match js.html_attributes.as_deref() {
+                Some("full") => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Full,
+                Some("none") => oxc_react_docgen_core::pipeline::HtmlAttributeMode::None,
+                _ => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Curated,
+            },
             tsconfig_path: js.tsconfig_path.map(Into::into),
             extra_paths,
             known_type_overrides,

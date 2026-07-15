@@ -4,7 +4,9 @@ use camino::Utf8Path;
 
 use crate::types::*;
 
-use super::chain::resolve_props_chain;
+use crate::pipeline::HtmlAttributeMode;
+
+use super::chain::{resolve_interface_chain, resolve_props_chain};
 use super::import::resolve_import_specifier;
 use super::react::resolve_react_types_file;
 use super::{ResolutionContext, ResolvedChain};
@@ -21,17 +23,30 @@ pub(super) fn resolve_extends_ref(
 ) -> (ResolvedChain, Option<InheritedLayer>) {
     match extends_ref {
         ExtendsRef::Builtin { name, element, type_args } => {
-            // HTML element attrs — the actual props are not resolved here
-            // (they live in @types/react); we record an InheritedLayer instead.
+            // HTML element attrs. In Curated/None mode the actual props aren't
+            // resolved here (they'd live in @types/react) — we just record an
+            // InheritedLayer, and resolve_component synthesizes a curated subset
+            // separately. In Full mode, real_html_attrs_chain looks up the actual
+            // interface (already merged into GlobalSourceData under @types/react's
+            // real file path by the pipeline) and resolves it for real, same as any
+            // other interface — falling back to the InheritedLayer-only behavior if
+            // it's not found (e.g. @types/react wasn't actually merged).
             if let Some(element_name) = element {
+                let file_name = resolve_react_types_file(iface_file, ctx);
+                let real_chain = if ctx.html_attributes == HtmlAttributeMode::Full {
+                    real_html_attrs_chain(name.as_str(), &file_name, mapping, ctx, state, depth)
+                } else {
+                    None
+                };
+                let total_props = real_chain.as_ref().map_or(0, |c| c.props.len() as u32);
                 let layer = InheritedLayer {
                     type_name: name.to_string(),
-                    file_name: resolve_react_types_file(iface_file, ctx),
+                    file_name,
                     omitted: vec![],
                     html_element: Some(element_name.clone()),
-                    total_props: 0, // unknown without type-checker
+                    total_props,
                 };
-                (ResolvedChain::default(), Some(layer))
+                (real_chain.unwrap_or_default(), Some(layer))
             } else {
                 // Non-HTML-element builtins. ComponentPropsWithoutRef/ComponentProps:
                 // expand directly to HtmlAttributes based on the first type arg.
@@ -73,4 +88,29 @@ pub(super) fn resolve_extends_ref(
             (chain, None)
         }
     }
+}
+
+/// Full mode only: look up `name` (e.g. "ButtonHTMLAttributes") directly in
+/// `GlobalSourceData.interfaces` under `react_file` — the exact path the pipeline
+/// merges @types/react's parsed interfaces under when Full mode is on — and
+/// resolve it for real if found. Bypasses the normal same-file/import-resolution
+/// path entirely: the consuming file very often has no literal `import { X } from
+/// 'react'` naming this type at all (`React.ButtonHTMLAttributes<...>` via a
+/// namespace import, or no import at all in a `.d.ts`), so there's nothing for
+/// that path to resolve — we already know exactly which file these types live in.
+/// Returns `None` (not a diagnostic) when @types/react wasn't actually merged;
+/// callers fall back to the existing curated/metadata-only behavior.
+fn real_html_attrs_chain(
+    name: &str,
+    react_file: &str,
+    mapping: &ComponentMapping,
+    ctx: &ResolutionContext,
+    state: &mut ResolveState,
+    depth: u8,
+) -> Option<ResolvedChain> {
+    let bare_name = name.strip_prefix("React.").unwrap_or(name);
+    let key = format!("{react_file}:{bare_name}");
+    let iface = ctx.global.interfaces.get(&key)?.clone();
+    let react_file_path = Utf8Path::new(react_file);
+    Some(resolve_interface_chain(&iface, &[], react_file_path, mapping, ctx, state, depth + 1))
 }

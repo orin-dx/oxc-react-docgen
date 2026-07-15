@@ -34,6 +34,22 @@ pub enum KnownTypeOverride {
     Skip,
 }
 
+/// How much of an inherited HTML element's attribute surface to expose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HtmlAttributeMode {
+    /// ~15-20 curated, commonly-documented attributes per element (onClick,
+    /// disabled, aria-*, etc.) — the default. Matches RDT's shape for consumers
+    /// that filter node_modules-sourced props, just with a smaller, hand-picked set.
+    Curated,
+    /// Actually resolve @types/react's real HTMLAttributes/AriaAttributes/
+    /// DOMAttributes/<Element>HTMLAttributes interface chain, matching RDT's full
+    /// ~250-300 attributes per element.
+    Full,
+    /// Don't synthesize any inherited HTML attributes at all — own props only.
+    None,
+}
+
 /// Configuration for a single extraction run.
 #[derive(Debug, Clone)]
 pub struct PipelineOptions {
@@ -51,8 +67,8 @@ pub struct PipelineOptions {
     pub pandacss_outdir: Option<Utf8PathBuf>,
     /// Extra function names to treat as cva-like variant functions.
     pub variant_functions: Vec<String>,
-    /// Skip HTML props filter.
-    pub skip_html_props: bool,
+    /// How much of an inherited HTML element's attributes to expose.
+    pub html_attributes: HtmlAttributeMode,
     // ── Fields from architectural review ─────────────────────────────────────
     /// Path to tsconfig.json (auto-detected if None).
     pub tsconfig_path: Option<Utf8PathBuf>,
@@ -80,7 +96,7 @@ impl Default for PipelineOptions {
             cross_package: true,
             pandacss_outdir: None,
             variant_functions: vec!["cva".into(), "tv".into(), "defineRecipe".into(), "recipe".into()],
-            skip_html_props: false,
+            html_attributes: HtmlAttributeMode::Curated,
             tsconfig_path: None,
             extra_paths: Default::default(),
             known_type_overrides: Default::default(),

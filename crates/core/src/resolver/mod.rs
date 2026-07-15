@@ -60,6 +60,8 @@ pub struct ResolutionContext {
     /// this build pass — the same tie-break the old linear scan produced,
     /// since both iterate the same underlying map.
     pub enum_bare_index: FxHashMap<CompactString, CompactString>,
+    /// How much of an inherited HTML element's attributes to expose.
+    pub html_attributes: crate::pipeline::HtmlAttributeMode,
 }
 
 impl ResolutionContext {
@@ -86,6 +88,7 @@ impl ResolutionContext {
             oxc_resolver: Arc::new(Resolver::new(resolve_options)),
             extra_builtins: options.extra_builtins.clone(),
             enum_bare_index,
+            html_attributes: options.html_attributes,
         }
     }
 }
@@ -118,6 +121,12 @@ pub fn resolve_component(mapping: &ComponentMapping, ctx: &ResolutionContext) ->
     let mut notable_inherited: BTreeMap<String, ParsedProp> = BTreeMap::new();
     for layer in &chain.inheritance {
         if let Some(ref element) = layer.html_element {
+            // Curated-mode synthesis only: Full mode already merged the real
+            // attributes directly into `props` (see resolver/extends.rs); None
+            // mode wants no HTML attrs synthesized at all.
+            if ctx.html_attributes != crate::pipeline::HtmlAttributeMode::Curated {
+                continue;
+            }
             let notable_attrs = react_types::notable_html_attrs(element);
             for attr_name in notable_attrs {
                 if props.contains_key(*attr_name) {
@@ -854,6 +863,196 @@ mod tests {
             entry.inheritance.iter().any(|l| l.html_element.as_deref() == Some("button")),
             "Expected 'button' in inheritance layers, got {:?}",
             entry.inheritance
+        );
+    }
+
+    #[test]
+    fn test_html_attribute_mode_curated_does_not_expand_real_button_attrs() {
+        // Baseline: with the default Curated mode, a real (pre-merged, simulating
+        // an actually-parsed @types/react) ButtonHTMLAttributes interface is NOT
+        // consulted at all — own props stay empty, matching today's behavior.
+        let file_path = Utf8PathBuf::from("/test/button.tsx");
+        let mut global = GlobalSourceData::default();
+        let react_file = react::resolve_react_types_file(
+            &file_path,
+            &ResolutionContext::new(Arc::new(GlobalSourceData::default()), &PipelineOptions::default()),
+        );
+
+        global.interfaces.insert(
+            format!("{}:ButtonHTMLAttributes", react_file),
+            CollectedInterface {
+                scoped_key: format!("{}:ButtonHTMLAttributes", react_file),
+                name: "ButtonHTMLAttributes".into(),
+                file_path: react_file.clone().into(),
+                props: vec![RawProp {
+                    name: "formAction".into(),
+                    collected_type: CollectedType::String,
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interfaces.insert(
+            format!("{}:ButtonProps", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:ButtonProps", file_path),
+                name: "ButtonProps".into(),
+                file_path: file_path.clone(),
+                props: vec![],
+                extends: vec![ExtendsRef::Builtin {
+                    name: "ButtonHTMLAttributes".into(),
+                    element: Some("button".into()),
+                    type_args: vec![],
+                }],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Button".into(),
+            props_type_name: "ButtonProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, _diagnostics) = resolve_component(&mapping, &ctx);
+        assert!(
+            !entry.props.contains_key("formAction"),
+            "Curated mode should not expand real ButtonHTMLAttributes fields into own props, got {:?}",
+            entry.props.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_html_attribute_mode_full_expands_real_button_attrs() {
+        // Full mode: the same pre-merged, real ButtonHTMLAttributes interface IS
+        // consulted, and its real fields become genuine own props — matching how
+        // RDT flattens inherited HTML attributes directly into its props map.
+        let file_path = Utf8PathBuf::from("/test/button.tsx");
+        let mut global = GlobalSourceData::default();
+        let react_file = react::resolve_react_types_file(
+            &file_path,
+            &ResolutionContext::new(Arc::new(GlobalSourceData::default()), &PipelineOptions::default()),
+        );
+
+        global.interfaces.insert(
+            format!("{}:ButtonHTMLAttributes", react_file),
+            CollectedInterface {
+                scoped_key: format!("{}:ButtonHTMLAttributes", react_file),
+                name: "ButtonHTMLAttributes".into(),
+                file_path: react_file.clone().into(),
+                props: vec![RawProp {
+                    name: "formAction".into(),
+                    collected_type: CollectedType::String,
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interfaces.insert(
+            format!("{}:ButtonProps", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:ButtonProps", file_path),
+                name: "ButtonProps".into(),
+                file_path: file_path.clone(),
+                props: vec![],
+                extends: vec![ExtendsRef::Builtin {
+                    name: "ButtonHTMLAttributes".into(),
+                    element: Some("button".into()),
+                    type_args: vec![],
+                }],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let options =
+            PipelineOptions { html_attributes: crate::pipeline::HtmlAttributeMode::Full, ..Default::default() };
+        let ctx = ResolutionContext::new(Arc::new(global), &options);
+        let mapping = ComponentMapping {
+            component_name: "Button".into(),
+            props_type_name: "ButtonProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, _diagnostics) = resolve_component(&mapping, &ctx);
+        assert!(
+            entry.props.contains_key("formAction"),
+            "Full mode should expand real ButtonHTMLAttributes fields into own props, got {:?}",
+            entry.props.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_html_attribute_mode_none_suppresses_notable_inherited() {
+        // None mode: no curated attrs (onClick, disabled, etc.) should be
+        // synthesized into notable_inherited at all — own props only.
+        let file_path = Utf8PathBuf::from("/test/button.tsx");
+        let scoped_key = format!("{}:ButtonProps", file_path);
+
+        let mut global = GlobalSourceData::default();
+        global.interfaces.insert(
+            scoped_key.clone(),
+            CollectedInterface {
+                scoped_key: scoped_key.clone(),
+                name: "ButtonProps".into(),
+                file_path: file_path.clone(),
+                props: vec![],
+                extends: vec![ExtendsRef::Builtin {
+                    name: "ButtonHTMLAttributes".into(),
+                    element: Some("button".into()),
+                    type_args: vec![],
+                }],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let options =
+            PipelineOptions { html_attributes: crate::pipeline::HtmlAttributeMode::None, ..Default::default() };
+        let ctx = ResolutionContext::new(Arc::new(global), &options);
+        let mapping = ComponentMapping {
+            component_name: "Button".into(),
+            props_type_name: "ButtonProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, _diagnostics) = resolve_component(&mapping, &ctx);
+        assert!(
+            entry.notable_inherited.is_empty(),
+            "None mode should not synthesize any curated HTML attrs, got {:?}",
+            entry.notable_inherited.keys().collect::<Vec<_>>()
         );
     }
 

@@ -25,12 +25,12 @@ use super::ResolutionContext;
 /// argument, each pre-wrapped in `CollectedType::AtFile` pinned to the file the
 /// argument was actually written in (see that variant's doc comment) — the
 /// callee alias being substituted into may live in a different file entirely.
-type Substitution<'a> = FxHashMap<&'a str, CollectedType>;
+pub(super) type Substitution<'a> = FxHashMap<&'a str, CollectedType>;
 
 /// Build a `Substitution` from declared parameter names and the caller's
 /// arguments, tagging each argument with `origin_file` — the file the *caller*
 /// wrote them in, which is where any further name lookups on them must happen.
-fn build_substitution<'a>(
+pub(super) fn build_substitution<'a>(
     params: &'a [compact_str::CompactString],
     args: &[CollectedType],
     origin_file: &Utf8Path,
@@ -131,7 +131,7 @@ fn raw_arg_to_collected_type(s: &str) -> CollectedType {
 }
 
 /// Recursively replace parameter references inside a `CollectedType`.
-fn substitute_type(ct: &CollectedType, subst: &Substitution) -> CollectedType {
+pub(super) fn substitute_type(ct: &CollectedType, subst: &Substitution) -> CollectedType {
     match ct {
         CollectedType::Named { name, args } if args.is_empty() => match subst.get(name.as_str()) {
             Some(replacement) => replacement.clone(),

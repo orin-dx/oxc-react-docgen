@@ -393,6 +393,56 @@ mod tests {
         assert_eq!(result, PropType::Number, "Expected Number for CSSProperties[zIndex], got {:?}", result);
     }
 
+    // ── Test 5b: Indexed access into a generic interface's own field, with the
+    // call site's concrete type argument substituted in ─────────────────────
+    // Regression test for: react-final-form's
+    // `RenderableProps<FieldRenderProps<FieldValue, T>>["children"]` degraded to
+    // Opaque — `resolve_indexed_access`'s generic fallback only handled a type
+    // ALIAS wrapping an inline object literal (resolves to `PropType::Object`),
+    // never an INTERFACE (which resolves to a bare `PropType::Named` at the type
+    // level, so the fallback's `if let PropType::Object(fields) = ...` never matched).
+
+    #[test]
+    fn test_indexed_access_into_generic_interface_field_substitutes_type_arg() {
+        let file_path = Utf8PathBuf::from("/test/button.tsx");
+        let mut global = GlobalSourceData::default();
+
+        global.interfaces.insert(
+            format!("{}:RenderableProps", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:RenderableProps", file_path),
+                name: "RenderableProps".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "children".into(),
+                    collected_type: CollectedType::Named { name: "T".into(), args: vec![] },
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interface_type_params.insert(format!("{}:RenderableProps", file_path), vec!["T".into()]);
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let ct = CollectedType::IndexedAccess {
+            obj: Box::new(CollectedType::Named { name: "RenderableProps".into(), args: vec![CollectedType::String] }),
+            key: Box::new(CollectedType::StringLiteral("children".into())),
+        };
+        let result = resolve_type(&ct, &ctx);
+        assert_eq!(
+            result,
+            PropType::String,
+            "Expected T substituted with the call site's String argument, got {:?}",
+            result
+        );
+    }
+
     // ── Test 6: Primitives pass through ──────────────────────────────────────
 
     #[test]

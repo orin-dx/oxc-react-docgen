@@ -120,7 +120,15 @@ impl<'src> SourceDataCollector<'src> {
             TSType::TSFunctionType(_) => {
                 Some(CollectedTypeAlias::Passthrough { target: self.ts_type_to_collected(ty), file_path: fp })
             }
-            _ => None,
+            // Everything else `ts_type_to_collected` already knows how to represent
+            // structurally (arrays, tuples, indexed access, conditional/mapped
+            // types, …) — e.g. `type API_KeyCollection = string[]` (Storybook's real
+            // pattern). Same silent-vanishing bug as the two arms above, generalized:
+            // a dedicated arm above always wins for shapes needing special alias
+            // semantics (Omit's key-splitting, discriminated-union detection, …); this
+            // catch-all only ever runs for shapes with no such semantics, where a
+            // transparent Passthrough is exactly correct.
+            _ => Some(CollectedTypeAlias::Passthrough { target: self.ts_type_to_collected(ty), file_path: fp }),
         }
     }
 

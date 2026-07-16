@@ -777,6 +777,57 @@ type OnSelectHandler<T> = (selected: T, triggerDate: Date) => void;
     }
 
     #[test]
+    fn test_array_type_alias_not_silently_dropped() {
+        // Storybook's real pattern: `type API_KeyCollection = string[]` — a bare
+        // array type as the alias body. Same silent-vanishing bug as the function-
+        // type/type-literal cases above: classify_type_alias's `_ => None` catch-all
+        // dropped ANY type shape without a dedicated arm, not just those two, so
+        // every `API_KeyCollection` reference resolved as unknown with a "Cannot
+        // resolve type" diagnostic despite being a plain same-file declaration.
+        let source = r#"
+type API_KeyCollection = string[];
+"#;
+        let path = Utf8Path::new("/fixtures/array-alias.tsx");
+        let data = parse_file(path, source);
+
+        let key = format!("{path}:API_KeyCollection");
+        let alias = data.type_aliases.get(&key).unwrap_or_else(|| {
+            panic!("expected type_aliases to contain '{key}', got keys: {:?}", data.type_aliases.keys())
+        });
+
+        match alias {
+            CollectedTypeAlias::Passthrough { target: CollectedType::Array(inner), .. } => {
+                assert!(matches!(**inner, CollectedType::String), "expected Array<String>, got {inner:?}");
+            }
+            other => panic!("expected Passthrough{{Array}}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_tuple_type_alias_not_silently_dropped() {
+        // Same class of bug as the array case above, exercised with a different
+        // previously-unhandled shape to prove the fix is a general catch-all
+        // fallback, not another narrowly-scoped special case for arrays only.
+        let source = r#"
+type Point = [number, number];
+"#;
+        let path = Utf8Path::new("/fixtures/tuple-alias.tsx");
+        let data = parse_file(path, source);
+
+        let key = format!("{path}:Point");
+        let alias = data.type_aliases.get(&key).unwrap_or_else(|| {
+            panic!("expected type_aliases to contain '{key}', got keys: {:?}", data.type_aliases.keys())
+        });
+
+        match alias {
+            CollectedTypeAlias::Passthrough { target: CollectedType::Tuple(members), .. } => {
+                assert_eq!(members.len(), 2, "expected 2 tuple members, got {members:?}");
+            }
+            other => panic!("expected Passthrough{{Tuple}}, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_shadcn_button() {
         let fixture = fixture_path("shadcn/button.tsx");
         let source =

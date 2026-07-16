@@ -57,7 +57,7 @@ pub(super) fn resolve_named(
 
     // ── 3. Type alias lookup ──────────────────────────────────────────────────
     if let Some(alias) = ctx.global.type_aliases.get(&scoped_key).cloned() {
-        return resolve_type_alias_type(&alias, consuming_file, ctx, state, depth);
+        return resolve_type_alias_type(&alias, ctx, state, depth);
     }
 
     // ── 4. Interface lookup ───────────────────────────────────────────────────

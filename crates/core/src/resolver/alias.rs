@@ -353,36 +353,41 @@ fn record_variant_props(
 }
 
 /// Resolve a `CollectedTypeAlias` to a `PropType` (at the type level, not chain level).
+///
+/// Members reference relative to `alias.file_path()` — the alias's OWN declaring
+/// file — never the caller's `consuming_file`. A `type Combined = A | B` alias
+/// imported cross-file still has `A`/`B` as same-file siblings of `Combined`
+/// wherever it was actually declared, not siblings of whatever file imported it.
 pub(super) fn resolve_type_alias_type(
     alias: &CollectedTypeAlias,
-    consuming_file: &Utf8Path,
     ctx: &ResolutionContext,
     state: &mut ResolveState,
     depth: u8,
 ) -> PropType {
+    let file_path = alias.file_path();
     match alias {
         CollectedTypeAlias::LiteralUnion { members, .. } => {
             PropType::LiteralUnion { members: members.clone(), has_default: false }
         }
         CollectedTypeAlias::Passthrough { target, .. } => {
-            resolve_collected_type(target, consuming_file, ctx, state, depth + 1)
+            resolve_collected_type(target, file_path, ctx, state, depth + 1)
         }
         CollectedTypeAlias::Union { members, .. } => {
             let resolved: Vec<PropType> =
-                members.iter().map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1)).collect();
+                members.iter().map(|m| resolve_collected_type(m, file_path, ctx, state, depth + 1)).collect();
             PropType::Union(resolved)
         }
         CollectedTypeAlias::Intersection { members, .. } => {
             let resolved: Vec<PropType> =
-                members.iter().map(|m| resolve_collected_type(m, consuming_file, ctx, state, depth + 1)).collect();
+                members.iter().map(|m| resolve_collected_type(m, file_path, ctx, state, depth + 1)).collect();
             PropType::Intersection(resolved)
         }
         CollectedTypeAlias::Partial { base, .. } | CollectedTypeAlias::Required { base, .. } => {
-            resolve_collected_type(base, consuming_file, ctx, state, depth + 1)
+            resolve_collected_type(base, file_path, ctx, state, depth + 1)
         }
         CollectedTypeAlias::Omit { base, .. } | CollectedTypeAlias::Pick { base, .. } => {
             // At the type level, just forward to the base type.
-            resolve_collected_type(base, consuming_file, ctx, state, depth + 1)
+            resolve_collected_type(base, file_path, ctx, state, depth + 1)
         }
     }
 }

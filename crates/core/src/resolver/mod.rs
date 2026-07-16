@@ -1257,6 +1257,131 @@ mod tests {
         );
     }
 
+    // ── Test 9b: Union alias members resolve relative to the alias's own file ──
+    // Regression test for: TanStack Table's `ColumnDef<TData, TValue> = DisplayColumnDef<...>
+    // | GroupColumnDef<...> | AccessorColumnDef<...>` (all same-file siblings in
+    // types.ts). A consumer file that only imports `ColumnDef` (not the union
+    // members) was spuriously getting "Cannot resolve type 'DisplayColumnDef'"
+    // diagnostics, because `resolve_type_alias_type` forwarded the ORIGINAL
+    // caller's `consuming_file` into the recursive member resolution instead of
+    // the alias's own `file_path` — so the same-file sibling lookup was attempted
+    // against the wrong file.
+
+    #[test]
+    fn test_union_alias_members_resolve_relative_to_alias_own_file_not_caller() {
+        let types_file = Utf8PathBuf::from("/test/types.ts");
+        let consumer_file = Utf8PathBuf::from("/test/consumer.tsx");
+
+        let mut global = GlobalSourceData::default();
+
+        global.interfaces.insert(
+            format!("{}:SiblingA", types_file),
+            CollectedInterface {
+                scoped_key: format!("{}:SiblingA", types_file),
+                name: "SiblingA".into(),
+                file_path: types_file.clone(),
+                props: vec![RawProp {
+                    name: "x".into(),
+                    collected_type: CollectedType::String,
+                    required: true,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interfaces.insert(
+            format!("{}:SiblingB", types_file),
+            CollectedInterface {
+                scoped_key: format!("{}:SiblingB", types_file),
+                name: "SiblingB".into(),
+                file_path: types_file.clone(),
+                props: vec![RawProp {
+                    name: "y".into(),
+                    collected_type: CollectedType::Number,
+                    required: true,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        // type Combined = SiblingA | SiblingB — re-exported into consumer.tsx (keyed
+        // under consumer_file so the outer `value: Combined` reference resolves via
+        // the same-file fallback without needing real import-map/oxc_resolver
+        // plumbing), but its own `file_path` correctly records where it — and its
+        // union members — are actually declared: types.ts.
+        global.type_aliases.insert(
+            format!("{}:Combined", consumer_file),
+            CollectedTypeAlias::Union {
+                members: vec![
+                    CollectedType::Named { name: "SiblingA".into(), args: vec![] },
+                    CollectedType::Named { name: "SiblingB".into(), args: vec![] },
+                ],
+                file_path: types_file.clone(),
+            },
+        );
+
+        // interface WidgetProps { value: Combined } — declared in consumer.tsx,
+        // which never imports SiblingA/SiblingB directly.
+        global.interfaces.insert(
+            format!("{}:WidgetProps", consumer_file),
+            CollectedInterface {
+                scoped_key: format!("{}:WidgetProps", consumer_file),
+                name: "WidgetProps".into(),
+                file_path: consumer_file.clone(),
+                props: vec![RawProp {
+                    name: "value".into(),
+                    collected_type: CollectedType::Named { name: "Combined".into(), args: vec![] },
+                    required: true,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Widget".into(),
+            props_type_name: "WidgetProps".into(),
+            props_type_args: vec![],
+            file_path: consumer_file.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, diagnostics) = resolve_component(&mapping, &ctx);
+
+        let value = entry.props.get("value").expect("expected 'value' prop");
+        match &value.prop_type {
+            PropType::Union(members) => assert_eq!(members.len(), 2, "expected 2 union members, got {:?}", members),
+            other => panic!("expected Union, got {:?}", other),
+        }
+
+        assert!(
+            diagnostics.is_empty(),
+            "SiblingA/SiblingB are real same-file siblings of Combined in types.ts — expected no diagnostics, got: {:?}",
+            diagnostics
+        );
+    }
+
     // ── Test 10c: User-defined generic type alias substitution (Ark UI `Assign<T, U>`) ─
     // Regression test for: `type Assign<T, U> = Omit<T, keyof U> & U` used with
     // concrete call-site arguments. Before substitution was implemented, `T`/`U`

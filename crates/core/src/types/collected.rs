@@ -1,7 +1,7 @@
 //! Raw AST-level types produced by the extractor (Phase 0-2).
 //! These are the extractor's output and the resolver's input.
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -664,6 +664,24 @@ pub enum CollectedTypeAlias {
         target: CollectedType,
         file_path: Utf8PathBuf,
     },
+}
+
+impl CollectedTypeAlias {
+    /// The file this alias was declared in — members referenced in its own body
+    /// (e.g. union/intersection operands) must resolve relative to this, not
+    /// whichever file happens to be consuming the alias.
+    pub(crate) fn file_path(&self) -> &Utf8Path {
+        match self {
+            CollectedTypeAlias::Omit { file_path, .. }
+            | CollectedTypeAlias::Pick { file_path, .. }
+            | CollectedTypeAlias::Partial { file_path, .. }
+            | CollectedTypeAlias::Required { file_path, .. }
+            | CollectedTypeAlias::Union { file_path, .. }
+            | CollectedTypeAlias::Intersection { file_path, .. }
+            | CollectedTypeAlias::LiteralUnion { file_path, .. }
+            | CollectedTypeAlias::Passthrough { file_path, .. } => file_path,
+        }
+    }
 }
 
 /// The source of a default value.

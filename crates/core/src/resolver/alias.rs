@@ -48,7 +48,11 @@ pub(super) fn resolve_type_alias_chain(
                 // elsewhere in the same alias (e.g. the `& U` half of `Omit<T, keyof U> & U`).
                 // Sharing the main cycle-detection set would mark it visited here and make
                 // that later, legitimate resolution come back empty.
-                let mut branch_state = ResolveState { visited: state.visited.clone(), diagnostics: vec![] };
+                let mut branch_state = ResolveState {
+                    visited: state.visited.clone(),
+                    diagnostics: vec![],
+                    in_scope_type_params: state.in_scope_type_params.clone(),
+                };
                 let other_chain = resolve_base_as_chain(keys_of, file_path, mapping, ctx, &mut branch_state, depth);
                 state.diagnostics.extend(branch_state.diagnostics);
                 all_omitted.extend(other_chain.props.into_iter().map(|p| p.name));
@@ -219,7 +223,11 @@ pub(super) fn resolve_union_alias(
         .iter()
         .filter_map(|m| {
             if let CollectedType::Named { name, .. } = m {
-                let mut branch_state = ResolveState { visited: state.visited.clone(), diagnostics: vec![] };
+                let mut branch_state = ResolveState {
+                    visited: state.visited.clone(),
+                    diagnostics: vec![],
+                    in_scope_type_params: state.in_scope_type_params.clone(),
+                };
                 let chain =
                     resolve_props_chain(name.as_str(), &[], file_path, mapping, ctx, &mut branch_state, depth + 1);
                 state.diagnostics.extend(branch_state.diagnostics);

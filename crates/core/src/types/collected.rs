@@ -551,6 +551,14 @@ pub struct SourceData {
     /// resolver only attempts call-site substitution when an entry exists.
     pub type_alias_params: FxHashMap<std::string::String, Vec<TypeName>>,
 
+    /// Declared type parameter names for generic interface declarations, e.g.
+    /// `interface ColumnDef<TData, TValue> { ... }` records `["TData", "TValue"]`
+    /// here. Keyed identically to `interfaces`. Used by the resolver to recognize
+    /// a bare `TData` reference inside the interface's own body as an expected
+    /// generic placeholder rather than an unresolvable type — see
+    /// `resolver::chain::resolve_interface_chain`.
+    pub interface_type_params: FxHashMap<std::string::String, Vec<TypeName>>,
+
     /// Enum-like values found in this file.
     /// Key: "${absolute_file_path}:${name}"
     pub enums: FxHashMap<std::string::String, Vec<EnumEntry>>,

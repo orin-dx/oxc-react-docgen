@@ -57,6 +57,12 @@ pub(super) fn resolve_named(
 
     // ── 3. Type alias lookup ──────────────────────────────────────────────────
     if let Some(alias) = ctx.global.type_aliases.get(&scoped_key).cloned() {
+        // A generic alias's own declared type parameters (`type Foo<TData> = ...`)
+        // are expected, unexpandable placeholders wherever referenced in its body —
+        // not unresolvable types. Register them so step 7 below doesn't warn.
+        if let Some(params) = ctx.global.type_alias_params.get(&scoped_key) {
+            state.in_scope_type_params.extend(params.iter().cloned());
+        }
         return resolve_type_alias_type(&alias, ctx, state, depth);
     }
 
@@ -118,6 +124,11 @@ pub(super) fn resolve_named(
         return PropType::Named { name: name.clone(), args: resolved_args };
     }
     if bare.starts_with("SVG") && bare.ends_with("Element") {
+        return PropType::Named { name: name.clone(), args: resolved_args };
+    }
+
+    // ── 6.5 Enclosing generic's own type parameter — expected, not unresolvable ─
+    if state.in_scope_type_params.contains(bare) {
         return PropType::Named { name: name.clone(), args: resolved_args };
     }
 

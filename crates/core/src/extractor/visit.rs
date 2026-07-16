@@ -128,7 +128,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
         self.data.interfaces.insert(
             key.clone(),
             CollectedInterface {
-                scoped_key: key,
+                scoped_key: key.clone(),
                 name: name.into(),
                 file_path: self.file_path.clone(),
                 props,
@@ -137,6 +137,17 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                 tags,
             },
         );
+
+        // Record declared type parameter names (`interface Foo<TData, TValue>` →
+        // ["TData", "TValue"]) so the resolver can recognize bare references to
+        // them inside the interface's own body as expected generic placeholders
+        // rather than unresolvable types — see `resolver/chain.rs`.
+        if let Some(type_parameters) = &node.type_parameters {
+            let params: Vec<TypeName> = type_parameters.params.iter().map(|p| p.name.name.as_str().into()).collect();
+            if !params.is_empty() {
+                self.data.interface_type_params.insert(key, params);
+            }
+        }
 
         // Don't walk children — we've extracted everything we need
     }

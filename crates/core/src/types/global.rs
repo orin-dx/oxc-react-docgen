@@ -21,6 +21,12 @@ pub(crate) struct ResolveState {
     pub(crate) visited: FxHashSet<CompactString>,
     /// Accumulated non-fatal issues.
     pub(crate) diagnostics: Vec<Diagnostic>,
+    /// Declared generic type parameter names (`TData`, `T`, `U`, ...) seen so far
+    /// while resolving this component — accumulated as interfaces/aliases with
+    /// their own type parameters are entered, never removed. A bare reference to
+    /// one of these names is an expected, unexpandable generic placeholder, not
+    /// a broken/missing type — see `resolver::named::resolve_named`.
+    pub(crate) in_scope_type_params: FxHashSet<CompactString>,
 }
 
 // ─── GlobalSourceData ─────────────────────────────────────────────────────────
@@ -41,6 +47,10 @@ pub struct GlobalSourceData {
     /// Declared type parameter names for generic type alias declarations — see
     /// `SourceData::type_alias_params`. Key: "${absolute_file_path}:${name}"
     pub type_alias_params: FxHashMap<String, Vec<TypeName>>,
+
+    /// Declared type parameter names for generic interface declarations — see
+    /// `SourceData::interface_type_params`. Key: "${absolute_file_path}:${name}"
+    pub interface_type_params: FxHashMap<String, Vec<TypeName>>,
 
     /// All enum-like definitions across all files.
     /// Key: "${absolute_file_path}:${name}"
@@ -74,6 +84,7 @@ impl GlobalSourceData {
         }
         self.type_aliases.extend(data.type_aliases);
         self.type_alias_params.extend(data.type_alias_params);
+        self.interface_type_params.extend(data.interface_type_params);
         self.enums.extend(data.enums);
         self.import_map.insert(file_path.to_owned(), data.imports);
         self.re_export_map.insert(file_path.to_owned(), data.exports);
@@ -86,6 +97,7 @@ impl GlobalSourceData {
         self.interfaces.retain(|k, _| !k.starts_with(&prefix));
         self.type_aliases.retain(|k, _| !k.starts_with(&prefix));
         self.type_alias_params.retain(|k, _| !k.starts_with(&prefix));
+        self.interface_type_params.retain(|k, _| !k.starts_with(&prefix));
         self.enums.retain(|k, _| !k.starts_with(&prefix));
         self.import_map.remove(file_path);
         self.re_export_map.remove(file_path);

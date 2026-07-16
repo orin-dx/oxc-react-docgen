@@ -207,6 +207,13 @@ pub(super) fn resolve_interface_chain(
 ) -> ResolvedChain {
     let mut chain = ResolvedChain::default();
 
+    // A generic interface's own declared type parameters (`interface Foo<TData>`)
+    // are expected, unexpandable placeholders wherever referenced in its body —
+    // not unresolvable types. Register them so `resolve_named` doesn't warn.
+    if let Some(params) = ctx.global.interface_type_params.get(&iface.scoped_key) {
+        state.in_scope_type_params.extend(params.iter().cloned());
+    }
+
     // ── Resolve extends first — parent props come before own props ────────────
     for extends_ref in &iface.extends {
         let (parent_chain, maybe_layer) =

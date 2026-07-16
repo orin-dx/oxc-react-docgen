@@ -1382,6 +1382,91 @@ mod tests {
         );
     }
 
+    // ── Test 9c: Generic interface's own type params don't trigger unresolvable-
+    // type diagnostics ──────────────────────────────────────────────────────────
+    // Regression test for: TanStack Table's `DataTableProps<TData, TValue>`
+    // referencing its own `TData`/`TValue` generic parameters in its body
+    // (`columns: ColumnDef<TData, TValue>[]`, `data: TData[]`) was spuriously
+    // getting "Cannot resolve type 'TData'" diagnostics — the resolver had no
+    // concept of an interface's own declared type parameters, so it tried (and
+    // "failed") to look them up as if they were real named types.
+
+    #[test]
+    fn test_generic_interface_own_type_params_suppress_diagnostic() {
+        let file_path = Utf8PathBuf::from("/test/data-table.tsx");
+
+        let mut global = GlobalSourceData::default();
+
+        global.interfaces.insert(
+            format!("{}:WidgetProps", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:WidgetProps", file_path),
+                name: "WidgetProps".into(),
+                file_path: file_path.clone(),
+                props: vec![
+                    RawProp {
+                        name: "data".into(),
+                        collected_type: CollectedType::Array(Box::new(CollectedType::Named {
+                            name: "TData".into(),
+                            args: vec![],
+                        })),
+                        required: true,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                    RawProp {
+                        name: "getValue".into(),
+                        collected_type: CollectedType::Named { name: "TValue".into(), args: vec![] },
+                        required: true,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                ],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global
+            .interface_type_params
+            .insert(format!("{}:WidgetProps", file_path), vec!["TData".into(), "TValue".into()]);
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Widget".into(),
+            props_type_name: "WidgetProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, diagnostics) = resolve_component(&mapping, &ctx);
+
+        assert!(
+            entry.props.contains_key("data"),
+            "expected 'data' prop, got: {:?}",
+            entry.props.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            entry.props.contains_key("getValue"),
+            "expected 'getValue' prop, got: {:?}",
+            entry.props.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "TData/TValue are WidgetProps's own declared type parameters — expected no diagnostics, got: {:?}",
+            diagnostics
+        );
+    }
+
     // ── Test 10c: User-defined generic type alias substitution (Ark UI `Assign<T, U>`) ─
     // Regression test for: `type Assign<T, U> = Omit<T, keyof U> & U` used with
     // concrete call-site arguments. Before substitution was implemented, `T`/`U`

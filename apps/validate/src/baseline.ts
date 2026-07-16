@@ -8,8 +8,14 @@ function runScript(script: string): string {
   const result = spawnSync('tsx', [resolve(import.meta.dirname, script)], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit'], // stdout captured, stderr forwarded
+    // Node's spawnSync default maxBuffer is 1MB — with 20 real fixture libraries
+    // the RDT baseline alone now exceeds that, silently truncating stdout
+    // mid-JSON-string (no non-zero exit, no thrown error) rather than failing
+    // loudly. 100MB is generous headroom for however large fixtures/ grows.
+    maxBuffer: 100 * 1024 * 1024,
   })
-  if (result.status !== 0) throw new Error(`${script} failed`)
+  if (result.error) throw new Error(`${script} failed to spawn: ${result.error.message}`)
+  if (result.status !== 0) throw new Error(`${script} exited with status ${result.status}`)
   return result.stdout
 }
 

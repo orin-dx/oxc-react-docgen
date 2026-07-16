@@ -585,6 +585,68 @@ export function Button(props: ButtonProps) { return null; }
         assert!(button.props.contains_key("variant"), "own prop 'variant' should still be present");
     }
 
+    // ── test_named_type_only_import_from_react_resolves_to_real_dts ──────────
+    //
+    // Regression test for: `import type { AriaAttributes } from "react"` used
+    // directly as an `extends` target failed for two independent reasons (this
+    // uses AriaAttributes rather than HTMLAttributes specifically because
+    // "HTMLAttributes" gets special-cased as a synthetic "div" element by
+    // `react_types::html_element_for`, which routes through an unrelated,
+    // already-working code path — AriaAttributes has no such shortcut, so it
+    // actually exercises general named-import resolution):
+    //   1. "react" resolved to its own `index.js` (react's package.json has no
+    //      "types"/"typings" field and no "types" export condition — its real
+    //      type declarations live in the separate `@types/react` package),
+    //      instead of falling back to `@types/react`.
+    //   2. Even once the right file is found, `@types/react` declares
+    //      everything inside `declare namespace React { ... }`, so
+    //      `AriaAttributes` is keyed as "React.AriaAttributes" there — a bare
+    //      lookup for "AriaAttributes" (the name as actually imported/used)
+    //      never matches.
+
+    #[test]
+    fn test_named_type_only_import_from_react_resolves_to_real_dts() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+        write_file(
+            &tmp,
+            "Panel.tsx",
+            r#"
+import type { AriaAttributes } from "react";
+interface PanelProps extends AriaAttributes {
+  collapsible?: boolean;
+}
+export function Panel(props: PanelProps) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            html_attributes: HtmlAttributeMode::Full,
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let unresolvable =
+            output.diagnostics.iter().find(|d| d.message.contains("Cannot resolve type 'AriaAttributes'"));
+        assert!(
+            unresolvable.is_none(),
+            "expected 'react' to resolve to @types/react's real .d.ts, got diagnostic: {:?}",
+            unresolvable
+        );
+
+        let panel = output.components.get("Panel").expect("Panel component not found");
+        assert!(
+            panel.props.contains_key("aria-label"),
+            "expected a real AriaAttributes field in Panel's own props, got {:?}",
+            panel.props.keys().collect::<Vec<_>>()
+        );
+        assert!(panel.props.contains_key("collapsible"), "own prop 'collapsible' should still be present");
+    }
+
     // ── test_pipeline_options_default ─────────────────────────────────────────
 
     #[test]

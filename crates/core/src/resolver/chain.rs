@@ -10,7 +10,7 @@ use crate::types::*;
 use super::alias::resolve_type_alias_chain;
 use super::collected::resolve_collected_type;
 use super::extends::resolve_extends_ref;
-use super::import::resolve_to_canonical;
+use super::import::{lookup_interface, lookup_type_alias, resolve_to_canonical};
 use super::react::resolve_react_types_file;
 use super::{ResolutionContext, ResolvedChain, MAX_DEPTH};
 
@@ -163,23 +163,23 @@ pub(super) fn resolve_props_chain(
     let (canonical_file, canonical_name) = resolve_to_canonical(type_name, consuming_file, ctx, &mut state.diagnostics)
         .unwrap_or_else(|| (consuming_file.to_owned(), type_name.to_owned()));
 
-    let scoped_key = format!("{}:{}", canonical_file, canonical_name);
-
     // ── Step 4: Type alias (Omit, Pick, Partial, Union, etc.) ────────────────
-    if let Some(alias) = ctx.global.type_aliases.get(&scoped_key).cloned() {
+    if let Some((matched_key, alias)) = lookup_type_alias(&ctx.global, canonical_file.as_str(), &canonical_name) {
+        let alias = alias.clone();
         // Substitute declared type parameters (`type Assign<T, U> = ...`) with the
         // call site's concrete `type_args` before resolving the body. No-op for
         // non-generic aliases (the common case) — see resolver/substitute.rs.
-        let alias = super::substitute::apply_generic_args(alias, &scoped_key, type_args, consuming_file, ctx);
+        let alias = super::substitute::apply_generic_args(alias, &matched_key, type_args, consuming_file, ctx);
         return resolve_type_alias_chain(&alias, consuming_file, mapping, ctx, state, depth);
     }
 
     // ── Step 5: Interface ─────────────────────────────────────────────────────
-    if let Some(iface) = ctx.global.interfaces.get(&scoped_key).cloned() {
+    if let Some(iface) = lookup_interface(&ctx.global, canonical_file.as_str(), &canonical_name).cloned() {
         return resolve_interface_chain(&iface, type_args, consuming_file, mapping, ctx, state, depth);
     }
 
     // ── Step 6: Unresolvable ──────────────────────────────────────────────────
+    let scoped_key = format!("{}:{}", canonical_file, canonical_name);
     state.diagnostics.push(Diagnostic {
         severity: DiagnosticSeverity::Warning,
         message: format!("Cannot resolve type '{}' in '{}' (scoped key: '{}')", type_name, consuming_file, scoped_key),

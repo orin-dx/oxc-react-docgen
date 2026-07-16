@@ -9,7 +9,7 @@ use crate::types::*;
 
 use super::alias::resolve_type_alias_type;
 use super::collected::resolve_collected_type;
-use super::import::resolve_to_canonical;
+use super::import::{lookup_interface, lookup_type_alias, resolve_to_canonical};
 use super::react::react_type_to_prop_type;
 use super::{ResolutionContext, MAX_DEPTH};
 
@@ -53,14 +53,13 @@ pub(super) fn resolve_named(
         resolve_to_canonical(name.as_str(), consuming_file, ctx, &mut state.diagnostics)
             .unwrap_or_else(|| (consuming_file.to_owned(), name.to_string()));
 
-    let scoped_key = format!("{}:{}", canonical_file, canonical_name);
-
     // ── 3. Type alias lookup ──────────────────────────────────────────────────
-    if let Some(alias) = ctx.global.type_aliases.get(&scoped_key).cloned() {
+    if let Some((matched_key, alias)) = lookup_type_alias(&ctx.global, canonical_file.as_str(), &canonical_name) {
+        let alias = alias.clone();
         // A generic alias's own declared type parameters (`type Foo<TData> = ...`)
         // are expected, unexpandable placeholders wherever referenced in its body —
         // not unresolvable types. Register them so step 7 below doesn't warn.
-        if let Some(params) = ctx.global.type_alias_params.get(&scoped_key) {
+        if let Some(params) = ctx.global.type_alias_params.get(&matched_key) {
             state.in_scope_type_params.extend(params.iter().cloned());
         }
         return resolve_type_alias_type(&alias, ctx, state, depth);
@@ -69,7 +68,7 @@ pub(super) fn resolve_named(
     // ── 4. Interface lookup ───────────────────────────────────────────────────
     // At the prop-TYPE level (not chain level), an interface name is returned as Named.
     // Full prop expansion only happens at the component level via resolve_props_chain.
-    if ctx.global.interfaces.contains_key(&scoped_key) {
+    if lookup_interface(&ctx.global, canonical_file.as_str(), &canonical_name).is_some() {
         return PropType::Named { name: name.clone(), args: resolved_args };
     }
 

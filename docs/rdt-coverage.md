@@ -207,11 +207,17 @@ gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash o
 | ✅ done | `Tuple`/`Object` `raw_string()` placeholder strings | real content now rendered, see PropType kinds table |
 | ✅ done | 4 missing `*EventHandler` builtin names | `ReactEventHandler`, `SubmitEventHandler`, `InputEventHandler`, `ToggleEventHandler` |
 | ✅ done | `readonly X` / `unique X` type operators captured as raw text | now peeled transparently, matching `keyof`'s structured handling |
+| ✅ done | Type alias union/intersection members resolved relative to caller's file, not the alias's own file | `fixtures/tanstack-table`; fixed, see below |
+| ✅ done | Generic interface/alias's own type parameters flagged as unresolvable | `fixtures/tanstack-table`; fixed, see below |
+| ✅ done | Named type-only imports from `react` (wrong file + bare-vs-namespace-qualified key) | `fixtures/react-resizable-panels`; fixed, see below |
+| ✅ done | Indexed access into a generic interface's own field | `fixtures/react-final-form`; fixed, see below |
+| ✅ done | Type aliases silently dropped for any unhandled body shape (generalized beyond the two prior special cases) | `fixtures/storybook-emotion`; fixed, see below |
 | N/A | `void` kind | standalone `void` not a real prop type |
 | N/A | `never` kind | broken discriminant, not a real prop type |
 | N/A | `any` kind | suppressed by `strict` mode |
 | ❌ not fixed | `styled.X.attrs<T>()` component detection | `fixtures/zendesk-garden`; shared blind spot with real RDT, not a competitive gap |
-| ❌ not fixed | Same-namespace sibling reference resolution (e.g. `AriaAttributes` referenced bare from within `declare namespace React {}`) | narrower than the namespace-qualified fix; degrades gracefully |
+| ❌ not fixed | `ComponentProps<typeof StyledButton>` where `StyledButton` is `@emotion/styled`'s `styled(tag, options)<T>(fn)` two-arg overload | `fixtures/storybook-emotion`; requires recognizing a new call-expression shape, capturing its curried generic type argument, and merging with the base element's real HTML attributes — a new library-specific pattern (comparable in scope to the existing `VariantProps`/cva shortcut), not a bug fix. Real RDT needs a type checker for this too |
+| ❌ not fixed | Same-namespace sibling reference resolution for some `@types/react` internals (e.g. `EventHandler`, `TrustedHTML`) | narrower residual case not covered by the bare/`React.`-qualified key fallback; degrades gracefully |
 
 ---
 
@@ -363,6 +369,69 @@ when a variable's initializer is (after unwrapping any `as` cast) a call whose s
 identifier matching an already-collected component, rename that mapping to the outer binding. Confirmed: all
 three components (`Listbox`, `ListboxButton`, `ListboxOption`) now report their real export names, matching
 real RDT.
+
+---
+
+### Fixed: type alias union/intersection members resolved relative to the wrong file
+
+**Fixture:** `fixtures/tanstack-table/types.ts`
+
+`ColumnDef<TData, TValue> = DisplayColumnDef<...> | GroupColumnDef<...> | AccessorColumnDef<...>` — a union whose
+members are same-file siblings of the alias, imported cross-file into `data-table.tsx` as just `ColumnDef`.
+`resolve_type_alias_type` forwarded the *caller's* `consuming_file` into the recursive member resolution instead
+of the alias's own declaring file, so `DisplayColumnDef` etc. were looked up relative to `data-table.tsx` (which
+never imports them directly) and spuriously flagged as unresolvable, even though the actual `PropType::Named`
+output was already correct. Fixed by giving `CollectedTypeAlias` a `file_path()` accessor and using it instead of
+the passed-in file for every recursive call.
+
+### Fixed: generic interface/alias's own type parameters flagged as unresolvable
+
+**Fixture:** `fixtures/tanstack-table/data-table.tsx`
+
+`DataTableProps<TData, TValue>` referencing its own `TData`/`TValue` in its body (`columns: ColumnDef<TData,
+TValue>[]`) had every such reference warned as "cannot resolve — will appear as opaque", even though a bare
+generic placeholder is the objectively correct, expected output. The resolver had no concept of a type's own
+declared parameters. Added `interface_type_params` (mirroring the existing `type_alias_params`) and a
+`ResolveState.in_scope_type_params` set populated when entering a generic interface/alias body;
+`resolve_named` checks it before warning. 234 → 173 diagnostics across all fixtures.
+
+### Fixed: named type-only imports from `react` resolved to the wrong file/key
+
+**Fixture:** `fixtures/react-resizable-panels/types.ts`
+
+`import type { X } from "react"` (any `X` not special-cased via `html_element_for`) failed for two independent
+reasons: (1) `react`'s own `package.json` has no `"types"` field/condition — its real declarations live in the
+separate `@types/react` package — so the general import resolver landed on `index.js`; (2) `@types/react`
+declares everything inside `declare namespace React { ... }`, so even the right file's declarations are keyed
+`"React.X"`, not bare `"X"`. Fixed resolver-wide: `resolve_import_specifier` now tries `resolve_dts` + the
+`@types/<package>` fallback for bare specifiers (reusing the logic already proven for `HtmlAttributeMode::Full`),
+and new `lookup_interface`/`lookup_type_alias` helpers try the bare key before the `React.`-qualified one,
+replacing direct map lookups at every interface/alias resolution site.
+
+### Fixed: indexed access into a generic interface's own field
+
+**Fixture:** `fixtures/react-final-form/types.ts`
+
+`RenderableProps<FieldRenderProps<FieldValue, T>>["children"]` (the real "children as a render-function-or-
+ReactNode union" pattern) degraded to `Opaque` — `resolve_indexed_access`'s only fallback resolved the object
+type and checked for `PropType::Object`, but an interface always resolves to a bare `PropType::Named` at the
+type level (never expanded there), so it never matched. Added a path that looks the field up directly on the
+interface's declaration and substitutes its declared type parameters with the caller's concrete arguments,
+reusing the existing generic-alias substitution machinery. Both indexed-access fields in this fixture
+(`children`, `component`) now resolve to real structured types with the correct substituted argument threaded
+through, zero diagnostics.
+
+### Fixed: type aliases silently dropped for any unhandled body shape
+
+**Fixture:** `fixtures/storybook-emotion/Button.tsx`
+
+`type API_KeyCollection = string[]` — found while investigating the fixture below. `classify_type_alias`'s
+catch-all was `_ => None`: any alias body shape without a dedicated match arm vanished from `type_aliases`
+entirely, no diagnostic, same failure mode already fixed twice this session for `TSTypeLiteral` and
+`TSFunctionType` individually. Generalized the catch-all itself to `Passthrough`-wrap whatever
+`ts_type_to_collected` already produces, rather than adding a third narrow special case. 171 → 153 diagnostics
+across all fixtures (curated), 224 → 206 (full) — fixed the same silent-drop in other fixtures too, not just
+this one.
 
 ---
 

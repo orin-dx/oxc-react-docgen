@@ -647,6 +647,60 @@ export function Panel(props: PanelProps) { return null; }
         assert!(panel.props.contains_key("collapsible"), "own prop 'collapsible' should still be present");
     }
 
+    // ── test_namespace_import_member_access_resolves_to_real_dts ─────────────
+    //
+    // Regression test for: `import * as React from "react"` then a plain field
+    // reference to `React.DependencyList` failed even in `--html-attributes
+    // full` mode, where @types/react genuinely is parsed. Root cause:
+    // `resolve_to_canonical` only stripped the "React." prefix for the
+    // is_react_builtin check (named.rs step 1) — it never routed a `React.X`
+    // member-expression reference through the "react" import at all, since
+    // `find_import` only tracks the namespace binding itself ("React", with
+    // `exported_name == "*"`), not literal dotted names like
+    // "React.DependencyList". It always fell back to a same-file lookup for
+    // that literal dotted name, which of course never resolves.
+
+    #[test]
+    fn test_namespace_import_member_access_resolves_to_real_dts() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+        write_file(
+            &tmp,
+            "Table.tsx",
+            r#"
+import * as React from "react";
+interface TableProps {
+  cellRendererDependencies?: React.DependencyList;
+}
+export function Table(props: TableProps) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            html_attributes: HtmlAttributeMode::Full,
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let unresolvable = output.diagnostics.iter().find(|d| d.message.contains("DependencyList"));
+        assert!(
+            unresolvable.is_none(),
+            "expected React.DependencyList to resolve via the 'react' namespace import, got diagnostic: {:?}",
+            unresolvable
+        );
+
+        let table = output.components.get("Table").expect("Table component not found");
+        assert!(
+            table.props.contains_key("cellRendererDependencies"),
+            "expected 'cellRendererDependencies' prop, got: {:?}",
+            table.props.keys().collect::<Vec<_>>()
+        );
+    }
+
     // ── test_pipeline_options_default ─────────────────────────────────────────
 
     #[test]

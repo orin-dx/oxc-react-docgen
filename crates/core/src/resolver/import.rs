@@ -14,13 +14,26 @@ pub(super) fn resolve_to_canonical(
     ctx: &ResolutionContext,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<(Utf8PathBuf, String)> {
-    let import_ref = ctx.import_map.find_import(consuming_file, name)?;
+    if let Some(import_ref) = ctx.import_map.find_import(consuming_file, name) {
+        let resolved_file = resolve_import_specifier(&import_ref.specifier, consuming_file, ctx, diagnostics)?;
+        let canonical_name = import_ref.exported_name.to_string();
+        return Some((resolved_file, canonical_name));
+    }
 
-    // Resolve the specifier to an absolute file path.
-    let resolved_file = resolve_import_specifier(&import_ref.specifier, consuming_file, ctx, diagnostics)?;
-
-    let canonical_name = import_ref.exported_name.to_string();
-    Some((resolved_file, canonical_name))
+    // Namespace-import member access: `import * as React from "react"` then a
+    // reference to `React.DependencyList`. `find_import` only tracks the
+    // namespace binding itself ("React", with `exported_name == "*"`) — a
+    // literal dotted name like "React.DependencyList" is never itself a
+    // binding, so the lookup above always misses it. Split off the namespace
+    // prefix and route the member name through the namespace's own import
+    // specifier instead.
+    let (namespace, member) = name.split_once('.')?;
+    let namespace_ref = ctx.import_map.find_import(consuming_file, namespace)?;
+    if namespace_ref.exported_name != "*" {
+        return None;
+    }
+    let resolved_file = resolve_import_specifier(&namespace_ref.specifier, consuming_file, ctx, diagnostics)?;
+    Some((resolved_file, member.to_string()))
 }
 
 /// Look up an interface by canonical `(file, name)`, falling back to a

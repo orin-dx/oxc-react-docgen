@@ -62,6 +62,12 @@ pub struct ResolutionContext {
     pub enum_bare_index: FxHashMap<CompactString, CompactString>,
     /// How much of an inherited HTML element's attributes to expose.
     pub html_attributes: crate::pipeline::HtmlAttributeMode,
+    /// Paths to TypeScript's own `lib.es5.d.ts`/`lib.dom.d.ts`, if resolvable
+    /// from this project (empty otherwise — see `resolve_ts_lib_paths`).
+    /// Checked as a last-resort fallback when a bare, never-imported name
+    /// (a real native/DOM global like `Date`) doesn't resolve via the normal
+    /// same-file lookup — see `import::lookup_interface`/`lookup_type_alias`.
+    pub ambient_global_files: Vec<Utf8PathBuf>,
 }
 
 impl ResolutionContext {
@@ -82,6 +88,14 @@ impl ResolutionContext {
             enum_bare_index.entry(CompactString::from(bare)).or_insert_with(|| CompactString::from(key.as_str()));
         }
 
+        let ambient_global_files = options
+            .src_dirs
+            .first()
+            .and_then(|dir| std::fs::canonicalize(dir).ok())
+            .and_then(|p| Utf8PathBuf::from_path_buf(p).ok())
+            .map(|from_dir| resolve_ts_lib_paths(&from_dir).into_iter().map(Utf8PathBuf::from).collect())
+            .unwrap_or_default();
+
         Self {
             import_map: Arc::new(ImportResolutionMap::build(&global)),
             global,
@@ -89,6 +103,7 @@ impl ResolutionContext {
             extra_builtins: options.extra_builtins.clone(),
             enum_bare_index,
             html_attributes: options.html_attributes,
+            ambient_global_files,
         }
     }
 }
@@ -107,6 +122,26 @@ pub fn resolve_package_dts_path(from_dir: &camino::Utf8Path, package_name: &str)
     };
     let resolver = Resolver::new(resolve_options);
     react::resolve_package_types_file(&resolver, from_dir, package_name)
+}
+
+/// Resolve TypeScript's own `lib.es5.d.ts`/`lib.dom.d.ts` — the files that
+/// declare native/DOM ambient globals (`Date`, `RegExp`, `Element`, `Node`, …).
+/// These never go through an import (they're ambient scripts, not modules),
+/// so nothing else ever has a reason to locate them the way an import
+/// statement triggers `@types/react` resolution. Returns whichever of the two
+/// are actually found — an empty `Vec` when the `typescript` package isn't
+/// reachable from `from_dir` at all (e.g. no real project), which is a
+/// legitimate, silent degradation, not an error.
+pub fn resolve_ts_lib_paths(from_dir: &camino::Utf8Path) -> Vec<String> {
+    let resolve_options = ResolveOptions { extensions: vec![".d.ts".into()], ..ResolveOptions::default() };
+    let resolver = Resolver::new(resolve_options);
+    ["lib.es5.d.ts", "lib.dom.d.ts"]
+        .into_iter()
+        .filter_map(|lib_file| {
+            let specifier = format!("typescript/lib/{lib_file}");
+            resolver.resolve(from_dir.as_std_path(), &specifier).ok().map(|r| r.path().to_string_lossy().into_owned())
+        })
+        .collect()
 }
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────

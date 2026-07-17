@@ -330,6 +330,38 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
         }
     }
 
+    // Phase 3.6: TypeScript's own lib.es5.d.ts/lib.dom.d.ts declare native/DOM
+    // ambient globals (Date, RegExp, Element, Node, ...) that never go through
+    // an import — nothing else ever has a reason to resolve them the way an
+    // import statement triggers @types/react above. Always attempted, not
+    // mode-gated: a native global showing up as a bare, unexpandable Named
+    // reference (exactly like HTMLAttributes already does) is correct for
+    // every user in every mode. Silent no-op when `typescript` isn't reachable
+    // (e.g. a project with no node_modules at all) — this is a best-effort
+    // enhancement the user never opted into, so failure isn't worth a
+    // diagnostic; the existing per-type "cannot resolve" diagnostics still
+    // fire exactly as before in that case.
+    let from_dir = options
+        .src_dirs
+        .first()
+        .and_then(|dir| std::fs::canonicalize(dir).ok())
+        .and_then(|p| Utf8PathBuf::from_path_buf(p).ok());
+    if let Some(from_dir) = from_dir {
+        for lib_path in crate::resolver::resolve_ts_lib_paths(&from_dir) {
+            let lib_path = Utf8PathBuf::from(lib_path);
+            let data = match cache.get(&lib_path) {
+                Some(cached) => cached,
+                None => {
+                    let source = std::fs::read_to_string(&lib_path).unwrap_or_default();
+                    let data = crate::extractor::parse_file(&lib_path, &source);
+                    cache.insert(&lib_path, data.clone());
+                    data
+                }
+            };
+            global.merge(&lib_path, data);
+        }
+    }
+
     let global = Arc::new(global);
 
     // Phase 4: Resolve all components in parallel.
@@ -698,6 +730,58 @@ export function Table(props: TableProps) { return null; }
             table.props.contains_key("cellRendererDependencies"),
             "expected 'cellRendererDependencies' prop, got: {:?}",
             table.props.keys().collect::<Vec<_>>()
+        );
+    }
+
+    // ── test_native_js_global_resolves_via_real_typescript_lib_files ─────────
+    //
+    // Regression test for: `Date` (and any other native/DOM ambient global —
+    // never imported, so nothing ever had a reason to resolve it) spuriously
+    // triggered "Cannot resolve type 'Date' — it will appear as opaque",
+    // hundreds of times on a real date-picker-shaped fixture. Real TypeScript
+    // declares these in its own lib.es5.d.ts/lib.dom.d.ts (no export/import at
+    // all — ambient script context, not a module) — this test proves the
+    // pipeline actually finds and parses this repo's real `typescript` package
+    // (not a synthetic stand-in) and resolves `Date` through it, structurally,
+    // rather than via a hardcoded name list.
+
+    #[test]
+    fn test_native_js_global_resolves_via_real_typescript_lib_files() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+        write_file(
+            &tmp,
+            "DatePicker.tsx",
+            r#"
+interface DatePickerProps {
+  selected?: Date;
+  onSelect?: (date: Date) => void;
+}
+export function DatePicker(props: DatePickerProps) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let unresolvable = output.diagnostics.iter().find(|d| d.message.contains("'Date'"));
+        assert!(
+            unresolvable.is_none(),
+            "expected 'Date' to resolve via this repo's real typescript lib.es5.d.ts, got diagnostic: {:?}",
+            unresolvable
+        );
+
+        let picker = output.components.get("DatePicker").expect("DatePicker component not found");
+        assert!(
+            picker.props.contains_key("selected"),
+            "expected 'selected' prop, got: {:?}",
+            picker.props.keys().collect::<Vec<_>>()
         );
     }
 

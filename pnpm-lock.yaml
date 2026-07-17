@@ -47,6 +47,9 @@ importers:
       react:
         specifier: ^19.0.0
         version: 19.2.7
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
 
   apps/validate:
     dependencies:

@@ -68,6 +68,33 @@ pub(super) fn lookup_type_alias<'g>(
     global.type_aliases.get(&qualified_key).map(|alias| (qualified_key, alias))
 }
 
+/// Look up a name directly on TypeScript's own ambient lib files
+/// (`ctx.ambient_global_files` — `lib.es5.d.ts`/`lib.dom.d.ts`), by bare name
+/// only (these are ambient globals, never namespace-qualified). Deliberately
+/// separate from — and only ever consulted AFTER — every other resolution
+/// path (imports, same-file declarations, the well-known-TS-utility-type
+/// silent list): `Record`/`Partial`/etc. are themselves declared here too
+/// (`Record<K, T> = { [P in K]: T }`, a mapped type this tool can't expand),
+/// so checking this first would intercept those already-handled names and
+/// degrade them to Opaque instead of leaving them to the existing shortcuts.
+pub(super) fn lookup_ambient_global<'g>(ctx: &'g ResolutionContext, name: &str) -> Option<AmbientGlobalLookup<'g>> {
+    for lib_file in &ctx.ambient_global_files {
+        let key = format!("{lib_file}:{name}");
+        if ctx.global.interfaces.contains_key(&key) {
+            return Some(AmbientGlobalLookup::Interface);
+        }
+        if let Some(alias) = ctx.global.type_aliases.get(&key) {
+            return Some(AmbientGlobalLookup::TypeAlias(alias));
+        }
+    }
+    None
+}
+
+pub(super) enum AmbientGlobalLookup<'g> {
+    Interface,
+    TypeAlias(&'g CollectedTypeAlias),
+}
+
 /// Use `oxc_resolver` to turn an import specifier into an absolute file path.
 pub(super) fn resolve_import_specifier(
     specifier: &str,

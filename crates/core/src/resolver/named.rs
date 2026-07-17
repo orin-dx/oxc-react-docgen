@@ -9,7 +9,9 @@ use crate::types::*;
 
 use super::alias::resolve_type_alias_type;
 use super::collected::resolve_collected_type;
-use super::import::{lookup_interface, lookup_type_alias, resolve_to_canonical};
+use super::import::{
+    lookup_ambient_global, lookup_interface, lookup_type_alias, resolve_to_canonical, AmbientGlobalLookup,
+};
 use super::react::react_type_to_prop_type;
 use super::{ResolutionContext, MAX_DEPTH};
 
@@ -129,6 +131,23 @@ pub(super) fn resolve_named(
     // ── 6.5 Enclosing generic's own type parameter — expected, not unresolvable ─
     if state.in_scope_type_params.contains(bare) {
         return PropType::Named { name: name.clone(), args: resolved_args };
+    }
+
+    // ── 6.7 TypeScript's own ambient globals (Date, RegExp, Element, ...) ────
+    // Deliberately last: these never go through an import, so nothing earlier
+    // ever had a reason to look here — but checked only after every other
+    // shortcut above (including the well-known-TS-utility-type list at step 6)
+    // has had its chance, since some names (Record, Partial, ...) are
+    // themselves declared in these same lib files as mapped types this tool
+    // can't expand, and step 6 already handles those correctly.
+    if let Some(found) = lookup_ambient_global(ctx, bare) {
+        return match found {
+            AmbientGlobalLookup::Interface => PropType::Named { name: name.clone(), args: resolved_args },
+            AmbientGlobalLookup::TypeAlias(alias) => {
+                let alias = alias.clone();
+                resolve_type_alias_type(&alias, ctx, state, depth)
+            }
+        };
     }
 
     // ── 7. Unresolvable — emit diagnostic, return Named ───────────────────────

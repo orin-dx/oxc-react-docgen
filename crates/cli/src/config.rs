@@ -5,11 +5,11 @@ use serde::Deserialize;
 /// The JSON-facing shape of `docgen.config.ts`'s default export.
 ///
 /// A deliberate subset of `PipelineOptions` — everything except the fields that
-/// need complex map/object values (`extraPaths`, `knownTypeOverrides`,
-/// `extraBuiltins`), which aren't supported via config file yet. `deny_unknown_fields`
-/// means a config using one of those (or a typo'd key) gets a clear error naming
-/// the field, not a silently-ignored setting — same reasoning as this module's
-/// existing "found but unsupported" hard error above.
+/// need complex map/object values (`extraPaths`, `knownTypeOverrides`), which
+/// aren't supported via config file yet. `deny_unknown_fields` means a config
+/// using one of those (or a typo'd key) gets a clear error naming the field, not
+/// a silently-ignored setting — same reasoning as this module's existing "found
+/// but unsupported" hard error above.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct DocgenConfigSchema {
@@ -24,6 +24,7 @@ struct DocgenConfigSchema {
     tsconfig_path: Option<String>,
     vanilla_extract: Option<bool>,
     cache_dir: Option<String>,
+    extra_builtins: Option<Vec<String>>,
 }
 
 impl DocgenConfigSchema {
@@ -69,6 +70,9 @@ impl DocgenConfigSchema {
         }
         if let Some(dir) = self.cache_dir {
             opts.cache_dir = Some(dir.into());
+        }
+        if let Some(names) = self.extra_builtins {
+            opts.extra_builtins = names.into_iter().map(Into::into).collect();
         }
         opts
     }
@@ -156,7 +160,7 @@ pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>
             help = "Check docgen.config.ts's exported fields against the supported schema \
                     (srcDirs, excludePatterns, excludePrefixes, reactVersion, crossPackage, \
                     pandacssOutdir, variantFunctions, htmlAttributes, tsconfigPath, \
-                    vanillaExtract, cacheDir).",
+                    vanillaExtract, cacheDir, extraBuiltins).",
             "docgen.config.ts at {} doesn't match the expected shape: {}",
             path.display(),
             e,
@@ -166,44 +170,52 @@ pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>
     Ok(Some(schema.into_pipeline_options()))
 }
 
-pub fn build_options(
-    src: &[String],
-    no_cross_package: bool,
-    react_version: Option<&str>,
-    cache_dir: Option<&str>,
-    html_attributes: Option<&str>,
-    config_path: Option<&str>,
-) -> Result<PipelineOptions> {
+/// CLI-flag overrides for [`build_options`], bundled to stay under this crate's
+/// `too-many-arguments-threshold` of 6 (see `.clippy.toml`).
+pub struct BuildOptionsArgs<'a> {
+    pub src: &'a [String],
+    pub no_cross_package: bool,
+    pub react_version: Option<&'a str>,
+    pub cache_dir: Option<&'a str>,
+    pub html_attributes: Option<&'a str>,
+    pub config_path: Option<&'a str>,
+    pub extra_builtins: &'a [String],
+}
+
+pub fn build_options(args: BuildOptionsArgs) -> Result<PipelineOptions> {
     let cwd = std::env::current_dir().unwrap_or_default();
-    let config_override = match config_path {
+    let config_override = match args.config_path {
         Some(p) => try_load_config(std::path::Path::new(p))?,
         None => load_config_file(&cwd)?,
     };
 
     let mut opts = config_override.unwrap_or_default();
 
-    if !src.is_empty() {
-        opts.src_dirs = src.iter().map(|s| s.into()).collect();
+    if !args.src.is_empty() {
+        opts.src_dirs = args.src.iter().map(|s| s.into()).collect();
     }
-    if no_cross_package {
+    if args.no_cross_package {
         opts.cross_package = false;
     }
-    if let Some(v) = react_version {
+    if let Some(v) = args.react_version {
         opts.react_version = if v == "react18" {
             oxc_react_docgen_core::react_types::REACT_18
         } else {
             oxc_react_docgen_core::react_types::REACT_19
         };
     }
-    if let Some(dir) = cache_dir {
+    if let Some(dir) = args.cache_dir {
         opts.cache_dir = Some(dir.into());
     }
-    if let Some(mode) = html_attributes {
+    if let Some(mode) = args.html_attributes {
         opts.html_attributes = match mode {
             "full" => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Full,
             "none" => oxc_react_docgen_core::pipeline::HtmlAttributeMode::None,
             _ => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Curated,
         };
+    }
+    if !args.extra_builtins.is_empty() {
+        opts.extra_builtins = args.extra_builtins.iter().map(Into::into).collect();
     }
 
     Ok(opts)
@@ -219,7 +231,8 @@ mod tests {
             "srcDirs": ["app/components"],
             "crossPackage": false,
             "htmlAttributes": "full",
-            "reactVersion": "react18"
+            "reactVersion": "react18",
+            "extraBuiltins": ["MyCustomType", "AnotherType"]
         }"#;
         let schema: DocgenConfigSchema = serde_json::from_str(json).expect("valid config JSON");
         let opts = schema.into_pipeline_options();
@@ -230,6 +243,9 @@ mod tests {
         // react18: children implicit, ref requires forwardRef.
         assert!(opts.react_version.implicit_children);
         assert!(!opts.react_version.ref_as_prop);
+        let extra_builtins: std::collections::BTreeSet<String> =
+            opts.extra_builtins.iter().map(|s| s.to_string()).collect();
+        assert_eq!(extra_builtins, ["AnotherType", "MyCustomType"].into_iter().map(String::from).collect());
     }
 
     #[test]
@@ -280,5 +296,58 @@ export default {
         assert_eq!(opts.src_dirs, vec![camino::Utf8PathBuf::from("src/components")]);
         assert_eq!(opts.html_attributes, HtmlAttributeMode::Full);
         assert!(!opts.cross_package);
+    }
+
+    #[test]
+    fn build_options_maps_extra_builtins_cli_flag() {
+        let extra_builtins = vec!["Foo".to_string(), "Bar".to_string()];
+        let opts = build_options(BuildOptionsArgs {
+            src: &[],
+            no_cross_package: false,
+            react_version: None,
+            cache_dir: None,
+            html_attributes: None,
+            config_path: None,
+            extra_builtins: &extra_builtins,
+        })
+        .expect("build_options should succeed with no config file");
+
+        let names: std::collections::BTreeSet<String> = opts.extra_builtins.iter().map(|s| s.to_string()).collect();
+        assert_eq!(names, ["Bar", "Foo"].into_iter().map(String::from).collect());
+    }
+
+    #[test]
+    fn build_options_extra_builtins_cli_flag_overrides_config_file() {
+        // Real end-to-end proof (same apps/validate tempdir rationale as
+        // try_load_config_maps_a_real_docgen_config_ts_file above): the CLI flag
+        // must win over a config-file value, not merge with or lose to it.
+        let validate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/validate");
+        let tmp = tempfile::TempDir::new_in(&validate_dir).unwrap();
+        let config_path = tmp.path().join("docgen.config.ts");
+        std::fs::write(
+            &config_path,
+            r#"
+export default {
+  srcDirs: ["src/components"],
+  extraBuiltins: ["FromConfig"],
+};
+"#,
+        )
+        .unwrap();
+
+        let extra_builtins = vec!["FromCli".to_string()];
+        let opts = build_options(BuildOptionsArgs {
+            src: &[],
+            no_cross_package: false,
+            react_version: None,
+            cache_dir: None,
+            html_attributes: None,
+            config_path: Some(config_path.to_str().unwrap()),
+            extra_builtins: &extra_builtins,
+        })
+        .expect("build_options should succeed");
+
+        let names: Vec<String> = opts.extra_builtins.iter().map(|s| s.to_string()).collect();
+        assert_eq!(names, vec!["FromCli".to_string()]);
     }
 }

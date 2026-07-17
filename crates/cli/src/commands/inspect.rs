@@ -1,12 +1,20 @@
 use miette::Result;
 
-use crate::config::build_options;
+use crate::config::{build_options, BuildOptionsArgs};
 
 pub fn cmd_inspect(args: crate::InspectArgs, config_path: Option<&str>) -> Result<()> {
     use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table};
     use owo_colors::OwoColorize;
 
-    let options = build_options(&args.src, false, None, None, None, config_path)?;
+    let options = build_options(BuildOptionsArgs {
+        src: &args.src,
+        no_cross_package: false,
+        react_version: None,
+        cache_dir: None,
+        html_attributes: None,
+        config_path,
+        extra_builtins: &[],
+    })?;
     let output = oxc_react_docgen_core::pipeline::extract(&options);
 
     let component = output.components.get(&args.component).ok_or_else(|| {

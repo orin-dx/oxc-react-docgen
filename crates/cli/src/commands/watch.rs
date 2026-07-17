@@ -1,13 +1,21 @@
 use miette::{IntoDiagnostic, Result};
 
-use crate::config::build_options;
+use crate::config::{build_options, BuildOptionsArgs};
 use crate::output::{print_diagnostics, print_summary};
 
 pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>) -> Result<()> {
     use indicatif::{ProgressBar, ProgressStyle};
     use owo_colors::OwoColorize;
 
-    let options = build_options(&args.src, false, None, None, None, config_path)?;
+    let options = build_options(BuildOptionsArgs {
+        src: &args.src,
+        no_cross_package: false,
+        react_version: None,
+        cache_dir: None,
+        html_attributes: None,
+        config_path,
+        extra_builtins: &[],
+    })?;
 
     if !quiet {
         println!();

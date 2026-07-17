@@ -89,6 +89,11 @@ pub struct ExtractArgs {
     /// How much of an inherited HTML element's attributes to expose
     #[arg(long, value_enum)]
     pub html_attributes: Option<HtmlAttributeModeArg>,
+
+    /// Extra type names to treat as recognized/builtin (no "unknown type" warning) —
+    /// e.g. a library-specific type this tool doesn't already know
+    #[arg(long, value_delimiter = ',')]
+    pub extra_builtins: Vec<String>,
 }
 
 #[derive(clap::ValueEnum, Clone)]

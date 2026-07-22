@@ -215,6 +215,7 @@ gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash o
 | ✅ done | Entire file silently discarded when JSDoc prose contains unmatched brackets | real `typescript` package's own `lib.dom.d.ts`; fixed, see below |
 | ✅ done | Indexed access into an ambient DOM interface not walking its `extends` chain | `fixtures/day-picker` (`HTMLDivElement["dir"/"nonce"/"title"/"lang"]`); fixed, see below |
 | ✅ done | `(typeof X)[number]` on a flat `const X = [...] as const` array | `fixtures/antd` (`ButtonType`, `ButtonShape`, `ButtonHTMLType`, `ButtonVariantType`, `ButtonColorType`); fixed, see below |
+| ✅ done | Static `X.defaultProps = {...}` assignment not read (only destructured defaults were) | no fixture ships a real static assignment today (`fixtures/blueprint/Table.tsx` was written around this exact gap — see its updated header comment); covered by unit + pipeline tests, fixed, see below |
 | N/A | `void` kind | standalone `void` not a real prop type |
 | N/A | `never` kind | broken discriminant, not a real prop type |
 | N/A | `any` kind | suppressed by `strict` mode |
@@ -493,6 +494,32 @@ and `key` is `Number`. All 5 exported unions in the fixture (`ButtonType`, `Butt
 spread element is silently skipped (no expression to read a literal from), so that one union resolves with 3 of
 its real ~19 members. A known, honest partial result, not a crash or a wrong type; matches how cva/tv variant
 extraction already treats constructs it can't statically read.
+
+### Fixed: static `X.defaultProps = {...}` assignment not read
+
+`ComponentMapping::param_defaults` already had a `DefaultSource::DefaultProps` variant — designed for but never
+wired up. Only destructured defaults (`function Button({ size = 'md' })`, via `extract_param_defaults`) were
+ever populated. Real components (MUI ships this on several) also set defaults via a static assignment after the
+declaration:
+
+```ts
+function Button(props: ButtonProps) { ... }
+Button.defaultProps = { size: 'md' };
+```
+
+Added `try_scan_default_props`, mirroring the existing `try_scan_display_name`'s shape (same "find the
+`ExpressionStatement` assigning to `X.<prop>`, look up the matching `ComponentMapping`" pattern) — extracts each
+object property via `eval_expr_as_default`, now parameterized with a `DefaultSource` instead of hardcoding
+`Destructuring`, so both call sites tag their defaults correctly. The resolver's consumption side
+(`resolver/chain.rs`'s `mapping.param_defaults.get(&raw_prop.name)`) needed no changes — it was already
+source-agnostic, just never had anything to read from this path.
+
+No fixture ships a real static `defaultProps` assignment today — `fixtures/blueprint/Table.tsx` had in fact been
+deliberately written *around* this exact gap (its header comment said so explicitly). Comment updated; fixture
+coverage stays as destructured defaults since upstream Blueprint's `Table` is a class component and this fixture
+uses a function component by design (a separate, unrelated tradeoff — see the fixture's own comment). Covered
+instead by a dedicated extractor unit test and a pipeline end-to-end test proving the value reaches
+`ParsedProp.default_value`.
 
 ---
 

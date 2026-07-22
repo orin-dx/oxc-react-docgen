@@ -179,7 +179,6 @@ Component props and enums are serialized as `BTreeMap<String, …>` rather than 
 | LSP server | `lsp-types` dep present; nothing implemented. |
 | React 19 `ref`-as-prop | `ReactVersion::ref_as_prop` field exists; nothing reads it yet. |
 | Compound components (`Dialog.Trigger`) | Not detected as separate components. |
-| Static `defaultProps` assignment | Destructured defaults are read; `X.defaultProps = {...}` is not. |
 | Conditional types (`T extends U ? X : Y`) | Emitted as `opaque` — needs a real type checker, see `docs/type-checker-integration.md`. |
 | Mapped types with computed keys | Emitted as `opaque`. |
 

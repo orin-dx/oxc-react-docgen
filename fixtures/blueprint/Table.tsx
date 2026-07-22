@@ -38,9 +38,12 @@ import * as React from "react";
  * What's preserved verbatim (including JSDoc) from upstream:
  *   - `TableProps`, in full, from tableProps.ts
  *   - `TablePropsDefaults` / `TablePropsWithDefaults`
- *   - the real `Table.defaultProps` values (now expressed as destructured
- *     parameter defaults, since function components don't have a static
- *     `defaultProps` extraction path in this tool — see extractor/component.rs)
+ *   - the real `Table.defaultProps` values, expressed as destructured
+ *     parameter defaults to match this fixture's function-component form
+ *     (upstream's version is a class). Static `X.defaultProps = {...}`
+ *     assignments on function components are a separate, real pattern this
+ *     tool now also supports — see extractor/interface.rs's
+ *     try_scan_default_props and the MUI-shaped coverage in rdt-coverage.md.
  *   - `ColumnProps` (see ./Column.tsx) and the supporting types it and
  *     `TableProps` depend on (see ./blueprintTypes.ts for what's real vs.
  *     trimmed, and why)

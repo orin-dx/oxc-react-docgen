@@ -728,7 +728,7 @@ pub(super) fn declaration_name<'a>(decl: &Declaration<'a>) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::EnumValue;
+    use crate::types::{DefaultSource, EnumValue};
 
     fn fixture_path(rel: &str) -> std::path::PathBuf {
         let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -1042,6 +1042,39 @@ interface ButtonProps {
             "Button (renamed via displayName) not found; mappings: {:?}",
             data.component_mappings.iter().map(|m| &m.component_name).collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn test_default_props_assignment_merged_into_component_mapping() {
+        // MUI-style: `Component.defaultProps = { size: 'md' }` (deprecated in
+        // React 19 but still shipped in real .d.ts/.tsx). Distinct from
+        // destructured defaults (`function Button({ size = 'md' })`, already
+        // handled by extract_param_defaults) — this is a static assignment
+        // after the component's own declaration.
+        let source = r#"
+            interface ButtonProps { size?: string; disabled?: boolean; }
+            function Button(props: ButtonProps) {
+                return null;
+            }
+            Button.defaultProps = { size: 'md', disabled: false };
+        "#;
+        let path = Utf8Path::new("/test/button.tsx");
+        let data = parse_file(path, source);
+
+        let button = data.component_mappings.iter().find(|m| m.component_name == "Button");
+        assert!(button.is_some(), "Button mapping not found");
+        let button = button.unwrap();
+
+        let size_default = button.param_defaults.get("size");
+        assert!(size_default.is_some(), "expected 'size' default from defaultProps, got {:?}", button.param_defaults);
+        let size_default = size_default.unwrap();
+        assert_eq!(size_default.value, "\"md\"");
+        assert!(!size_default.computed);
+        assert!(matches!(size_default.source, DefaultSource::DefaultProps));
+
+        let disabled_default = button.param_defaults.get("disabled");
+        assert!(disabled_default.is_some(), "expected 'disabled' default from defaultProps");
+        assert_eq!(disabled_default.unwrap().value, "false");
     }
 
     #[test]

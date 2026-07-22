@@ -38,30 +38,22 @@ impl<'src> SourceDataCollector<'src> {
                 }
                 _ => continue,
             };
-            let raw_default = self.eval_expr_as_default(default_expr);
+            let raw_default = self.eval_expr_as_default(default_expr, DefaultSource::Destructuring);
             defaults.insert(name, raw_default);
         }
         defaults
     }
 
-    pub(super) fn eval_expr_as_default<'a>(&self, expr: &Expression<'a>) -> RawDefault {
+    pub(super) fn eval_expr_as_default<'a>(&self, expr: &Expression<'a>, source: DefaultSource) -> RawDefault {
         match expr {
-            Expression::StringLiteral(s) => RawDefault {
-                value: format!("\"{}\"", s.value.as_str()),
-                computed: false,
-                source: DefaultSource::Destructuring,
-            },
-            Expression::NumericLiteral(n) => {
-                RawDefault { value: n.value.to_string(), computed: false, source: DefaultSource::Destructuring }
+            Expression::StringLiteral(s) => {
+                RawDefault { value: format!("\"{}\"", s.value.as_str()), computed: false, source }
             }
-            Expression::BooleanLiteral(b) => {
-                RawDefault { value: b.value.to_string(), computed: false, source: DefaultSource::Destructuring }
-            }
-            Expression::NullLiteral(_) => {
-                RawDefault { value: "null".into(), computed: false, source: DefaultSource::Destructuring }
-            }
+            Expression::NumericLiteral(n) => RawDefault { value: n.value.to_string(), computed: false, source },
+            Expression::BooleanLiteral(b) => RawDefault { value: b.value.to_string(), computed: false, source },
+            Expression::NullLiteral(_) => RawDefault { value: "null".into(), computed: false, source },
             Expression::Identifier(id) if id.name.as_str() == "undefined" => {
-                RawDefault { value: "undefined".into(), computed: false, source: DefaultSource::Destructuring }
+                RawDefault { value: "undefined".into(), computed: false, source }
             }
             // Array and object literals: capture source text, not computed
             Expression::ArrayExpression(_) | Expression::ObjectExpression(_) => {
@@ -70,7 +62,7 @@ impl<'src> SourceDataCollector<'src> {
                 RawDefault {
                     value: self.source[span.start as usize..span.end as usize].to_owned(),
                     computed: false,
-                    source: DefaultSource::Destructuring,
+                    source,
                 }
             }
             // Everything else (identifier refs, calls, ternaries): computed
@@ -80,7 +72,7 @@ impl<'src> SourceDataCollector<'src> {
                 RawDefault {
                     value: self.source[span.start as usize..span.end as usize].to_owned(),
                     computed: true,
-                    source: DefaultSource::Destructuring,
+                    source,
                 }
             }
         }

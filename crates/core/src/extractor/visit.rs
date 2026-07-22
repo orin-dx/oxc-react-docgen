@@ -296,6 +296,8 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
     fn visit_expression_statement(&mut self, node: &ExpressionStatement<'a>) {
         // Scan for `Button.displayName = "Button"` assignments
         self.try_scan_display_name(node);
+        // Scan for `Button.defaultProps = { size: 'md' }` assignments
+        self.try_scan_default_props(node);
         walk::walk_expression_statement(self, node);
     }
 }

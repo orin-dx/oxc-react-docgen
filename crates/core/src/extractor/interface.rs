@@ -1,8 +1,9 @@
 //! Interface-adjacent collection: const enums, cva variants, displayName scanning.
 
 use oxc_ast::ast::*;
+use rustc_hash::FxHashMap;
 
-use crate::types::{EnumEntry, EnumValue};
+use crate::types::{DefaultSource, EnumEntry, EnumValue, RawDefault};
 
 use super::SourceDataCollector;
 
@@ -234,6 +235,64 @@ impl<'src> SourceDataCollector<'src> {
         for mapping in &mut self.data.component_mappings {
             if mapping.component_name == obj_name {
                 mapping.component_name = display_name.clone();
+                return;
+            }
+        }
+    }
+
+    // ─── `defaultProps` scanning ───────────────────────────────────────────────
+
+    /// Scan `Button.defaultProps = { size: 'md' }` and merge into the matching
+    /// component mapping's `param_defaults` — the same field destructured
+    /// defaults (`function Button({ size = 'md' })`) populate, via
+    /// `extract_param_defaults`. Deprecated in React 19 but still shipped in
+    /// real .d.ts/.tsx (MUI, among others).
+    pub(super) fn try_scan_default_props<'a>(&mut self, stmt: &ExpressionStatement<'a>) {
+        let assign = match &stmt.expression {
+            Expression::AssignmentExpression(ae) => ae,
+            _ => return,
+        };
+
+        // Left side must be `X.defaultProps`
+        let (obj_name, prop_name) = match &assign.left {
+            AssignmentTarget::StaticMemberExpression(sme) => {
+                let obj = self.expression_to_ident_name(&sme.object);
+                let prop = sme.property.name.as_str().to_owned();
+                (obj, prop)
+            }
+            _ => return,
+        };
+
+        if prop_name != "defaultProps" {
+            return;
+        }
+
+        // Right side must be an object literal
+        let defaults_obj = match &assign.right {
+            Expression::ObjectExpression(o) => o,
+            _ => return,
+        };
+
+        let defaults: FxHashMap<std::string::String, RawDefault> = defaults_obj
+            .properties
+            .iter()
+            .filter_map(|prop| match prop {
+                ObjectPropertyKind::ObjectProperty(op) => {
+                    let key = op.key.static_name()?.to_string();
+                    let raw_default = self.eval_expr_as_default(&op.value, DefaultSource::DefaultProps);
+                    Some((key, raw_default))
+                }
+                _ => None,
+            })
+            .collect();
+
+        if defaults.is_empty() {
+            return;
+        }
+
+        for mapping in &mut self.data.component_mappings {
+            if mapping.component_name == obj_name {
+                mapping.param_defaults.extend(defaults);
                 return;
             }
         }

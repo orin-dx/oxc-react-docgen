@@ -835,6 +835,41 @@ export function Foo(props: FooProps) { return null; }
         assert_eq!(dir_prop.prop_type, PropType::String, "expected String, got {:?}", dir_prop.prop_type);
     }
 
+    // ── test_static_default_props_assignment_reaches_parsed_prop ─────────────
+    //
+    // Regression test for: `Button.defaultProps = { size: 'md' }` (deprecated
+    // but still real — MUI ships it) was never read at all; only destructured
+    // defaults (`function Button({ size = 'md' })`) populated
+    // ComponentMapping.param_defaults. Proves the extraction fix reaches all
+    // the way through to ExtractionOutput, not just SourceData.
+
+    #[test]
+    fn test_static_default_props_assignment_reaches_parsed_prop() {
+        let tmp = TempDir::new().unwrap();
+        write_file(
+            &tmp,
+            "Button.tsx",
+            r#"
+interface ButtonProps {
+  size?: string;
+}
+export function Button(props: ButtonProps) { return null; }
+Button.defaultProps = { size: 'md' };
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions { src_dirs: vec![dir], ..Default::default() };
+
+        let output = extract(&options);
+
+        let button = output.components.get("Button").expect("Button component not found");
+        let size_prop = button.props.get("size").expect("'size' prop not found");
+        let default = size_prop.default_value.as_ref().expect("expected a default value for 'size'");
+        assert_eq!(default.value, "\"md\"");
+        assert!(!default.computed);
+    }
+
     // ── test_pipeline_options_default ─────────────────────────────────────────
 
     #[test]

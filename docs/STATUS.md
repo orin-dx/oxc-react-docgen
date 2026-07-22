@@ -9,7 +9,7 @@ to say. If you find another doc contradicting this file, this file wins.
 
 ## Numbers
 
-- 159 Rust tests (16 cli + 135 core unit + 8 snapshot), 14 vitest — all green
+- 161 Rust tests (16 cli + 137 core unit + 8 snapshot), 14 vitest — all green
 - `cargo clippy --workspace --all-targets -D warnings` clean
 - 15 real-world fixture libraries validated against `react-docgen-typescript`
   (shadcn, Radix, MUI, Chakra, Mantine, React Aria, antd, ark-ui, base-ui,
@@ -26,8 +26,6 @@ to say. If you find another doc contradicting this file, this file wins.
   ref, ...props })` pattern (no `forwardRef`) won't pick up `ref`'s type.
 - **Compound components** — `Dialog.Trigger`, `Select.Item`. Not detected as
   separate components at all right now.
-- **Static `defaultProps`** — `Button.defaultProps = { size: 'md' }` isn't
-  read. Destructured defaults (`function Button({ size = 'md' })`) are.
 
 ## Known gaps that won't get fixed without a type checker
 

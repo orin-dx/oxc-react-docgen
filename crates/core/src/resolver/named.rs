@@ -3,7 +3,7 @@
 use camino::Utf8Path;
 use compact_str::CompactString;
 
-use crate::known::{resolve_known, KnownPatternResult};
+use crate::known::{push_known_opaque_diagnostic, resolve_known, KnownPatternResult};
 use crate::react_types;
 use crate::types::*;
 
@@ -79,7 +79,12 @@ pub(super) fn resolve_named(
     // applied only when the type cannot be resolved from the project's own source.
     if let Some(result) = resolve_known(name.as_str(), &resolved_args, &ctx.global, &ctx.enum_bare_index) {
         return match result {
-            KnownPatternResult::Type(pt) => pt,
+            KnownPatternResult::Type(pt) => {
+                if let PropType::Opaque { reason, .. } = &pt {
+                    push_known_opaque_diagnostic(&mut state.diagnostics, reason, name.as_str(), consuming_file);
+                }
+                pt
+            }
             KnownPatternResult::Alias { name: alias_name } => {
                 // Follow the alias through resolve_named.
                 let alias_ct = CollectedType::Named { name: alias_name.as_str().into(), args: vec![] };

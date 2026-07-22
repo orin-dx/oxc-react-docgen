@@ -21,6 +21,43 @@ pub enum KnownPatternResult {
     Alias { name: String },
 }
 
+/// Push a diagnostic for a `KnownPatternResult::Type` that resolved to
+/// `PropType::Opaque`. `resolve_known` has no diagnostics channel of its own
+/// (this module must not depend on `resolver`), so callers push this
+/// themselves right after matching `KnownPatternResult::Type(PropType::Opaque
+/// { .. })` — otherwise a recognized-but-unexpandable pattern (ThemingProps,
+/// StylesApiProps, cva/tv without discoverable variants, …) degrades with no
+/// trace at all, unlike every other opaque-producing path in the resolver.
+pub fn push_known_opaque_diagnostic(
+    diagnostics: &mut Vec<Diagnostic>,
+    reason: &OpaqueReason,
+    type_name: &str,
+    file: &camino::Utf8Path,
+) {
+    let why = match reason {
+        OpaqueReason::RuntimeDependent { function_name } => {
+            format!("depends on '{function_name}' at runtime")
+        }
+        OpaqueReason::ModuleAugmentation => "depends on a module augmentation this tool doesn't evaluate".to_string(),
+        OpaqueReason::ConditionalType => "is a conditional type".to_string(),
+        OpaqueReason::MappedType => "is a mapped type".to_string(),
+        OpaqueReason::UnresolvableImport { specifier } => format!("could not be resolved from '{specifier}'"),
+        OpaqueReason::PandaCodegenMissing => "depends on PandaCSS's generated styled-system output".to_string(),
+        OpaqueReason::DepthExceeded => "exceeded the maximum resolution depth".to_string(),
+        OpaqueReason::IndexedAccess { expression } => format!("is an indexed access type ('{expression}')"),
+        OpaqueReason::TemplateLiteral { expression } => format!("is a template literal type ('{expression}')"),
+    };
+    diagnostics.push(Diagnostic {
+        severity: DiagnosticSeverity::Info,
+        message: format!("'{type_name}' {why} and can't be statically resolved — it will appear as opaque"),
+        file: Some(file.to_string()),
+        line: None,
+        column: None,
+        help: None,
+        code: DiagnosticCode::OpaqueType,
+    });
+}
+
 /// Attempt to resolve a named generic type as a known pattern.
 ///
 /// Called by the resolver when it encounters a type like `SxProps<Theme>`

@@ -83,7 +83,10 @@ pub fn resolve_collected_type(
         // ── keyof X — only meaningful as Omit's key argument (handled structurally
         // there, see resolver/alias.rs); standalone usage needs a general
         // type-to-key-names resolver we don't have, so degrade gracefully.
-        CollectedType::KeyOf(_) => PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::MappedType },
+        CollectedType::KeyOf(_) => {
+            push_opaque_diagnostic(state, "a standalone 'keyof'", ct, consuming_file);
+            PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::MappedType }
+        }
 
         // ── Generic-alias substitution marker — switch file context to where
         // `inner` was actually written (see the `CollectedType::AtFile` doc
@@ -105,9 +108,13 @@ pub fn resolve_collected_type(
 
         // ── Opaque (needs type checker) ───────────────────────────────────────
         CollectedType::Conditional { .. } => {
+            push_opaque_diagnostic(state, "a conditional type", ct, consuming_file);
             PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::ConditionalType }
         }
-        CollectedType::Mapped { .. } => PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::MappedType },
+        CollectedType::Mapped { .. } => {
+            push_opaque_diagnostic(state, "a mapped type", ct, consuming_file);
+            PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::MappedType }
+        }
 
         // ── Raw fallback ─────────────────────────────────────────────────────
         CollectedType::Raw(s) => {
@@ -148,8 +155,28 @@ pub fn resolve_collected_type(
             {
                 PropType::Named { name: trimmed.into(), args: vec![] }
             } else {
+                push_opaque_diagnostic(state, "an unparsable raw type expression", ct, consuming_file);
                 PropType::Opaque { raw: s.clone(), reason: OpaqueReason::DepthExceeded }
             }
         }
     }
+}
+
+/// Push an Info diagnostic for a `CollectedType` that degrades to `PropType::Opaque`
+/// because expanding it needs the TypeScript type checker (or, for the Raw
+/// fallback, needs the extractor to understand a syntax shape it doesn't yet).
+fn push_opaque_diagnostic(state: &mut ResolveState, what: &str, ct: &CollectedType, file: &Utf8Path) {
+    state.diagnostics.push(Diagnostic {
+        severity: DiagnosticSeverity::Info,
+        message: format!(
+            "'{}' is {} and can't be statically resolved — it will appear as opaque",
+            ct.to_raw_string(),
+            what
+        ),
+        file: Some(file.to_string()),
+        line: None,
+        column: None,
+        help: None,
+        code: DiagnosticCode::OpaqueType,
+    });
 }

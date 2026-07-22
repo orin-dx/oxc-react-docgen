@@ -2253,7 +2253,26 @@ expression: value
     }
   },
   "enums": {},
-  "diagnostics": [],
+  "diagnostics": [
+    {
+      "severity": "info",
+      "message": "'ThemingProps' depends on 'chakra' at runtime and can't be statically resolved — it will appear as opaque",
+      "file": "[ROOT]/fixtures/chakra/Button.d.ts",
+      "line": null,
+      "column": null,
+      "help": null,
+      "code": "OPAQUE_TYPE"
+    },
+    {
+      "severity": "info",
+      "message": "'ThemingProps' depends on 'chakra' at runtime and can't be statically resolved — it will appear as opaque",
+      "file": "[ROOT]/fixtures/chakra/Button.d.ts",
+      "line": null,
+      "column": null,
+      "help": null,
+      "code": "OPAQUE_TYPE"
+    }
+  ],
   "stats": {
     "componentsExtracted": 8,
     "componentsSkipped": 0,

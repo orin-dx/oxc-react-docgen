@@ -1452,6 +1452,15 @@ expression: value
       "column": null,
       "help": null,
       "code": "DISCRIMINATED_UNION"
+    },
+    {
+      "severity": "info",
+      "message": "'string extends \"a\" ? \"yes\" : \"no\"' is a conditional type and can't be statically resolved — it will appear as opaque",
+      "file": "[ROOT]/fixtures/rdt-compat/types.tsx",
+      "line": null,
+      "column": null,
+      "help": null,
+      "code": "OPAQUE_TYPE"
     }
   ],
   "stats": {

@@ -1950,4 +1950,161 @@ mod tests {
         // With undefined filtered, only one meaningful member → string
         assert_eq!(result, PropType::String, "Expected String after filtering undefined, got {:?}", result);
     }
+
+    // ── Test 19: resolve_base_as_chain must not silently drop unhandled variants ─
+    // Regression test for: adversarial review finding — `resolve_base_as_chain`'s
+    // wildcard arm silently returned an empty chain for any CollectedType variant
+    // it didn't explicitly list (IndexedAccess, Function, Conditional, Mapped,
+    // TemplateLiteral, KeyOf, TypeOf, Raw, every primitive/literal). A real
+    // pattern like `type Props = SomeGeneric["variant"] & { asChild?: boolean }`
+    // silently lost the IndexedAccess member's contribution with zero diagnostic.
+
+    #[test]
+    fn test_unhandled_intersection_member_gets_diagnostic_not_silent_drop() {
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        let file_path = Utf8PathBuf::from("/test/foo.tsx");
+        let mapping = ComponentMapping {
+            component_name: "Foo".into(),
+            props_type_name: "FooProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        // type FooProps = SomeGeneric["variant"] & { asChild?: boolean }
+        let base = CollectedType::Intersection(vec![
+            CollectedType::IndexedAccess {
+                obj: Box::new(CollectedType::Named { name: "SomeGeneric".into(), args: vec![] }),
+                key: Box::new(CollectedType::StringLiteral("variant".into())),
+            },
+            CollectedType::Object(vec![CollectedObjectField {
+                name: "asChild".into(),
+                collected_type: CollectedType::Boolean,
+                required: false,
+                description: String::new(),
+            }]),
+        ]);
+
+        let chain = super::alias::resolve_base_as_chain(&base, &file_path, &mapping, &ctx, &mut state, 0);
+
+        assert!(
+            chain.props.iter().any(|p| p.name == "asChild"),
+            "expected 'asChild' from the Object member to survive, got {:?}",
+            chain.props.iter().map(|p| &p.name).collect::<Vec<_>>()
+        );
+        assert!(
+            !state.diagnostics.is_empty(),
+            "expected a diagnostic for the unresolvable IndexedAccess intersection member, got none"
+        );
+    }
+
+    // ── Test 20: resolve_known's Opaque results must emit a diagnostic ─────────
+    // Regression test for: adversarial review finding — a KnownPatternResult::Type
+    // that's actually PropType::Opaque (ThemingProps, StylesApiProps, cva/tv
+    // without discoverable variants, ...) never got a diagnostic pushed at
+    // either call site (named.rs step 5, chain.rs step 2), even though
+    // resolve_known has no diagnostics channel of its own to push through.
+
+    #[test]
+    fn test_known_opaque_result_emits_diagnostic_at_type_level() {
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        let ct = CollectedType::Named { name: "ThemingProps".into(), args: vec![] };
+        let result =
+            super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
+
+        assert!(matches!(result, PropType::Opaque { .. }), "expected Opaque, got {:?}", result);
+        assert!(
+            !state.diagnostics.is_empty(),
+            "expected a diagnostic for the known-but-runtime-dependent ThemingProps result, got none"
+        );
+    }
+
+    #[test]
+    fn test_known_opaque_result_emits_diagnostic_at_chain_level() {
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        let file_path = Utf8PathBuf::from("/test/box.tsx");
+        let mapping = ComponentMapping {
+            component_name: "Box".into(),
+            props_type_name: "ThemingProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let chain = super::chain::resolve_props_chain("ThemingProps", &[], &file_path, &mapping, &ctx, &mut state, 0);
+
+        assert!(!chain.composes.is_empty(), "expected ThemingProps to still surface via composes");
+        assert!(
+            !state.diagnostics.is_empty(),
+            "expected a diagnostic for the known-but-runtime-dependent ThemingProps result at chain level, got none"
+        );
+    }
+
+    // ── Test 21: collected.rs's Conditional/Mapped/KeyOf/Raw-fallback Opaque
+    // constructions must each emit a diagnostic ─────────────────────────────────
+
+    #[test]
+    fn test_conditional_type_opaque_emits_diagnostic() {
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        let ct = CollectedType::Conditional {
+            check: Box::new(CollectedType::Named { name: "T".into(), args: vec![] }),
+            extends_type: Box::new(CollectedType::String),
+            true_type: Box::new(CollectedType::Number),
+            false_type: Box::new(CollectedType::Boolean),
+        };
+        let result =
+            super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
+        assert!(matches!(result, PropType::Opaque { .. }));
+        assert!(!state.diagnostics.is_empty(), "expected a diagnostic for a Conditional type, got none");
+    }
+
+    #[test]
+    fn test_mapped_type_opaque_emits_diagnostic() {
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        let ct = CollectedType::Mapped {
+            key_type: Box::new(CollectedType::Named { name: "K".into(), args: vec![] }),
+            value_type: Box::new(CollectedType::String),
+        };
+        let result =
+            super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
+        assert!(matches!(result, PropType::Opaque { .. }));
+        assert!(!state.diagnostics.is_empty(), "expected a diagnostic for a Mapped type, got none");
+    }
+
+    #[test]
+    fn test_keyof_opaque_emits_diagnostic() {
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        let ct = CollectedType::KeyOf(Box::new(CollectedType::Named { name: "SomeType".into(), args: vec![] }));
+        let result =
+            super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
+        assert!(matches!(result, PropType::Opaque { .. }));
+        assert!(!state.diagnostics.is_empty(), "expected a diagnostic for a standalone keyof, got none");
+    }
+
+    #[test]
+    fn test_complex_raw_fallback_opaque_emits_diagnostic() {
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        // Not an identifier, not a literal, not a recognized keyword — falls to
+        // the final Raw-fallback Opaque branch.
+        let ct = CollectedType::Raw("A<B> | C".into());
+        let result =
+            super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
+        assert!(matches!(result, PropType::Opaque { .. }));
+        assert!(!state.diagnostics.is_empty(), "expected a diagnostic for an unparsable Raw fallback, got none");
+    }
 }

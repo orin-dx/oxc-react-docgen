@@ -3,7 +3,7 @@
 use camino::Utf8Path;
 use compact_str::CompactString;
 
-use crate::known::{resolve_known, KnownPatternResult};
+use crate::known::{push_known_opaque_diagnostic, resolve_known, KnownPatternResult};
 use crate::react_types;
 use crate::types::*;
 
@@ -144,7 +144,12 @@ pub(super) fn resolve_props_chain(
                     };
                     ResolvedChain { inheritance: vec![layer], ..Default::default() }
                 }
-                KnownPatternResult::Type(pt) => ResolvedChain::empty_with_compose(pt.raw_string()),
+                KnownPatternResult::Type(pt) => {
+                    if let PropType::Opaque { reason, .. } = &pt {
+                        push_known_opaque_diagnostic(&mut state.diagnostics, reason, type_name_bare, consuming_file);
+                    }
+                    ResolvedChain::empty_with_compose(pt.raw_string())
+                }
                 KnownPatternResult::Alias { name } => {
                     resolve_props_chain(&name, &[], consuming_file, mapping, ctx, state, depth + 1)
                 }

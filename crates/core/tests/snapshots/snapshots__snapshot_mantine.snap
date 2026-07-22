@@ -1733,7 +1733,26 @@ expression: value
     }
   },
   "enums": {},
-  "diagnostics": [],
+  "diagnostics": [
+    {
+      "severity": "info",
+      "message": "'StylesApiProps' depends on 'createStyles' at runtime and can't be statically resolved — it will appear as opaque",
+      "file": "[ROOT]/fixtures/mantine/Button.d.ts",
+      "line": null,
+      "column": null,
+      "help": null,
+      "code": "OPAQUE_TYPE"
+    },
+    {
+      "severity": "info",
+      "message": "'StylesApiProps' depends on 'createStyles' at runtime and can't be statically resolved — it will appear as opaque",
+      "file": "[ROOT]/fixtures/mantine/Button.d.ts",
+      "line": null,
+      "column": null,
+      "help": null,
+      "code": "OPAQUE_TYPE"
+    }
+  ],
   "stats": {
     "componentsExtracted": 2,
     "componentsSkipped": 0,

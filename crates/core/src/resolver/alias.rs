@@ -202,7 +202,52 @@ pub(super) fn resolve_base_as_chain(
             // last instead of a proper union across all branches.
             resolve_union_alias(members, file_path, mapping, ctx, state, depth)
         }
-        _ => ResolvedChain::default(),
+        // None of these can ever provide a props chain (a props type must be
+        // object-like — an interface, intersection, union, or inline object).
+        // Named explicitly, not via a wildcard, so a future CollectedType
+        // variant forces a compile error here instead of silently falling
+        // through to an empty, undiagnosed chain the way IndexedAccess and
+        // Function once did.
+        CollectedType::String
+        | CollectedType::Number
+        | CollectedType::Boolean
+        | CollectedType::Null
+        | CollectedType::Undefined
+        | CollectedType::Any
+        | CollectedType::Never
+        | CollectedType::Unknown
+        | CollectedType::Void
+        | CollectedType::BigInt
+        | CollectedType::Symbol
+        | CollectedType::StringLiteral(_)
+        | CollectedType::NumberLiteral(_)
+        | CollectedType::BoolLiteral(_)
+        | CollectedType::Array(_)
+        | CollectedType::Tuple(_)
+        | CollectedType::TypeOf(_)
+        | CollectedType::IndexedAccess { .. }
+        | CollectedType::TemplateLiteral(_)
+        | CollectedType::Function { .. }
+        | CollectedType::Conditional { .. }
+        | CollectedType::Mapped { .. }
+        | CollectedType::KeyOf(_)
+        | CollectedType::Raw(_) => {
+            state.diagnostics.push(Diagnostic {
+                severity: DiagnosticSeverity::Warning,
+                message: format!(
+                    "'{}' cannot be used as a component's props base in '{}' — expected an interface, \
+                     intersection, union, or inline object type",
+                    base.to_raw_string(),
+                    file_path
+                ),
+                file: Some(file_path.to_string()),
+                line: None,
+                column: None,
+                help: Some("Check that this member of the props type resolves to an object-like shape.".into()),
+                code: DiagnosticCode::OpaqueType,
+            });
+            ResolvedChain::default()
+        }
     }
 }
 

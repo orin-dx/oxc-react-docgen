@@ -60,55 +60,56 @@ impl TryFrom<JsExtractOptions> for PipelineOptions {
     fn try_from(js: JsExtractOptions) -> Result<Self, Self::Error> {
         use compact_str::CompactString;
 
-        let extra_builtins: rustc_hash::FxHashSet<CompactString> =
-            js.extra_builtins.unwrap_or_default().into_iter().map(CompactString::from).collect();
+        let mut opts =
+            PipelineOptions { src_dirs: js.src_dirs.into_iter().map(Into::into).collect(), ..Default::default() };
 
-        let extra_paths: rustc_hash::FxHashMap<String, Vec<camino::Utf8PathBuf>> = js
-            .extra_paths_json
-            .and_then(|s| serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&s).ok())
-            .map(|map| {
-                map.into_iter()
-                    .filter_map(|(k, v)| {
-                        let paths: Vec<camino::Utf8PathBuf> =
-                            v.as_array()?.iter().filter_map(|p| p.as_str()).map(camino::Utf8PathBuf::from).collect();
-                        Some((k, paths))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let known_type_overrides: rustc_hash::FxHashMap<String, oxc_react_docgen_core::pipeline::KnownTypeOverride> =
-            js.known_type_overrides_json.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-
-        let react_version = match js.react_version.as_deref() {
-            Some(v) => oxc_react_docgen_core::react_types::parse_react_version(v)
-                .map_err(|bad| format!("reactVersion is '{bad}', expected \"react18\" or \"react19\""))?,
-            None => oxc_react_docgen_core::react_types::REACT_19,
-        };
-
-        Ok(PipelineOptions {
-            src_dirs: js.src_dirs.into_iter().map(Into::into).collect(),
-            exclude_patterns: js.exclude.unwrap_or_default(),
-            react_version,
-            cross_package: js.cross_package.unwrap_or(true),
-            pandacss_outdir: js.pandacss_outdir.map(Into::into),
-            variant_functions: js
-                .variant_functions
-                .unwrap_or_else(|| vec!["cva".into(), "tv".into(), "defineRecipe".into(), "recipe".into()]),
-            html_attributes: match js.html_attributes.as_deref() {
-                Some("full") => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Full,
-                Some("none") => oxc_react_docgen_core::pipeline::HtmlAttributeMode::None,
+        if let Some(exclude) = js.exclude {
+            opts.exclude_patterns = exclude;
+        }
+        if let Some(v) = js.react_version.as_deref() {
+            opts.react_version = oxc_react_docgen_core::react_types::parse_react_version(v)
+                .map_err(|bad| format!("reactVersion is '{bad}', expected \"react18\" or \"react19\""))?;
+        }
+        if let Some(cross_package) = js.cross_package {
+            opts.cross_package = cross_package;
+        }
+        if let Some(dir) = js.pandacss_outdir {
+            opts.pandacss_outdir = Some(dir.into());
+        }
+        if let Some(fns) = js.variant_functions {
+            opts.variant_functions = fns;
+        }
+        if let Some(mode) = js.html_attributes.as_deref() {
+            opts.html_attributes = match mode {
+                "full" => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Full,
+                "none" => oxc_react_docgen_core::pipeline::HtmlAttributeMode::None,
                 _ => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Curated,
-            },
-            tsconfig_path: js.tsconfig_path.map(Into::into),
-            extra_paths,
-            known_type_overrides,
-            extra_builtins,
-            vanilla_extract: js.vanilla_extract.unwrap_or(false),
-            cache_dir: js.cache_dir.map(Into::into),
-            resolve_complex_types: js.resolve_complex_types.unwrap_or(false),
-            exclude_prefixes: vec![],
-        })
+            };
+        }
+        if let Some(path) = js.tsconfig_path {
+            opts.tsconfig_path = Some(path.into());
+        }
+        if let Some(names) = js.extra_builtins {
+            opts.extra_builtins = names.into_iter().map(CompactString::from).collect();
+        }
+        if let Some(json) = js.extra_paths_json {
+            opts.extra_paths = serde_json::from_str(&json).map_err(|e| format!("extraPaths is not valid JSON: {e}"))?;
+        }
+        if let Some(json) = js.known_type_overrides_json {
+            opts.known_type_overrides =
+                serde_json::from_str(&json).map_err(|e| format!("knownTypeOverrides is not valid JSON: {e}"))?;
+        }
+        if let Some(v) = js.vanilla_extract {
+            opts.vanilla_extract = v;
+        }
+        if let Some(dir) = js.cache_dir {
+            opts.cache_dir = Some(dir.into());
+        }
+        if let Some(v) = js.resolve_complex_types {
+            opts.resolve_complex_types = v;
+        }
+
+        Ok(opts)
     }
 }
 
@@ -193,4 +194,67 @@ pub async fn initialize_session(session_id: u32, options: JsExtractOptions) -> n
 #[napi]
 pub fn close_session(session_id: u32) {
     SESSIONS.remove(&session_id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_options() -> JsExtractOptions {
+        JsExtractOptions {
+            src_dirs: vec!["./src".into()],
+            exclude: None,
+            react_version: None,
+            cross_package: None,
+            pandacss_outdir: None,
+            variant_functions: None,
+            html_attributes: None,
+            tsconfig_path: None,
+            extra_builtins: None,
+            vanilla_extract: None,
+            cache_dir: None,
+            resolve_complex_types: None,
+            extra_paths_json: None,
+            known_type_overrides_json: None,
+        }
+    }
+
+    #[test]
+    fn unset_fields_match_pipeline_options_defaults() {
+        let opts = PipelineOptions::try_from(base_options()).expect("should convert");
+        let defaults = PipelineOptions::default();
+
+        assert_eq!(opts.cross_package, defaults.cross_package);
+        assert_eq!(opts.variant_functions, defaults.variant_functions);
+        assert_eq!(opts.html_attributes, defaults.html_attributes);
+        assert_eq!(opts.vanilla_extract, defaults.vanilla_extract);
+        assert_eq!(opts.resolve_complex_types, defaults.resolve_complex_types);
+    }
+
+    #[test]
+    fn malformed_extra_paths_json_is_a_hard_error_not_a_silent_empty_map() {
+        let mut js = base_options();
+        js.extra_paths_json = Some("not valid json".into());
+
+        let err = PipelineOptions::try_from(js).expect_err("malformed JSON should not silently default");
+        assert!(err.contains("extraPaths"), "error should name the bad field, got: {err}");
+    }
+
+    #[test]
+    fn malformed_known_type_overrides_json_is_a_hard_error_not_a_silent_empty_map() {
+        let mut js = base_options();
+        js.known_type_overrides_json = Some("not valid json".into());
+
+        let err = PipelineOptions::try_from(js).expect_err("malformed JSON should not silently default");
+        assert!(err.contains("knownTypeOverrides"), "error should name the bad field, got: {err}");
+    }
+
+    #[test]
+    fn valid_extra_paths_json_is_parsed_correctly() {
+        let mut js = base_options();
+        js.extra_paths_json = Some(r#"{"@myorg/ui": ["../packages/ui/src"]}"#.into());
+
+        let opts = PipelineOptions::try_from(js).expect("should parse valid JSON");
+        assert_eq!(opts.extra_paths.get("@myorg/ui").map(|v| v.len()), Some(1));
+    }
 }

@@ -15,6 +15,7 @@ export interface OxcDocgenOptions {
 export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
   let sessionId: number
   let root: string
+  let command: 'build' | 'serve' | undefined
   let resolvedSrcDirs: string[] = []
   let currentOutput: ExtractionOutput = {
     components: {},
@@ -24,6 +25,7 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
       componentsExtracted: 0,
       componentsSkipped: 0,
       filesParsed: 0,
+      dtsFilesParsed: 0,
       dtsCacheHits: 0,
       durationMs: 0,
       tier1Count: 0,
@@ -39,7 +41,22 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
       srcDirs: resolvedSrcDirs,
       exclude: options.exclude,
       reactVersion: options.reactVersion,
-      skipHtmlProps: options.skipHtmlProps,
+      htmlAttributes: options.skipHtmlProps ? ('none' as const) : undefined,
+    }
+  }
+
+  // configureServer (dev-only) is where cold extraction normally runs and
+  // populates `currentOutput` for the virtual module. Vite never calls
+  // configureServer during `vite build`, so without this, a production
+  // build's virtual module always resolved to the empty placeholder below.
+  async function coldExtract(): Promise<boolean> {
+    const json = await napi.initializeSession(sessionId, napiOptions())
+    try {
+      currentOutput = JSON.parse(json) as ExtractionOutput
+      return true
+    } catch (err) {
+      console.error('[oxc-react-docgen] Failed to parse initializeSession output:', err)
+      return false
     }
   }
 
@@ -55,22 +72,29 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
 
     configResolved(config: ResolvedConfig) {
       root = config.root
+      command = config.command
       resolvedSrcDirs = options.srcDirs.map(d => (d.startsWith('/') ? d : `${root}/${d}`))
       sessionId = napi.createSession(napiOptions())
+    },
+
+    // `vite build` never calls configureServer — that hook only fires for
+    // the dev server — so the build path needs its own cold extraction here.
+    // Skipped for `serve`, where configureServer already handles it.
+    async buildStart() {
+      if (command !== 'build') return
+      try {
+        await coldExtract()
+      } catch (err) {
+        console.error('[oxc-react-docgen] initializeSession failed:', err)
+      }
     },
 
     configureServer(server: ViteDevServer) {
       // Vite guarantees configResolved fires before configureServer;
       // sessionId and resolvedSrcDirs are safe to use here.
-      initPromise = napi
-        .initializeSession(sessionId, napiOptions())
-        .then(json => {
-          try {
-            currentOutput = JSON.parse(json) as ExtractionOutput
-          } catch (err) {
-            console.error('[oxc-react-docgen] Failed to parse initializeSession output:', err)
-            return
-          }
+      initPromise = coldExtract()
+        .then(ok => {
+          if (!ok) return
           // environments.client.hot is Vite 6+ API; cast avoids typing fight across patch versions
           ;(server as any).environments?.client?.hot?.send('oxc-react-docgen:ready', {
             components: currentOutput.components,

@@ -163,4 +163,51 @@ describe('oxcReactDocgen', () => {
       expect(napi.closeSession).toHaveBeenCalledWith(42)
     })
   })
+
+  // ── buildStart ─────────────────────────────────────────────────────────────
+  //
+  // configureServer (which runs the cold extraction that populates the virtual
+  // module's data) is a dev-server-only hook — Vite never calls it during
+  // `vite build`. Without a build-mode extraction path, a production build's
+  // `virtual:oxc-react-docgen` import always resolved to the empty placeholder
+  // stats/components declared at plugin construction time.
+
+  describe('buildStart', () => {
+    it('runs cold extraction when the command is "build"', async () => {
+      ;(plugin.configResolved as Function)({ root: '/project', command: 'build' })
+      await (plugin.buildStart as Function)()
+      expect(napi.initializeSession).toHaveBeenCalledWith(
+        42,
+        expect.objectContaining({ srcDirs: ['/project/src'] })
+      )
+      const code = (plugin.load as Function)('\0virtual:oxc-react-docgen') as string
+      expect(code).toMatch(/^export default \{/)
+    })
+
+    it('does not run cold extraction when the command is "serve" (configureServer handles it)', async () => {
+      ;(plugin.configResolved as Function)({ root: '/project', command: 'serve' })
+      await (plugin.buildStart as Function)()
+      expect(napi.initializeSession).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── skipHtmlProps ──────────────────────────────────────────────────────────
+
+  describe('skipHtmlProps', () => {
+    it('maps to htmlAttributes: "none" for the NAPI call', () => {
+      const p = oxcReactDocgen({ srcDirs: ['src'], skipHtmlProps: true })
+      ;(p.configResolved as Function)({ root: '/project' })
+      expect(napi.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ htmlAttributes: 'none' })
+      )
+    })
+
+    it('leaves htmlAttributes unset when skipHtmlProps is not passed', () => {
+      const p = oxcReactDocgen({ srcDirs: ['src'] })
+      ;(p.configResolved as Function)({ root: '/project' })
+      expect(napi.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ htmlAttributes: undefined })
+      )
+    })
+  })
 })

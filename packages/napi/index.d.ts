@@ -106,10 +106,10 @@ export interface EnumEntry {
 export interface Diagnostic {
   severity: 'error' | 'warning' | 'info'
   message: string
-  file?: string
-  line?: number
-  column?: number
-  help?: string
+  file: string | null
+  line: number | null
+  column: number | null
+  help: string | null
   code: string
 }
 
@@ -117,6 +117,7 @@ export interface ExtractionStats {
   componentsExtracted: number
   componentsSkipped: number
   filesParsed: number
+  dtsFilesParsed: number
   dtsCacheHits: number
   durationMs: number
   tier1Count: number

@@ -21,11 +21,6 @@ to say. If you find another doc contradicting this file, this file wins.
 - **Preset system** (`@oxc-react-docgen/presets`) — named `PipelineOptions`
   bundles. Config-side only, no Rust changes needed.
 - **LSP server** — `lsp-types` is a dependency; nothing built on it.
-- **React 19 `ref`-as-prop** — `ReactVersion::ref_as_prop` exists as a field
-  but nothing reads it yet. Components using React 19's `function Button({
-  ref, ...props })` pattern (no `forwardRef`) won't pick up `ref`'s type.
-- **Compound components** — `Dialog.Trigger`, `Select.Item`. Not detected as
-  separate components at all right now.
 
 ## Known gaps that won't get fixed without a type checker
 

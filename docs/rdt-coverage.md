@@ -219,6 +219,8 @@ gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash o
 | N/A | `void` kind | standalone `void` not a real prop type |
 | N/A | `never` kind | broken discriminant, not a real prop type |
 | N/A | `any` kind | suppressed by `strict` mode |
+| N/A | React 19 `ref`-as-prop (`function Button({ ref, ...props })`) | investigated, not a real gap — see below |
+| N/A | Compound components (`Dialog.Trigger`) | investigated, not a real gap — see below |
 | ❌ not fixed | `styled.X.attrs<T>()` component detection | `fixtures/zendesk-garden`; shared blind spot with real RDT, not a competitive gap |
 | ❌ not fixed | `ComponentProps<typeof StyledButton>` where `StyledButton` is `@emotion/styled`'s `styled(tag, options)<T>(fn)` two-arg overload | `fixtures/storybook-emotion`; requires recognizing a new call-expression shape, capturing its curried generic type argument, and merging with the base element's real HTML attributes — a new library-specific pattern (comparable in scope to the existing `VariantProps`/cva shortcut), not a bug fix. Real RDT needs a type checker for this too |
 | ❌ not fixed | Same-namespace sibling reference resolution for some `@types/react` internals (e.g. `EventHandler`, `TrustedHTML`) | narrower residual case not covered by the bare/`React.`-qualified key fallback; degrades gracefully |
@@ -522,6 +524,58 @@ instead by a dedicated extractor unit test and a pipeline end-to-end test provin
 `ParsedProp.default_value`.
 
 ---
+
+## Note: React 19 `ref`-as-prop — investigated, not a real gap
+
+`ReactVersion::ref_as_prop`/`implicit_children` (`react_types.rs`) exist as fields, are correctly plumbed from
+the `--react-version`/`docgen.config.ts` CLI surface down to `PipelineOptions.react_version` (tested), and are
+then never read by anything in `crates/core`. That looked like a real gap — the original spec's worry was that
+`function Button({ ref, ...props }: ButtonProps)` (React 19's plain-prop `ref`, no `forwardRef`) wouldn't be
+recognized.
+
+Tested directly against both real shapes:
+
+```ts
+// ref declared directly on the props interface
+interface ButtonProps { label: string; ref?: Ref<HTMLButtonElement>; }
+export function Button({ ref, ...props }: ButtonProps) { ... }
+
+// ref merged in via intersection (the more common real-world shape)
+type ButtonProps = BaseProps & { ref?: Ref<HTMLButtonElement> };
+export function Button({ ref, ...props }: ButtonProps) { ... }
+```
+
+Both already extract `ref` correctly as `{ kind: 'ref', element: 'HTMLButtonElement' }`, no special-casing
+involved — the extractor doesn't care that the member happens to be named `ref`; it walks whatever the props
+type structurally contains, same as any other member, regardless of React version. The one case this doesn't
+cover — `ref` implicitly present via `ComponentProps<'button'>`'s real React 19 typing rather than an explicit
+member — falls under the existing, already-accepted "curated mode doesn't expand full HTML attributes" limit,
+not a version-specific gap.
+
+Left the `ReactVersion` fields and CLI flag in place (real, tested, user-facing surface) rather than ripping them
+out — but didn't invent speculative behavior for a bug that isn't reproducible. If a concrete React-version-
+dependent extraction difference ever surfaces, this is where it'd get wired in.
+
+## Note: compound components (`Dialog.Trigger`) — investigated, not a real gap
+
+The original worry: `Dialog.Trigger`, `Select.Item` — sub-components hung off a parent via dot access — aren't
+detected as separate components at all.
+
+Checked every fixture with a multi-component "family" shape. None uses the actual `<Namespace.Member>` dot-
+access pattern. `fixtures/ariakit`'s `Menu`/`MenuButton`/`MenuItem`/`MenuProvider` are just independently
+exported, independently named components — nothing to detect beyond what already works.
+`fixtures/headlessui/Listbox.tsx` gets closest — real Ark UI/Headless UI code does
+`Object.assign(ListboxRoot, { Button: ListboxButton, ... })` to expose `Listbox.Button` as a deprecated
+convenience alias — but `ListboxButton` is *also* independently exported (`export let ListboxButton =
+forwardRefWithAs(ButtonFn) as _internal_ComponentListboxButton`) as the primary, non-deprecated API, and that
+already gets detected and extracted correctly today (confirmed: `Listbox`, `ListboxButton`, `ListboxOption` all
+present in the output, each with accurate props).
+
+What's actually missing, if anything, is purely cosmetic: no dot-qualified display name (`"Listbox.Button"`
+instead of `"ListboxButton"`) and no parent/child grouping metadata for doc tools that want to nest sub-
+components under their parent. There's no fixture or test demonstrating this as broken, and no evidence for
+which of several plausible designs (rename the display name vs. add a separate grouping field) real consumers
+would actually want — building either now would be speculative, not a fix. Left alone.
 
 ## Note: slot recipes — partial support
 

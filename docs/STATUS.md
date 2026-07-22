@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-07-21
+**Updated:** 2026-07-22
 
 Core extraction, resolver, CLI, NAPI binding, and Vite plugin all work and are
 tested. Config file loading, cross-package `.d.ts` resolution, and watch mode
@@ -9,18 +9,30 @@ to say. If you find another doc contradicting this file, this file wins.
 
 ## Numbers
 
-- 163 Rust tests (16 cli + 139 core unit + 8 snapshot), 14 vitest — all green
+- 191 Rust tests (21 cli + 158 core unit + 8 snapshot + 4 napi binding), 18
+  vitest — all green
 - `cargo clippy --workspace --all-targets -D warnings` clean
-- 15 real-world fixture libraries validated against `react-docgen-typescript`
-  (shadcn, Radix, MUI, Chakra, Mantine, React Aria, antd, ark-ui, base-ui,
-  blueprint, day-picker, fluentui, headlessui, panda, react-resizable-panels,
-  storybook-emotion, tanstack-table, zendesk-garden — see `rdt-coverage.md`)
+- 20 real-world fixture libraries validated against `react-docgen-typescript`
+  (shadcn, Radix, MUI, Chakra, Mantine, React Aria, antd, ariakit, ark-ui,
+  base-ui, blueprint, day-picker, fluentui, headlessui, panda,
+  react-final-form, react-resizable-panels, storybook-emotion,
+  tanstack-table, zendesk-garden — see `rdt-coverage.md`)
 
 ## What's not built yet
 
 - **Preset system** (`@oxc-react-docgen/presets`) — named `PipelineOptions`
   bundles. Config-side only, no Rust changes needed.
 - **LSP server** — `lsp-types` is a dependency; nothing built on it.
+- **Barrel/re-export scoped-key allocation caching** — `resolver/chain.rs` /
+  `named.rs` / `template.rs` build a `"{file}:{name}"` scoped-key string on
+  every lookup. A `Borrow`-based type-map key would let lookups happen
+  without allocating. Real but unbenchmarked — do as a focused perf pass if
+  profiling shows it matters.
+- **DTS cache has no dirty-flag or size cap** (`cache.rs`) — rewrites the
+  whole cache file on every run regardless of whether anything changed, and
+  has no upper bound on how large the on-disk cache can grow. Low severity
+  (requires local write access, and an attacker with that already has better
+  options) — worth fixing for large monorepos before it becomes a real cost.
 
 ## Known gaps that won't get fixed without a type checker
 

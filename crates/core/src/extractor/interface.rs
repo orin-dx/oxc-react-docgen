@@ -53,6 +53,50 @@ impl<'src> SourceDataCollector<'src> {
         }
     }
 
+    // ─── `const` array (as-const arrays) collection ───────────────────────────
+
+    /// Detect: `const X = [...] as const` — a flat array literal, referenced via
+    /// `(typeof X)[number]` to build a literal union without an explicit `enum`
+    /// (e.g. antd's `type ButtonType = (typeof _ButtonTypes)[number]`). Distinct
+    /// from `try_collect_const_enum` above (object, not array) and stored
+    /// separately in `SourceData::const_arrays` — see that field's doc comment
+    /// for why it isn't folded into `enums`.
+    pub(super) fn try_collect_const_array<'a>(&mut self, decl: &VariableDeclarator<'a>) {
+        let name = match &decl.id {
+            BindingPattern::BindingIdentifier(id) => id.name.as_str().to_owned(),
+            _ => return,
+        };
+
+        let init = match &decl.init {
+            Some(e) => e,
+            None => return,
+        };
+
+        // Handle `[ ... ] as const` (TSAsExpression) or `<const>[ ... ]` (TSTypeAssertion)
+        let arr_expr = match init {
+            Expression::TSAsExpression(tsa) => &tsa.expression,
+            Expression::TSTypeAssertion(ta) => &ta.expression,
+            _ => return,
+        };
+
+        let arr = match arr_expr {
+            Expression::ArrayExpression(a) => a,
+            _ => return,
+        };
+
+        let values: Vec<EnumValue> = arr
+            .elements
+            .iter()
+            .filter_map(|el| el.as_expression())
+            .filter_map(|e| self.expression_to_enum_value(e))
+            .collect();
+
+        if !values.is_empty() {
+            let key = self.scoped_key(&name);
+            self.data.const_arrays.insert(key, values);
+        }
+    }
+
     /// Detect: `const X = cva(base, { variants: { key: { val: "...", ... } } })`
     /// Store each variant key's values in self.data.enums under the scoped key.
     pub(super) fn try_collect_cva_call<'a>(&mut self, decl: &VariableDeclarator<'a>, name: &str) {

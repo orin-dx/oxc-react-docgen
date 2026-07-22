@@ -60,6 +60,9 @@ pub struct ResolutionContext {
     /// this build pass — the same tie-break the old linear scan produced,
     /// since both iterate the same underlying map.
     pub enum_bare_index: FxHashMap<CompactString, CompactString>,
+    /// Same as `enum_bare_index`, but over `global.const_arrays` — for
+    /// `(typeof X)[number]` on a flat `const X = [...] as const` array.
+    pub const_array_bare_index: FxHashMap<CompactString, CompactString>,
     /// How much of an inherited HTML element's attributes to expose.
     pub html_attributes: crate::pipeline::HtmlAttributeMode,
     /// Paths to TypeScript's own `lib.es5.d.ts`/`lib.dom.d.ts`, if resolvable
@@ -88,6 +91,14 @@ impl ResolutionContext {
             enum_bare_index.entry(CompactString::from(bare)).or_insert_with(|| CompactString::from(key.as_str()));
         }
 
+        let mut const_array_bare_index: FxHashMap<CompactString, CompactString> = FxHashMap::default();
+        for key in global.const_arrays.keys() {
+            let bare = key.rsplit_once(':').map(|(_, name)| name).unwrap_or(key.as_str());
+            const_array_bare_index
+                .entry(CompactString::from(bare))
+                .or_insert_with(|| CompactString::from(key.as_str()));
+        }
+
         let ambient_global_files = options
             .src_dirs
             .first()
@@ -102,6 +113,7 @@ impl ResolutionContext {
             oxc_resolver: Arc::new(Resolver::new(resolve_options)),
             extra_builtins: options.extra_builtins.clone(),
             enum_bare_index,
+            const_array_bare_index,
             html_attributes: options.html_attributes,
             ambient_global_files,
         }
@@ -536,6 +548,44 @@ mod tests {
         };
         let result = resolve_type(&ct, &ctx);
         assert_eq!(result, PropType::String, "Expected String for HTMLDivElement[\"dir\"], got {:?}", result);
+    }
+
+    // ── Test 5d: Indexed access via `(typeof X)[number]` on a flat
+    // `const X = [...] as const` array ───────────────────────────────────────
+    // Regression test for: antd's `type ButtonType = (typeof _ButtonTypes)[number]`
+    // degraded to Opaque — nothing captured plain `as const` array literals
+    // (only cva/tv's `variants` object shape), and indexed access never handled
+    // a `[number]` key (a `CollectedType::Number`, not a string literal).
+
+    #[test]
+    fn test_indexed_access_typeof_number_on_const_array_builds_literal_union() {
+        let file_path = Utf8PathBuf::from("/test/buttonHelpers.tsx");
+        let mut global = GlobalSourceData::default();
+
+        global.const_arrays.insert(
+            format!("{}:_ButtonTypes", file_path),
+            vec![
+                EnumValue::String("default".into()),
+                EnumValue::String("primary".into()),
+                EnumValue::String("dashed".into()),
+            ],
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let ct = CollectedType::IndexedAccess {
+            obj: Box::new(CollectedType::TypeOf("_ButtonTypes".into())),
+            key: Box::new(CollectedType::Number),
+        };
+        let result = resolve_type(&ct, &ctx);
+        assert_eq!(
+            result,
+            PropType::LiteralUnion {
+                members: vec!["default".into(), "primary".into(), "dashed".into()],
+                has_default: false,
+            },
+            "Expected LiteralUnion of the array's values, got {:?}",
+            result
+        );
     }
 
     // ── Test 6: Primitives pass through ──────────────────────────────────────

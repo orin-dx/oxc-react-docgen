@@ -227,6 +227,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
     fn visit_variable_declaration(&mut self, node: &VariableDeclaration<'a>) {
         for declarator in &node.declarations {
             self.try_collect_const_enum(declarator);
+            self.try_collect_const_array(declarator);
             // Collect cva() / tv() variant definitions for all file types (.ts and .tsx)
             if let BindingPattern::BindingIdentifier(id) = &declarator.id {
                 let name = id.name.as_str().to_owned();

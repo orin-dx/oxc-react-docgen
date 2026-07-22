@@ -5,8 +5,8 @@ use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::collected::{
-    CollectedInterface, CollectedTypeAlias, ComponentMapping, EnumEntry, ImportBinding, LexedExport, SourceData,
-    TypeName,
+    CollectedInterface, CollectedTypeAlias, ComponentMapping, EnumEntry, EnumValue, ImportBinding, LexedExport,
+    SourceData, TypeName,
 };
 use super::diagnostic::Diagnostic;
 
@@ -56,6 +56,10 @@ pub struct GlobalSourceData {
     /// Key: "${absolute_file_path}:${name}"
     pub enums: FxHashMap<String, Vec<EnumEntry>>,
 
+    /// All `const X = [...] as const` array literals across all files — see
+    /// `SourceData::const_arrays`. Key: "${absolute_file_path}:${name}"
+    pub const_arrays: FxHashMap<String, Vec<EnumValue>>,
+
     /// Import resolution map: file → [ImportBinding]
     pub import_map: FxHashMap<Utf8PathBuf, Vec<ImportBinding>>,
 
@@ -86,6 +90,7 @@ impl GlobalSourceData {
         self.type_alias_params.extend(data.type_alias_params);
         self.interface_type_params.extend(data.interface_type_params);
         self.enums.extend(data.enums);
+        self.const_arrays.extend(data.const_arrays);
         self.import_map.insert(file_path.to_owned(), data.imports);
         self.re_export_map.insert(file_path.to_owned(), data.exports);
         self.component_mappings.extend(data.component_mappings);
@@ -99,6 +104,7 @@ impl GlobalSourceData {
         self.type_alias_params.retain(|k, _| !k.starts_with(&prefix));
         self.interface_type_params.retain(|k, _| !k.starts_with(&prefix));
         self.enums.retain(|k, _| !k.starts_with(&prefix));
+        self.const_arrays.retain(|k, _| !k.starts_with(&prefix));
         self.import_map.remove(file_path);
         self.re_export_map.remove(file_path);
         self.component_mappings.retain(|m| m.file_path != file_path);

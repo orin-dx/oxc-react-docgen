@@ -151,12 +151,7 @@ fn resolve_cva_variant_props(
                     let mut variant_map: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
                     for entry in enum_entries {
-                        let variant_value = match &entry.value {
-                            EnumValue::String(s) => s.clone(),
-                            EnumValue::Number(n) => n.to_string(),
-                            EnumValue::Bool(b) => b.to_string(),
-                        };
-                        variant_map.entry(entry.name.clone()).or_default().push(variant_value);
+                        variant_map.entry(entry.name.clone()).or_default().push(entry.value.to_display_string());
                     }
 
                     if variant_map.is_empty() {

@@ -9,7 +9,7 @@ to say. If you find another doc contradicting this file, this file wins.
 
 ## Numbers
 
-- 157 Rust tests (16 cli + 133 core unit + 8 snapshot), 14 vitest — all green
+- 159 Rust tests (16 cli + 135 core unit + 8 snapshot), 14 vitest — all green
 - `cargo clippy --workspace --all-targets -D warnings` clean
 - 15 real-world fixture libraries validated against `react-docgen-typescript`
   (shadcn, Radix, MUI, Chakra, Mantine, React Aria, antd, ark-ui, base-ui,
@@ -28,8 +28,6 @@ to say. If you find another doc contradicting this file, this file wins.
   separate components at all right now.
 - **Static `defaultProps`** — `Button.defaultProps = { size: 'md' }` isn't
   read. Destructured defaults (`function Button({ size = 'md' })`) are.
-- **`typeof X[number]` on `const X = [...] as const`** — in progress. Needed
-  for antd's `ButtonType` (10 diagnostics in the antd fixture).
 
 ## Known gaps that won't get fixed without a type checker
 

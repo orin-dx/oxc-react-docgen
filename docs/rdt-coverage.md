@@ -214,6 +214,7 @@ gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash o
 | ✅ done | Type aliases silently dropped for any unhandled body shape (generalized beyond the two prior special cases) | `fixtures/storybook-emotion`; fixed, see below |
 | ✅ done | Entire file silently discarded when JSDoc prose contains unmatched brackets | real `typescript` package's own `lib.dom.d.ts`; fixed, see below |
 | ✅ done | Indexed access into an ambient DOM interface not walking its `extends` chain | `fixtures/day-picker` (`HTMLDivElement["dir"/"nonce"/"title"/"lang"]`); fixed, see below |
+| ✅ done | `(typeof X)[number]` on a flat `const X = [...] as const` array | `fixtures/antd` (`ButtonType`, `ButtonShape`, `ButtonHTMLType`, `ButtonVariantType`, `ButtonColorType`); fixed, see below |
 | N/A | `void` kind | standalone `void` not a real prop type |
 | N/A | `never` kind | broken discriminant, not a real prop type |
 | N/A | `any` kind | suppressed by `strict` mode |
@@ -467,6 +468,31 @@ aren't declared directly on `HTMLDivElement` — they're inherited via `extends 
 `ctx.ambient_global_files` as a fallback) and a small recursive ancestor-chain search over `ExtendsRef::SameFile`
 entries. All 4 props now resolve to `string`; `day-picker/DayPicker` prop count now matches
 react-docgen-typescript exactly (68/68).
+
+### Fixed: `(typeof X)[number]` on a flat `const X = [...] as const` array
+
+**Fixture:** `fixtures/antd/buttonHelpers.tsx`
+
+```ts
+const _ButtonTypes = ['default', 'primary', 'dashed', 'link', 'text'] as const;
+export type ButtonType = (typeof _ButtonTypes)[number];
+```
+
+Two gaps, neither previously covered: nothing captured a plain array-literal `const` (only cva/tv's `variants`
+object shape and const-object enums), and indexed access never handled a `[number]` key — `key` there is
+`CollectedType::Number` (the `number` keyword type), not a string literal, so the existing string-literal-keyed
+lookup always missed it. Added `SourceData::const_arrays` (deliberately separate from `enums`, which has
+per-entry variant names and is surfaced directly in the public output — a plain array has neither), populated by
+a new `try_collect_const_array` mirroring `try_collect_const_enum`'s shape but for `ArrayExpression`. Added a
+matching `const_array_bare_index` on `ResolutionContext` (same O(1) pattern as `enum_bare_index`) and a new
+branch in `resolve_indexed_access` that builds a `LiteralUnion` from the array's values when `obj` is `TypeOf`
+and `key` is `Number`. All 5 exported unions in the fixture (`ButtonType`, `ButtonShape`, `ButtonHTMLType`,
+`ButtonVariantType`, `ButtonColorType`) now resolve correctly; the 10 associated diagnostics are gone.
+
+`ButtonColorType`'s source array uses a spread (`['default', 'primary', 'danger', ...PresetColors]`) — the
+spread element is silently skipped (no expression to read a literal from), so that one union resolves with 3 of
+its real ~19 members. A known, honest partial result, not a crash or a wrong type; matches how cva/tv variant
+extraction already treats constructs it can't statically read.
 
 ---
 

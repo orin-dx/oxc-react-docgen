@@ -728,6 +728,7 @@ pub(super) fn declaration_name<'a>(decl: &Declaration<'a>) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::EnumValue;
 
     fn fixture_path(rel: &str) -> std::path::PathBuf {
         let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -1248,6 +1249,25 @@ interface ButtonProps {
         let entries = entries.unwrap();
         assert_eq!(entries.len(), 4);
         assert!(entries.iter().any(|e| e.name == "Up"));
+    }
+
+    #[test]
+    fn test_const_array_as_const_collected() {
+        // antd's `type ButtonType = (typeof _ButtonTypes)[number]` pattern —
+        // a flat array literal, not an object (test_enum_collected above) or a
+        // cva-style variants config. Distinct storage: SourceData::const_arrays.
+        let source = r#"
+            const _ButtonTypes = ['default', 'primary', 'dashed', 'link', 'text'] as const;
+        "#;
+        let path = Utf8Path::new("/test/buttonHelpers.tsx");
+        let data = parse_file(path, source);
+
+        let values = data.const_arrays.get("/test/buttonHelpers.tsx:_ButtonTypes");
+        assert!(values.is_some(), "_ButtonTypes const array not collected");
+        let values = values.unwrap();
+        assert_eq!(values.len(), 5);
+        assert_eq!(values[0], EnumValue::String("default".into()));
+        assert!(data.enums.is_empty(), "a plain const array must not be captured as an enum");
     }
 
     #[test]

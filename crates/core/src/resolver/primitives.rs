@@ -114,6 +114,19 @@ pub(super) fn resolve_indexed_access(
         return pt;
     }
 
+    // `(typeof X)[number]` on a flat `const X = [...] as const` array literal
+    // — antd's `type ButtonType = (typeof _ButtonTypes)[number]` pattern.
+    // `[number]` means "the union of every element's type", which for a
+    // `const`-asserted array of literals is exactly the array's own values.
+    if let (CollectedType::TypeOf(name), CollectedType::Number) = (obj, key) {
+        if let Some(values) =
+            ctx.const_array_bare_index.get(name.as_str()).and_then(|k| ctx.global.const_arrays.get(k.as_str()))
+        {
+            let members: Vec<String> = values.iter().map(EnumValue::to_display_string).collect();
+            return PropType::LiteralUnion { members, has_default: false };
+        }
+    }
+
     // A generic interface referenced with concrete args (e.g.
     // `RenderableProps<FieldRenderProps<FieldValue, T>>["children"]`) resolves
     // to a bare `PropType::Named` at the type level — interfaces are never

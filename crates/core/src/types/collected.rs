@@ -531,6 +531,18 @@ pub enum EnumValue {
     Bool(bool),
 }
 
+impl EnumValue {
+    /// Render as the string a `LiteralUnion` member expects — every variant
+    /// display-formatted, regardless of its original JS type.
+    pub fn to_display_string(&self) -> std::string::String {
+        match self {
+            EnumValue::String(s) => s.clone(),
+            EnumValue::Number(n) => n.to_string(),
+            EnumValue::Bool(b) => b.to_string(),
+        }
+    }
+}
+
 // ─── Source Data (collected during Phase 0-2) ─────────────────────────────────
 
 /// Raw data collected from parsing a single file.
@@ -562,6 +574,17 @@ pub struct SourceData {
     /// Enum-like values found in this file.
     /// Key: "${absolute_file_path}:${name}"
     pub enums: FxHashMap<std::string::String, Vec<EnumEntry>>,
+
+    /// Flat `const X = [...] as const` array literals found in this file —
+    /// e.g. `const _ButtonTypes = ['default', 'primary'] as const`, referenced
+    /// via `(typeof _ButtonTypes)[number]` to build a literal union without an
+    /// explicit `enum`. Deliberately separate from `enums`: unlike an enum or
+    /// a cva/tv variant group, a plain array has no per-entry name to group
+    /// by, and `enums` is surfaced directly in the public `ExtractionOutput`
+    /// (see `pipeline::collect_public_enums`) — these arrays are resolver-
+    /// internal only, never part of that output.
+    /// Key: "${absolute_file_path}:${name}"
+    pub const_arrays: FxHashMap<std::string::String, Vec<EnumValue>>,
 
     /// Component → prop type mappings found in this file.
     /// Only populated for .tsx files.

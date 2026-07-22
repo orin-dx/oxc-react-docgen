@@ -26,6 +26,21 @@ impl fmt::Display for Diagnostic {
 
 impl std::error::Error for Diagnostic {}
 
+impl Diagnostic {
+    /// A file could not be read from disk (permission error, race with deletion, etc).
+    pub fn io_read_error(path: &camino::Utf8Path, error: &std::io::Error) -> Diagnostic {
+        Diagnostic {
+            severity: DiagnosticSeverity::Error,
+            message: format!("Failed to read '{path}': {error}"),
+            file: Some(path.to_string()),
+            line: None,
+            column: None,
+            help: Some("Check file permissions and that the file exists.".into()),
+            code: DiagnosticCode::IoError,
+        }
+    }
+}
+
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,4 +80,23 @@ pub enum DiagnosticCode {
     ExcessiveNesting,
     /// TypeScript syntax error reported by the parser.
     ParseError,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn io_read_error_reports_the_path_and_underlying_error() {
+        let path = camino::Utf8Path::new("src/Button.tsx");
+        let error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+
+        let diagnostic = Diagnostic::io_read_error(path, &error);
+
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
+        assert_eq!(diagnostic.code, DiagnosticCode::IoError);
+        assert_eq!(diagnostic.file.as_deref(), Some("src/Button.tsx"));
+        assert!(diagnostic.message.contains("src/Button.tsx"));
+        assert!(diagnostic.message.contains("permission denied"));
+    }
 }

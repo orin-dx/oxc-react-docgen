@@ -63,11 +63,10 @@ struct DiagnosticGroup<'a> {
 /// single root cause that produced hundreds of diagnostics reports as one line with a count
 /// instead of flooding the terminal. Order is preserved as first-seen, per group.
 fn group_diagnostics(diagnostics: &[oxc_react_docgen_core::types::Diagnostic]) -> Vec<DiagnosticGroup<'_>> {
-    let mut groups: Vec<(String, String, DiagnosticGroup)> = Vec::new();
+    let mut groups: Vec<(&oxc_react_docgen_core::types::DiagnosticCode, &str, DiagnosticGroup)> = Vec::new();
     for d in diagnostics {
-        let code_key = format!("{:?}", d.code);
         let subject = extract_subject(&d.message);
-        match groups.iter_mut().find(|(ck, s, _)| ck == &code_key && s == subject) {
+        match groups.iter_mut().find(|(code, s, _)| *code == &d.code && *s == subject) {
             Some((_, _, group)) => {
                 group.count += 1;
                 if !group.files_seen.contains(&d.file.as_deref()) {
@@ -75,8 +74,8 @@ fn group_diagnostics(diagnostics: &[oxc_react_docgen_core::types::Diagnostic]) -
                 }
             }
             None => groups.push((
-                code_key,
-                subject.to_string(),
+                &d.code,
+                subject,
                 DiagnosticGroup { representative: d, count: 1, files_seen: vec![d.file.as_deref()] },
             )),
         }

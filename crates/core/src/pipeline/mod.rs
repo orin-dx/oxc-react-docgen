@@ -265,18 +265,7 @@ pub(crate) fn extract_with_global(
             }
             let (source, io_diag) = match std::fs::read_to_string(path) {
                 Ok(s) => (s, None),
-                Err(e) => (
-                    String::new(),
-                    Some(Diagnostic {
-                        severity: DiagnosticSeverity::Error,
-                        message: format!("Failed to read '{}': {}", path, e),
-                        file: Some(path.to_string()),
-                        line: None,
-                        column: None,
-                        help: Some("Check file permissions and that the file exists.".into()),
-                        code: DiagnosticCode::IoError,
-                    }),
-                ),
+                Err(e) => (String::new(), Some(Diagnostic::io_read_error(path, &e))),
             };
             let data = crate::extractor::parse_file(path, &source);
             if is_dts {

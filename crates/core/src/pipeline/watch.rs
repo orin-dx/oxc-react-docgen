@@ -158,15 +158,7 @@ impl WatchSession {
         let source = match std::fs::read_to_string(changed) {
             Ok(s) => s,
             Err(e) => {
-                io_diagnostic = Some(Diagnostic {
-                    severity: DiagnosticSeverity::Error,
-                    message: format!("Failed to read '{}': {}", changed, e),
-                    file: Some(changed.to_string()),
-                    line: None,
-                    column: None,
-                    help: Some("Check file permissions and that the file exists.".into()),
-                    code: DiagnosticCode::IoError,
-                });
+                io_diagnostic = Some(Diagnostic::io_read_error(changed, &e));
                 String::new()
             }
         };

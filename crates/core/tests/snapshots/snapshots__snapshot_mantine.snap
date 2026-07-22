@@ -52,9 +52,7 @@ expression: value
         "color": {
           "name": "color",
           "type": {
-            "kind": "named",
-            "name": "MantineColor",
-            "args": []
+            "kind": "string"
           },
           "required": false,
           "defaultValue": {
@@ -769,9 +767,7 @@ expression: value
         "color": {
           "name": "color",
           "type": {
-            "kind": "named",
-            "name": "MantineColor",
-            "args": []
+            "kind": "string"
           },
           "required": false,
           "defaultValue": {
@@ -1737,26 +1733,7 @@ expression: value
     }
   },
   "enums": {},
-  "diagnostics": [
-    {
-      "severity": "warning",
-      "message": "Cannot resolve type 'MantineColor' in '[ROOT]/fixtures/mantine/Button.d.ts' — it will appear as opaque",
-      "file": "[ROOT]/fixtures/mantine/Button.d.ts",
-      "line": null,
-      "column": null,
-      "help": "Check that the package is installed and its types are resolvable.",
-      "code": "UNRESOLVABLE_IMPORT"
-    },
-    {
-      "severity": "warning",
-      "message": "Cannot resolve type 'MantineColor' in '[ROOT]/fixtures/mantine/TextInput.d.ts' — it will appear as opaque",
-      "file": "[ROOT]/fixtures/mantine/TextInput.d.ts",
-      "line": null,
-      "column": null,
-      "help": "Check that the package is installed and its types are resolvable.",
-      "code": "UNRESOLVABLE_IMPORT"
-    }
-  ],
+  "diagnostics": [],
   "stats": {
     "componentsExtracted": 2,
     "componentsSkipped": 0,

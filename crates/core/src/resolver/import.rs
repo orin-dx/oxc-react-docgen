@@ -2,9 +2,14 @@
 
 use camino::{Utf8Path, Utf8PathBuf};
 
+use crate::import_map::ReExportStep;
 use crate::types::*;
 
 use super::ResolutionContext;
+
+/// Re-export chains in real code are shallow (one or two barrel hops); this
+/// only guards against a pathological or cyclic `export * from` graph.
+const MAX_REEXPORT_DEPTH: u8 = 8;
 
 /// Resolve `name` to its canonical `(file_path, name)` pair.
 /// Returns `None` if `name` is a local declaration (not imported).
@@ -17,7 +22,7 @@ pub(super) fn resolve_to_canonical(
     if let Some(import_ref) = ctx.import_map.find_import(consuming_file, name) {
         let resolved_file = resolve_import_specifier(&import_ref.specifier, consuming_file, ctx, diagnostics)?;
         let canonical_name = import_ref.exported_name.to_string();
-        return Some((resolved_file, canonical_name));
+        return Some(follow_reexports(resolved_file, canonical_name, ctx, diagnostics, 0));
     }
 
     // Namespace-import member access: `import * as React from "react"` then a
@@ -33,7 +38,57 @@ pub(super) fn resolve_to_canonical(
         return None;
     }
     let resolved_file = resolve_import_specifier(&namespace_ref.specifier, consuming_file, ctx, diagnostics)?;
-    Some((resolved_file, member.to_string()))
+    Some(follow_reexports(resolved_file, member.to_string(), ctx, diagnostics, 0))
+}
+
+/// A directly-imported name may land on a barrel file (`export { X } from
+/// './x'` or `export * from './x'`) that doesn't declare `name` itself —
+/// ubiquitous in real component libraries' `index.ts` files. Follow the
+/// re-export chain until we reach a file that actually declares `name`, or
+/// run out of chain to follow — in which case the original (barrel_file,
+/// name) is returned unchanged, so the caller's existing "cannot resolve"
+/// diagnostic still fires exactly as it did before this existed.
+fn follow_reexports(
+    file: Utf8PathBuf,
+    name: String,
+    ctx: &ResolutionContext,
+    diagnostics: &mut Vec<Diagnostic>,
+    depth: u8,
+) -> (Utf8PathBuf, String) {
+    if depth >= MAX_REEXPORT_DEPTH || is_declared_at(&ctx.global, &file, &name) {
+        return (file, name);
+    }
+    match ctx.import_map.resolve_reexport_chain(&file, &name, &ctx.global) {
+        Some(ReExportStep::Named { source_specifier, source_name }) => {
+            let Some(next_file) = resolve_import_specifier(&source_specifier, &file, ctx, diagnostics) else {
+                return (file, name);
+            };
+            follow_reexports(next_file, source_name, ctx, diagnostics, depth + 1)
+        }
+        Some(ReExportStep::Wildcards(specifiers)) => {
+            for specifier in &specifiers {
+                let Some(candidate_file) = resolve_import_specifier(specifier, &file, ctx, diagnostics) else {
+                    continue;
+                };
+                let resolved = follow_reexports(candidate_file, name.clone(), ctx, diagnostics, depth + 1);
+                if is_declared_at(&ctx.global, &resolved.0, &resolved.1) {
+                    return resolved;
+                }
+            }
+            (file, name)
+        }
+        None => (file, name),
+    }
+}
+
+/// Whether `name` is actually declared at `file` — mirrors the bare/`React.`-
+/// qualified key fallback `lookup_interface`/`lookup_type_alias` use, so a
+/// barrel-chain hop is considered "found" by the same rule those lookups do.
+fn is_declared_at(global: &GlobalSourceData, file: &Utf8Path, name: &str) -> bool {
+    global.interfaces.contains_key(&format!("{file}:{name}"))
+        || global.interfaces.contains_key(&format!("{file}:React.{name}"))
+        || global.type_aliases.contains_key(&format!("{file}:{name}"))
+        || global.type_aliases.contains_key(&format!("{file}:React.{name}"))
 }
 
 /// Look up an interface by canonical `(file, name)`, falling back to a

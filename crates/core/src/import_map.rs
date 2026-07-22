@@ -25,7 +25,6 @@ pub struct ImportRef {
 }
 
 /// Result of walking one step of a re-export chain.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ReExportStep {
     /// Found a named re-export — caller resolves `source_specifier` to a file and recurses.
@@ -45,10 +44,6 @@ pub struct ImportResolutionMap {
     /// Note: we store the specifier string, not the resolved file path.
     /// The resolver calls `oxc_resolver` to turn specifiers into absolute paths.
     bindings: FxHashMap<Utf8PathBuf, FxHashMap<CompactString, ImportRef>>,
-
-    /// `barrel_file` → specifiers it wildcard-re-exports from (`export * from "..."`).
-    #[allow(dead_code)]
-    wildcard_sources: FxHashMap<Utf8PathBuf, Vec<String>>,
 }
 
 impl ImportResolutionMap {
@@ -58,9 +53,7 @@ impl ImportResolutionMap {
     /// No I/O — pure data transformation.
     pub fn build(global: &GlobalSourceData) -> Self {
         let mut bindings: FxHashMap<Utf8PathBuf, FxHashMap<CompactString, ImportRef>> = FxHashMap::default();
-        let mut wildcard_sources: FxHashMap<Utf8PathBuf, Vec<String>> = FxHashMap::default();
 
-        // ── Populate bindings from import_map ──────────────────────────────
         for (file_path, import_bindings) in &global.import_map {
             let per_file = bindings.entry(file_path.clone()).or_default();
             for binding in import_bindings {
@@ -75,16 +68,7 @@ impl ImportResolutionMap {
             }
         }
 
-        // ── Populate wildcard_sources from re_export_map ──────────────────
-        for (file_path, exports) in &global.re_export_map {
-            for export in exports {
-                if let LexedExport::ReExportAll { source_specifier, .. } = export {
-                    wildcard_sources.entry(file_path.clone()).or_default().push(source_specifier.clone());
-                }
-            }
-        }
-
-        Self { bindings, wildcard_sources }
+        Self { bindings }
     }
 
     /// Given a file and a local name used in that file, return where it was imported from.
@@ -99,7 +83,6 @@ impl ImportResolutionMap {
     /// - If a `ReExportNamed` entry matches `exported_name`, returns `Named { .. }`.
     /// - If no named match is found but there are `ReExportAll` entries, returns `Wildcards(..)`.
     /// - Returns `None` if the barrel file has no relevant re-exports.
-    #[allow(dead_code)]
     pub fn resolve_reexport_chain(
         &self,
         barrel_file: &Utf8Path,
@@ -133,14 +116,6 @@ impl ImportResolutionMap {
         } else {
             None
         }
-    }
-
-    /// Return the list of specifiers wildcard-re-exported from `barrel_file`.
-    ///
-    /// Returns an empty slice if the file has no `export * from "..."` entries.
-    #[allow(dead_code)]
-    pub fn wildcard_sources_for(&self, barrel_file: &Utf8Path) -> &[String] {
-        self.wildcard_sources.get(barrel_file).map(|v| v.as_slice()).unwrap_or(&[])
     }
 }
 
@@ -286,10 +261,6 @@ mod tests {
 
         let map = ImportResolutionMap::build(&global);
 
-        // wildcard_sources_for should return ["./types"]
-        let wildcards = map.wildcard_sources_for(&barrel);
-        assert_eq!(wildcards, &["./types"]);
-
         // resolve_reexport_chain for any name should return Wildcards
         match map.resolve_reexport_chain(&barrel, "AnyName", &global) {
             Some(ReExportStep::Wildcards(specs)) => {
@@ -332,12 +303,12 @@ mod tests {
     }
 
     #[test]
-    fn test_wildcard_sources_empty() {
-        let barrel = Utf8PathBuf::from("/project/src/no-wildcards.ts");
+    fn test_reexport_chain_none_for_a_file_with_no_reexports() {
+        let barrel = Utf8PathBuf::from("/project/src/no-reexports.ts");
         let global = make_global(vec![], vec![]);
         let map = ImportResolutionMap::build(&global);
 
-        assert!(map.wildcard_sources_for(&barrel).is_empty());
+        assert!(map.resolve_reexport_chain(&barrel, "Anything", &global).is_none());
     }
 
     #[test]

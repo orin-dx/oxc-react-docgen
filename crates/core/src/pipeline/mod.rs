@@ -884,6 +884,94 @@ export function Foo(props: FooProps) { return null; }
         assert_eq!(dir_prop.prop_type, PropType::String, "expected String, got {:?}", dir_prop.prop_type);
     }
 
+    // ── test_named_type_reexported_through_a_barrel_file_resolves ────────────
+    //
+    // `import_map.rs`'s `resolve_reexport_chain`/`wildcard_sources_for` were
+    // fully implemented and unit-tested in isolation, but `resolve_to_canonical`
+    // never called them — a type imported through a barrel (`export { X } from
+    // './x'` or `export * from './x'`, ubiquitous in real component libraries'
+    // index.ts files) resolved to the barrel file itself, which doesn't declare
+    // the type, so it silently fell through to "Cannot resolve type" instead of
+    // following the re-export to where the type actually lives.
+
+    #[test]
+    fn test_named_type_reexported_through_a_barrel_file_resolves() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+        write_file(&tmp, "types.ts", "export interface ButtonProps { label: string; }\n");
+        write_file(&tmp, "index.ts", "export type { ButtonProps } from './types';\n");
+        write_file(
+            &tmp,
+            "Button.tsx",
+            r#"
+import type { ButtonProps } from './index';
+export function Button(props: ButtonProps) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let unresolvable = output.diagnostics.iter().find(|d| d.message.contains("Cannot resolve type 'ButtonProps'"));
+        assert!(
+            unresolvable.is_none(),
+            "expected ButtonProps to resolve through the barrel's named re-export, got diagnostic: {:?}",
+            unresolvable
+        );
+
+        let button = output.components.get("Button").expect("Button component not found");
+        assert!(
+            button.props.contains_key("label"),
+            "expected 'label' prop from the re-exported ButtonProps, got {:?}",
+            button.props.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_named_type_reexported_through_a_wildcard_barrel_file_resolves() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+        write_file(&tmp, "types.ts", "export interface ButtonProps { label: string; }\n");
+        write_file(&tmp, "index.ts", "export * from './types';\n");
+        write_file(
+            &tmp,
+            "Button.tsx",
+            r#"
+import type { ButtonProps } from './index';
+export function Button(props: ButtonProps) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let unresolvable = output.diagnostics.iter().find(|d| d.message.contains("Cannot resolve type 'ButtonProps'"));
+        assert!(
+            unresolvable.is_none(),
+            "expected ButtonProps to resolve through the barrel's wildcard re-export, got diagnostic: {:?}",
+            unresolvable
+        );
+
+        let button = output.components.get("Button").expect("Button component not found");
+        assert!(
+            button.props.contains_key("label"),
+            "expected 'label' prop from the re-exported ButtonProps, got {:?}",
+            button.props.keys().collect::<Vec<_>>()
+        );
+    }
+
     // ── test_static_default_props_assignment_reaches_parsed_prop ─────────────
     //
     // Regression test for: `Button.defaultProps = { size: 'md' }` (deprecated

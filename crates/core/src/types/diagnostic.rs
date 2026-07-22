@@ -57,10 +57,7 @@ pub enum DiagnosticSeverity {
 pub enum DiagnosticCode {
     UnresolvableImport,
     OpaqueType,
-    PandaCodegenMissing,
     MaxDepthExceeded,
-    ComponentDetectionFailed,
-    BarrelResolutionFailed,
     Unknown,
     /// JSDoc @default conflicts with code default value — code value was used.
     JsDocDefaultMismatch,
@@ -70,8 +67,6 @@ pub enum DiagnosticCode {
     IndexedAccessOpaque,
     /// Template literal type that could not be statically expanded.
     TemplateLiteralOpaque,
-    /// Callable component detected via call signature interface.
-    CallableComponent,
     /// Discriminated union detected — props merged with discriminant surfaced.
     DiscriminatedUnion,
     /// File could not be read — permission error or file missing.

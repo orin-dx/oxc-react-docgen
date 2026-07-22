@@ -748,7 +748,7 @@ mod tests {
             rmp_serde::from_slice(&bytes).expect("deserialization should succeed for rmp_serde's positional encoding");
 
         assert_eq!(round_tripped.name, "label");
-        assert_eq!(round_tripped.required, true);
+        assert!(round_tripped.required);
         assert_eq!(round_tripped.description, "the label");
     }
 }

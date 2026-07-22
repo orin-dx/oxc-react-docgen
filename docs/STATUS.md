@@ -9,7 +9,7 @@ to say. If you find another doc contradicting this file, this file wins.
 
 ## Numbers
 
-- 161 Rust tests (16 cli + 137 core unit + 8 snapshot), 14 vitest — all green
+- 163 Rust tests (16 cli + 139 core unit + 8 snapshot), 14 vitest — all green
 - `cargo clippy --workspace --all-targets -D warnings` clean
 - 15 real-world fixture libraries validated against `react-docgen-typescript`
   (shadcn, Radix, MUI, Chakra, Mantine, React Aria, antd, ark-ui, base-ui,

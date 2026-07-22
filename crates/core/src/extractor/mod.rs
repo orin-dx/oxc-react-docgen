@@ -1109,6 +1109,57 @@ interface ButtonProps {
     }
 
     #[test]
+    fn test_bare_identifier_passthrough_alias_renames_component() {
+        // antd's real Button pattern: no wrapper call at all, just a plain
+        // `const NewName = OldName;` re-binding — narrower than
+        // try_rename_identifier_wrapped_component's original CallExpression
+        // case (Headless UI's forwardRefWithAs(ButtonFn) above), which never
+        // matched a bare identifier init and left this silently unrenamed.
+        let source = r#"
+            interface ButtonProps { label: string; }
+            const InternalCompoundedButton = React.forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => {
+                return null;
+            });
+            const Button = InternalCompoundedButton;
+            export default Button;
+        "#;
+        let path = Utf8Path::new("/test/button.tsx");
+        let data = parse_file(path, source);
+
+        let names: Vec<&str> = data.component_mappings.iter().map(|m| m.component_name.as_str()).collect();
+        assert!(names.contains(&"Button"), "expected 'Button' (the real export name) among mappings, got {:?}", names);
+        assert!(
+            !names.contains(&"InternalCompoundedButton"),
+            "InternalCompoundedButton should be renamed to its real export name, not left visible under the \
+             internal name, got {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn test_bare_identifier_alias_with_as_cast_renames_component() {
+        // The real upstream antd shape (per fixtures/antd/Button.tsx's own
+        // comment): `const Button = InternalCompoundedButton as
+        // CompoundedComponent;` — same bare-identifier passthrough, wrapped in
+        // an `as` cast. unwrap_as_expression must see through it.
+        let source = r#"
+            interface ButtonProps { label: string; }
+            const InternalCompoundedButton = React.forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => {
+                return null;
+            });
+            type CompoundedComponent = typeof InternalCompoundedButton & { Group: unknown };
+            const Button = InternalCompoundedButton as CompoundedComponent;
+            export default Button;
+        "#;
+        let path = Utf8Path::new("/test/button.tsx");
+        let data = parse_file(path, source);
+
+        let names: Vec<&str> = data.component_mappings.iter().map(|m| m.component_name.as_str()).collect();
+        assert!(names.contains(&"Button"), "expected 'Button' among mappings, got {:?}", names);
+        assert!(!names.contains(&"InternalCompoundedButton"), "got {:?}", names);
+    }
+
+    #[test]
     fn test_type_alias_omit() {
         let source = r#"
             interface FullProps { a: string; b: number; c: boolean; }

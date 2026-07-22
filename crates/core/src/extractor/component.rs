@@ -295,11 +295,20 @@ impl<'src> SourceDataCollector<'src> {
     /// declaration — was already independently collected as its own component by the
     /// `visit_function` Pattern 4 check, under the wrong (inner, implementation-only)
     /// name. Without this, the real export name never appears at all.
+    ///
+    /// Also handles the same rename with no wrapper call at all — a bare passthrough
+    /// alias, `const Button = InternalCompoundedButton;` (optionally `as X`), antd's
+    /// real `Button` export shape.
     pub(super) fn try_rename_identifier_wrapped_component<'a>(&mut self, decl: &VariableDeclarator<'a>, name: &str) {
         let Some(init) = decl.init.as_ref() else { return };
-        let Expression::CallExpression(call) = unwrap_as_expression(init) else { return };
-        let Some(Argument::Identifier(id)) = call.arguments.first() else { return };
-        let inner_name = id.name.as_str();
+        let inner_name = match unwrap_as_expression(init) {
+            Expression::CallExpression(call) => match call.arguments.first() {
+                Some(Argument::Identifier(id)) => id.name.as_str(),
+                _ => return,
+            },
+            Expression::Identifier(id) => id.name.as_str(),
+            _ => return,
+        };
 
         for mapping in &mut self.data.component_mappings {
             if mapping.component_name == inner_name {

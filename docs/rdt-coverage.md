@@ -216,6 +216,7 @@ gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash o
 | ✅ done | Indexed access into an ambient DOM interface not walking its `extends` chain | `fixtures/day-picker` (`HTMLDivElement["dir"/"nonce"/"title"/"lang"]`); fixed, see below |
 | ✅ done | `(typeof X)[number]` on a flat `const X = [...] as const` array | `fixtures/antd` (`ButtonType`, `ButtonShape`, `ButtonHTMLType`, `ButtonVariantType`, `ButtonColorType`); fixed, see below |
 | ✅ done | Static `X.defaultProps = {...}` assignment not read (only destructured defaults were) | no fixture ships a real static assignment today (`fixtures/blueprint/Table.tsx` was written around this exact gap — see its updated header comment); covered by unit + pipeline tests, fixed, see below |
+| ✅ done | Bare passthrough identifier alias (`const Button = InternalCompoundedButton;`) not renaming the component | `fixtures/antd` (`Button` surfaced as `InternalCompoundedButton`); fixed, see below |
 | N/A | `void` kind | standalone `void` not a real prop type |
 | N/A | `never` kind | broken discriminant, not a real prop type |
 | N/A | `any` kind | suppressed by `strict` mode |
@@ -555,6 +556,30 @@ not a version-specific gap.
 Left the `ReactVersion` fields and CLI flag in place (real, tested, user-facing surface) rather than ripping them
 out — but didn't invent speculative behavior for a bug that isn't reproducible. If a concrete React-version-
 dependent extraction difference ever surfaces, this is where it'd get wired in.
+
+### Fixed: bare passthrough identifier alias not renaming the component
+
+**Fixture:** `fixtures/antd/Button.tsx`
+
+Found by a full-fixture validation sweep (`apps/validate`'s comparison across all 20 libraries at once, not a
+per-fixture check) — `antd/Button/Button` showed `ours found nothing` despite the component clearly being
+extracted correctly under a different name. antd's real `Button` export:
+
+```ts
+const InternalCompoundedButton = React.forwardRef<...>((props, ref) => { ... });
+const Button = InternalCompoundedButton;   // (real upstream: `as CompoundedComponent`)
+Button.displayName = 'Button';
+export default Button;
+```
+
+`try_scan_display_name` couldn't help here — it matches the assignment's left-hand object name
+(`"Button"`) against an existing mapping's name, but the mapping was still `"InternalCompoundedButton"`, so the
+match never fired. The actual gap was one level earlier:
+`try_rename_identifier_wrapped_component` (added for Headless UI's `forwardRefWithAs(ButtonFn) as X` — an
+*unrecognized wrapper call* around an already-detected component) only matched a `CallExpression` init. antd's
+shape has no wrapper call at all — just a bare `const NewName = OldName;` passthrough, optionally `as`-cast.
+Added a second match arm for a bare `Expression::Identifier` init, reusing the same rename logic. `Button` now
+surfaces with all 23 real props under its actual export name.
 
 ## Note: compound components (`Dialog.Trigger`) — investigated, not a real gap
 

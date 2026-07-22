@@ -49,14 +49,12 @@ pub(super) fn resolve_intersection(
     state: &mut ResolveState,
     depth: u8,
 ) -> PropType {
-    // Normalize `(string & {})` → `PropType::String`.
-    // `{}` is `CollectedType::Object([])` (empty object type).
+    // `(string & {})` — a common trick for "string, but keep literal-type
+    // autocomplete" — degrades to plain `string` once `{}` (`CollectedType::Object([])`,
+    // an empty object type) is filtered out below and only one real member remains.
     let non_empty: Vec<&CollectedType> =
         members.iter().filter(|m| !matches!(m, CollectedType::Object(f) if f.is_empty())).collect();
 
-    if non_empty.len() == 1 && matches!(non_empty[0], CollectedType::String) {
-        return PropType::String;
-    }
     if non_empty.len() == 1 {
         return resolve_collected_type(non_empty[0], consuming_file, ctx, state, depth + 1);
     }

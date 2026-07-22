@@ -94,14 +94,11 @@ pub(super) fn resolve_named(
     // attribute types all appear as prop types in real-world .d.ts files but
     // cannot be expanded without a type-checker. Return Named silently.
     let bare = name.strip_prefix("React.").unwrap_or(name.as_str());
-    if matches!(
-        bare,
-        // TypeScript utility types
-        "Partial" | "Required" | "Readonly" | "NonNullable" | "Record"
-            | "ReadonlyArray" | "Array" | "Promise" | "Extract" | "Exclude"
-            | "ReturnType" | "Parameters" | "Awaited" | "Omit" | "Pick"
+    if super::is_ts_utility_type(bare)
+        || matches!(
+            bare,
             // TypeScript primitives used as type names
-            | "object" | "Object" | "Function" | "Symbol" | "BigInt"
+            "object" | "Object" | "Function" | "Symbol" | "BigInt"
             // React HTML attribute types (not in is_react_builtin; appear as prop types)
             | "HTMLAttributes" | "InputHTMLAttributes" | "TextareaHTMLAttributes"
             | "SelectHTMLAttributes" | "ButtonHTMLAttributes" | "AnchorHTMLAttributes"
@@ -113,7 +110,8 @@ pub(super) fn resolve_named(
             | "SVGAttributes" | "SVGProps" | "HTMLProps"
             // React component utility types
             | "ComponentRef" | "JSXElementConstructor"
-    ) || bare.ends_with("HTMLAttributes")
+        )
+        || bare.ends_with("HTMLAttributes")
     {
         return PropType::Named { name: name.clone(), args: resolved_args };
     }

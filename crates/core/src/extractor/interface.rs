@@ -94,12 +94,12 @@ impl<'src> SourceDataCollector<'src> {
 
         // Check callee is a known variant function
         let callee_name = match &call.callee {
-            Expression::Identifier(id) => id.name.as_str().to_owned(),
-            Expression::StaticMemberExpression(m) => m.property.name.as_str().to_owned(),
+            Expression::Identifier(id) => id.name.as_str(),
+            Expression::StaticMemberExpression(m) => m.property.name.as_str(),
             _ => return,
         };
 
-        if !matches!(callee_name.as_str(), "cva" | "tv" | "defineRecipe" | "recipe" | "defineSlotRecipe") {
+        if !matches!(callee_name, "cva" | "tv" | "defineRecipe" | "recipe" | "defineSlotRecipe") {
             return;
         }
 

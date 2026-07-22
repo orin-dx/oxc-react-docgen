@@ -433,77 +433,13 @@ impl<'de> serde::Deserialize<'de> for CollectedType {
     }
 }
 
-impl serde::Serialize for CollectedObjectField {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut s = serializer.serialize_struct("CollectedObjectField", 4)?;
-        s.serialize_field("name", &self.name)?;
-        s.serialize_field("collected_type", &self.collected_type)?;
-        s.serialize_field("required", &self.required)?;
-        s.serialize_field("description", &self.description)?;
-        s.end()
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for CollectedObjectField {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use serde::de::{self, MapAccess, Visitor};
-        use std::fmt;
-
-        struct FieldVisitor;
-
-        impl<'de> Visitor<'de> for FieldVisitor {
-            type Value = CollectedObjectField;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct CollectedObjectField")
-            }
-
-            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<CollectedObjectField, A::Error> {
-                let mut name: Option<std::string::String> = None;
-                let mut collected_type: Option<CollectedType> = None;
-                let mut required: Option<bool> = None;
-                let mut description: Option<std::string::String> = None;
-
-                while let Some(key) = map.next_key::<std::string::String>()? {
-                    match key.as_str() {
-                        "name" => {
-                            name = Some(map.next_value()?);
-                        }
-                        "collected_type" => {
-                            collected_type = Some(map.next_value()?);
-                        }
-                        "required" => {
-                            required = Some(map.next_value()?);
-                        }
-                        "description" => {
-                            description = Some(map.next_value()?);
-                        }
-                        _ => {
-                            let _ = map.next_value::<serde::de::IgnoredAny>()?;
-                        }
-                    }
-                }
-
-                Ok(CollectedObjectField {
-                    name: name.ok_or_else(|| de::Error::missing_field("name"))?,
-                    collected_type: collected_type.ok_or_else(|| de::Error::missing_field("collected_type"))?,
-                    required: required.ok_or_else(|| de::Error::missing_field("required"))?,
-                    description: description.ok_or_else(|| de::Error::missing_field("description"))?,
-                })
-            }
-        }
-
-        deserializer.deserialize_struct(
-            "CollectedObjectField",
-            &["name", "collected_type", "required", "description"],
-            FieldVisitor,
-        )
-    }
-}
-
 /// An object field as collected from the AST (not yet resolved).
-#[derive(Debug, Clone)]
+///
+/// `CollectedType`'s own Serialize/Deserialize builds this struct's fields
+/// manually (see `to_json_value`/`from_json_value`) and never calls this
+/// derive — it only matters if something serializes a `CollectedObjectField`
+/// directly, outside a `CollectedType::Object`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectedObjectField {
     pub name: std::string::String,
     pub collected_type: CollectedType,
@@ -785,4 +721,34 @@ pub enum LexedExport {
     ReExportNamespace { namespace: std::string::String, source_specifier: std::string::String },
     /// `export interface Foo { }` / `export type Bar = ...` / `export const X`
     LocalDeclaration { name: std::string::String, is_type_only: bool },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // CollectedType's own Serialize/Deserialize never actually calls into
+    // CollectedObjectField's impl (to_json_value/from_json_value build fields
+    // manually), so this exercises CollectedObjectField's own impl directly —
+    // the only way anything would ever actually invoke it. rmp_serde's default
+    // (non-named) encoding writes structs POSITIONALLY (as a MessagePack array,
+    // not a map of field names), which requires a Deserialize impl to handle
+    // `visit_seq`, not just `visit_map`.
+    #[test]
+    fn collected_object_field_round_trips_through_rmp_serde_positional_encoding() {
+        let field = CollectedObjectField {
+            name: "label".to_owned(),
+            collected_type: CollectedType::String,
+            required: true,
+            description: "the label".to_owned(),
+        };
+
+        let bytes = rmp_serde::to_vec(&field).expect("serialization should succeed");
+        let round_tripped: CollectedObjectField =
+            rmp_serde::from_slice(&bytes).expect("deserialization should succeed for rmp_serde's positional encoding");
+
+        assert_eq!(round_tripped.name, "label");
+        assert_eq!(round_tripped.required, true);
+        assert_eq!(round_tripped.description, "the label");
+    }
 }

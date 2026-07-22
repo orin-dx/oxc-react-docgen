@@ -150,12 +150,9 @@ pub fn resolve_known(
         // ElementRef<typeof X> → opaque Ref
         "ElementRef" => Some(KnownPatternResult::Type(PropType::Ref { element: None })),
 
-        // ── Transparent utility types ────────────────────────────────────────
-        // These are handled in the resolver's Omit/Pick logic,
-        // but if seen as standalone names, pass through:
-        "Partial" | "Required" | "Readonly" | "NonNullable" | "Omit" | "Pick" => None,
-
-        // ── Unknown type names — caller should continue with normal resolution
+        // ── Unknown type names (including TS utility types like Partial/Omit/Pick —
+        // structurally handled in resolver/alias.rs, silently no-op'd via
+        // resolver::is_ts_utility_type otherwise) — caller continues normal resolution.
         _ => None,
     }
 }

@@ -300,19 +300,7 @@ pub(crate) fn extract_with_global(
     // as any other .d.ts — this cost is paid once per @types/react version, not
     // per extraction run.
     if options.html_attributes == HtmlAttributeMode::Full {
-        // Must match what discovered file paths look like (always absolute — the
-        // `ignore` walker absolutizes them regardless of whether --src was given
-        // as relative or absolute), since the resolver looks this same specifier
-        // up again per-component relative to each file's own absolute directory.
-        // A relative src_dirs entry has too few path components for oxc_resolver's
-        // ancestor walk to ever reach the real node_modules tree, so it silently
-        // finds nothing instead of the intended real @types/react.
-        let from_dir = options
-            .src_dirs
-            .first()
-            .and_then(|dir| std::fs::canonicalize(dir).ok())
-            .and_then(|p| Utf8PathBuf::from_path_buf(p).ok())
-            .unwrap_or_else(|| Utf8PathBuf::from("."));
+        let from_dir = canonicalize_first_src_dir(&options.src_dirs).unwrap_or_else(|| Utf8PathBuf::from("."));
         match crate::resolver::resolve_package_dts_path(&from_dir, "react") {
             Some(react_dts_path) => {
                 let react_dts_path = Utf8PathBuf::from(react_dts_path);
@@ -343,12 +331,7 @@ pub(crate) fn extract_with_global(
     // enhancement the user never opted into, so failure isn't worth a
     // diagnostic; the existing per-type "cannot resolve" diagnostics still
     // fire exactly as before in that case.
-    let from_dir = options
-        .src_dirs
-        .first()
-        .and_then(|dir| std::fs::canonicalize(dir).ok())
-        .and_then(|p| Utf8PathBuf::from_path_buf(p).ok());
-    if let Some(from_dir) = from_dir {
+    if let Some(from_dir) = canonicalize_first_src_dir(&options.src_dirs) {
         for lib_path in crate::resolver::resolve_ts_lib_paths(&from_dir) {
             let lib_path = Utf8PathBuf::from(lib_path);
             merge_cached_dts_file(&lib_path, &cache, &mut global, &mut diagnostics);
@@ -445,6 +428,19 @@ fn merge_cached_dts_file(
     };
     diagnostics.append(&mut data.diagnostics);
     global.merge(path, data);
+}
+
+/// Canonicalize `src_dirs`' first entry to use as the "from" directory for
+/// resolving @types/react and TypeScript's own lib.d.ts files — must match
+/// what discovered file paths look like (always absolute — the `ignore`
+/// walker absolutizes them regardless of whether --src was given as relative
+/// or absolute), since the resolver looks this same specifier up again
+/// per-component relative to each file's own absolute directory. A relative
+/// src_dirs entry has too few path components for oxc_resolver's ancestor
+/// walk to ever reach the real node_modules tree, so it silently finds
+/// nothing instead of the intended real package.
+fn canonicalize_first_src_dir(src_dirs: &[Utf8PathBuf]) -> Option<Utf8PathBuf> {
+    src_dirs.first().and_then(|dir| std::fs::canonicalize(dir).ok()).and_then(|p| Utf8PathBuf::from_path_buf(p).ok())
 }
 
 /// Collect enum entries that are exported from their source files.

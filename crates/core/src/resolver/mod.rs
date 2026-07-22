@@ -60,6 +60,35 @@ pub(super) fn max_depth_diagnostic(what: &str, file: &Utf8Path) -> Diagnostic {
     }
 }
 
+/// TypeScript's own generic utility types — never prop providers, and expanding
+/// them structurally needs a type checker we don't have. `Omit`/`Pick`/`Partial`/
+/// `Readonly` get real structural handling as alias shapes (see resolver/alias.rs);
+/// this list exists so every OTHER arity/usage of these names (and the ones with
+/// no structural handling at all) degrades to a silent no-op instead of a
+/// spurious "cannot resolve" warning. Shared by chain.rs (props level) and
+/// named.rs (type level) — previously duplicated as two independently-maintained
+/// name lists that happened to agree, with no guard against them drifting apart.
+pub(super) fn is_ts_utility_type(name: &str) -> bool {
+    matches!(
+        name,
+        "Omit"
+            | "Pick"
+            | "Partial"
+            | "Required"
+            | "Readonly"
+            | "NonNullable"
+            | "ReturnType"
+            | "Parameters"
+            | "Awaited"
+            | "Extract"
+            | "Exclude"
+            | "Record"
+            | "ReadonlyArray"
+            | "Array"
+            | "Promise"
+    )
+}
+
 // ─── ResolutionContext ────────────────────────────────────────────────────────
 
 /// Shared, read-only context passed to all resolution functions.

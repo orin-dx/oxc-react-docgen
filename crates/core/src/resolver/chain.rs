@@ -85,24 +85,7 @@ pub(super) fn resolve_props_chain(
 
     // ── Step 1: TypeScript built-in utility types — silent no-op ─────────────
     // Not prop providers; suppress false "unresolvable" warnings.
-    if matches!(
-        type_name_bare,
-        "Omit"
-            | "Pick"
-            | "Partial"
-            | "Required"
-            | "Readonly"
-            | "NonNullable"
-            | "ReturnType"
-            | "Parameters"
-            | "Awaited"
-            | "Extract"
-            | "Exclude"
-            | "Record"
-            | "ReadonlyArray"
-            | "Array"
-            | "Promise"
-    ) {
+    if super::is_ts_utility_type(type_name_bare) {
         return ResolvedChain::default();
     }
 

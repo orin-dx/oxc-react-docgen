@@ -179,8 +179,8 @@ pub(super) fn resolve_props_chain(
     }
 
     // ── Step 5: Interface ─────────────────────────────────────────────────────
-    if let Some(iface) = lookup_interface(&ctx.global, canonical_file.as_str(), &canonical_name).cloned() {
-        return resolve_interface_chain(&iface, type_args, consuming_file, mapping, ctx, state, depth);
+    if let Some(iface) = lookup_interface(&ctx.global, canonical_file.as_str(), &canonical_name) {
+        return resolve_interface_chain(iface, type_args, consuming_file, mapping, ctx, state, depth);
     }
 
     // ── Step 6: Unresolvable ──────────────────────────────────────────────────

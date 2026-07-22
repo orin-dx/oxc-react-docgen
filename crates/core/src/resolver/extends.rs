@@ -117,7 +117,7 @@ fn real_html_attrs_chain(
     let bare_name = name.strip_prefix("React.").unwrap_or(name);
     let qualified_key = format!("{react_file}:React.{bare_name}");
     let bare_key = format!("{react_file}:{bare_name}");
-    let iface = ctx.global.interfaces.get(&qualified_key).or_else(|| ctx.global.interfaces.get(&bare_key))?.clone();
+    let iface = ctx.global.interfaces.get(&qualified_key).or_else(|| ctx.global.interfaces.get(&bare_key))?;
     let react_file_path = Utf8Path::new(react_file);
-    Some(resolve_interface_chain(&iface, &[], react_file_path, mapping, ctx, state, depth + 1))
+    Some(resolve_interface_chain(iface, &[], react_file_path, mapping, ctx, state, depth + 1))
 }

@@ -13,8 +13,15 @@ use std::time::SystemTime;
 
 use crate::types::SourceData;
 
-/// Bump this whenever `SourceData` format changes in a breaking way.
-const CACHE_SCHEMA_VERSION: u32 = 1;
+/// Bump this whenever `SourceData`'s field list or field order changes.
+/// Serialization is via plain `rmp_serde::to_vec`/`from_slice` — MessagePack's
+/// *positional* (not named-map) struct encoding — so inserting a field
+/// anywhere but the very end shifts every subsequent field's decode position
+/// for any cache entry written before the change. A same-shaped field
+/// addition (e.g. another `FxHashMap<String, Vec<X>>`) wouldn't even fail
+/// loudly; it would decode as plausible-looking but wrong data. `const_arrays`
+/// (added mid-struct, not appended) is exactly this case — this bump covers it.
+const CACHE_SCHEMA_VERSION: u32 = 2;
 
 // ─── Internal key type ────────────────────────────────────────────────────────
 

@@ -7,27 +7,27 @@ use crate::types::{DefaultSource, EnumEntry, EnumValue, RawDefault};
 
 use super::SourceDataCollector;
 
+/// Extract the binding name and the `as const`-peeled inner expression from
+/// `const NAME = <expr> as const` (or `<const><expr>`). Shared by
+/// `try_collect_const_enum` (object) and `try_collect_const_array` (array) —
+/// the only difference between them is what kind of expression they expect
+/// once the cast is peeled off.
+fn as_const_literal<'a, 'b>(decl: &'b VariableDeclarator<'a>) -> Option<(std::string::String, &'b Expression<'a>)> {
+    let BindingPattern::BindingIdentifier(id) = &decl.id else { return None };
+    let init = decl.init.as_ref()?;
+    let inner = match init {
+        Expression::TSAsExpression(tsa) => &tsa.expression,
+        Expression::TSTypeAssertion(ta) => &ta.expression,
+        _ => return None,
+    };
+    Some((id.name.as_str().to_owned(), inner))
+}
+
 impl<'src> SourceDataCollector<'src> {
     // ─── `const` enum (as-const objects) collection ──────────────────────────
 
     pub(super) fn try_collect_const_enum<'a>(&mut self, decl: &VariableDeclarator<'a>) {
-        // Only collect `const X = { ... } as const` patterns
-        let name = match &decl.id {
-            BindingPattern::BindingIdentifier(id) => id.name.as_str().to_owned(),
-            _ => return,
-        };
-
-        let init = match &decl.init {
-            Some(e) => e,
-            None => return,
-        };
-
-        // Handle `{ ... } as const` (TSAsExpression) or `<const>{ ... }` (TSTypeAssertion)
-        let obj_expr = match init {
-            Expression::TSAsExpression(tsa) => &tsa.expression,
-            Expression::TSTypeAssertion(ta) => &ta.expression,
-            _ => return,
-        };
+        let Some((name, obj_expr)) = as_const_literal(decl) else { return };
 
         let obj = match obj_expr {
             Expression::ObjectExpression(o) => o,
@@ -63,22 +63,7 @@ impl<'src> SourceDataCollector<'src> {
     /// separately in `SourceData::const_arrays` — see that field's doc comment
     /// for why it isn't folded into `enums`.
     pub(super) fn try_collect_const_array<'a>(&mut self, decl: &VariableDeclarator<'a>) {
-        let name = match &decl.id {
-            BindingPattern::BindingIdentifier(id) => id.name.as_str().to_owned(),
-            _ => return,
-        };
-
-        let init = match &decl.init {
-            Some(e) => e,
-            None => return,
-        };
-
-        // Handle `[ ... ] as const` (TSAsExpression) or `<const>[ ... ]` (TSTypeAssertion)
-        let arr_expr = match init {
-            Expression::TSAsExpression(tsa) => &tsa.expression,
-            Expression::TSTypeAssertion(ta) => &ta.expression,
-            _ => return,
-        };
+        let Some((name, arr_expr)) = as_const_literal(decl) else { return };
 
         let arr = match arr_expr {
             Expression::ArrayExpression(a) => a,
@@ -202,42 +187,30 @@ impl<'src> SourceDataCollector<'src> {
         }
     }
 
+    // ─── Static member assignment scanning ────────────────────────────────────
+
+    /// Parse `X.Y = <right>` out of an `ExpressionStatement`. Shared by every
+    /// scan below that looks for a specific static property name being
+    /// assigned on an already-detected component's binding.
+    fn static_member_assignment<'a, 'b>(
+        &self,
+        stmt: &'b ExpressionStatement<'a>,
+    ) -> Option<(std::string::String, &'b str, &'b Expression<'a>)> {
+        let Expression::AssignmentExpression(assign) = &stmt.expression else { return None };
+        let AssignmentTarget::StaticMemberExpression(sme) = &assign.left else { return None };
+        let obj = self.expression_to_ident_name(&sme.object);
+        Some((obj, sme.property.name.as_str(), &assign.right))
+    }
+
     // ─── `displayName` scanning ───────────────────────────────────────────────
 
-    /// Scan `Button.displayName = "Button"` and update the matching component mapping.
+    /// Scan `Button.displayName = "Button"` and record the rename to apply
+    /// once the whole file has been scanned (see `pending_display_name_renames`'s
+    /// doc comment on why this can't be applied immediately).
     pub(super) fn try_scan_display_name<'a>(&mut self, stmt: &ExpressionStatement<'a>) {
-        let assign = match &stmt.expression {
-            Expression::AssignmentExpression(ae) => ae,
-            _ => return,
-        };
-
-        // Left side must be `X.displayName`
-        let (obj_name, prop_name) = match &assign.left {
-            AssignmentTarget::StaticMemberExpression(sme) => {
-                let obj = self.expression_to_ident_name(&sme.object);
-                let prop = sme.property.name.as_str().to_owned();
-                (obj, prop)
-            }
-            _ => return,
-        };
-
-        if prop_name != "displayName" {
-            return;
-        }
-
-        // Right side must be a string literal
-        let display_name = match &assign.right {
-            Expression::StringLiteral(s) => s.value.as_str().to_owned(),
-            _ => return,
-        };
-
-        // Update matching component mapping
-        for mapping in &mut self.data.component_mappings {
-            if mapping.component_name == obj_name {
-                mapping.component_name = display_name.clone();
-                return;
-            }
-        }
+        let Some((obj_name, "displayName", right)) = self.static_member_assignment(stmt) else { return };
+        let Expression::StringLiteral(s) = right else { return };
+        self.pending_display_name_renames.push((obj_name, s.value.as_str().to_owned()));
     }
 
     // ─── `defaultProps` scanning ───────────────────────────────────────────────
@@ -248,30 +221,8 @@ impl<'src> SourceDataCollector<'src> {
     /// `extract_param_defaults`. Deprecated in React 19 but still shipped in
     /// real .d.ts/.tsx (MUI, among others).
     pub(super) fn try_scan_default_props<'a>(&mut self, stmt: &ExpressionStatement<'a>) {
-        let assign = match &stmt.expression {
-            Expression::AssignmentExpression(ae) => ae,
-            _ => return,
-        };
-
-        // Left side must be `X.defaultProps`
-        let (obj_name, prop_name) = match &assign.left {
-            AssignmentTarget::StaticMemberExpression(sme) => {
-                let obj = self.expression_to_ident_name(&sme.object);
-                let prop = sme.property.name.as_str().to_owned();
-                (obj, prop)
-            }
-            _ => return,
-        };
-
-        if prop_name != "defaultProps" {
-            return;
-        }
-
-        // Right side must be an object literal
-        let defaults_obj = match &assign.right {
-            Expression::ObjectExpression(o) => o,
-            _ => return,
-        };
+        let Some((obj_name, "defaultProps", right)) = self.static_member_assignment(stmt) else { return };
+        let Expression::ObjectExpression(defaults_obj) = right else { return };
 
         let defaults: FxHashMap<std::string::String, RawDefault> = defaults_obj
             .properties
@@ -290,11 +241,8 @@ impl<'src> SourceDataCollector<'src> {
             return;
         }
 
-        for mapping in &mut self.data.component_mappings {
-            if mapping.component_name == obj_name {
-                mapping.param_defaults.extend(defaults);
-                return;
-            }
+        if let Some(mapping) = self.data.component_mappings.iter_mut().find(|m| m.component_name == obj_name) {
+            mapping.param_defaults.extend(defaults);
         }
     }
 }

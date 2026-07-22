@@ -184,6 +184,19 @@ pub(super) struct SourceDataCollector<'src> {
     /// `TSTypeName::QualifiedName` handling) — so storage keys must match, or a same-file
     /// reference to a namespace member can never resolve.
     pub(super) namespace_stack: Vec<CompactString>,
+    /// `X.displayName = "..."` renames recorded during the main traversal but
+    /// not yet applied — see `try_scan_display_name`. Applying these
+    /// immediately would change `component_name` out from under any later
+    /// static-property scan (`try_scan_default_props`, another displayName
+    /// assignment) still looking the mapping up by its original identifier;
+    /// deferring to `finish()` means every other scan always sees the
+    /// original identifier for the whole file, regardless of source order.
+    pub(super) pending_display_name_renames: Vec<(std::string::String, std::string::String)>,
+    /// Identifiers that were the *source* of a `try_rename_identifier_wrapped_component`
+    /// alias — e.g. `InternalButton` in `const Button = InternalButton;`. Once
+    /// aliased, the original is implementation detail, not a second public
+    /// component; filtered out of the final `component_mappings` in `finish()`.
+    pub(super) aliased_away: FxHashSet<CompactString>,
 }
 
 impl<'src> SourceDataCollector<'src> {
@@ -197,6 +210,8 @@ impl<'src> SourceDataCollector<'src> {
             imported_names: FxHashSet::default(),
             consumed_jsdoc: FxHashSet::default(),
             namespace_stack: Vec::new(),
+            pending_display_name_renames: Vec::new(),
+            aliased_away: FxHashSet::default(),
         }
     }
 
@@ -208,7 +223,18 @@ impl<'src> SourceDataCollector<'src> {
         }
     }
 
-    fn finish(self) -> SourceData {
+    fn finish(mut self) -> SourceData {
+        // Filtered by original identifier first, before any displayName rename
+        // below can change what identifier a mapping currently answers to.
+        if !self.aliased_away.is_empty() {
+            let aliased_away = &self.aliased_away;
+            self.data.component_mappings.retain(|m| !aliased_away.contains(m.component_name.as_str()));
+        }
+        for (obj_name, display_name) in self.pending_display_name_renames.drain(..) {
+            if let Some(mapping) = self.data.component_mappings.iter_mut().find(|m| m.component_name == obj_name) {
+                mapping.component_name = display_name;
+            }
+        }
         self.data
     }
 
@@ -1075,6 +1101,71 @@ interface ButtonProps {
         let disabled_default = button.param_defaults.get("disabled");
         assert!(disabled_default.is_some(), "expected 'disabled' default from defaultProps");
         assert_eq!(disabled_default.unwrap().value, "false");
+    }
+
+    #[test]
+    fn test_default_props_scan_survives_a_displayname_rename_to_a_different_string() {
+        // Adversarial review finding: try_scan_display_name used to rename
+        // mapping.component_name to the *string value* of `X.displayName = "..."`
+        // immediately. When that string differs from the variable identifier
+        // (a real, plausible pattern — an internal implementation name exposed
+        // under a nicer public displayName), a later `X.defaultProps = {...}`
+        // referencing the *original* identifier could no longer find the
+        // mapping, since its component_name had already changed out from under
+        // it. The rename must not affect lookups for the rest of the file.
+        let source = r#"
+            interface ButtonProps { size?: string; }
+            function InternalButton(props: ButtonProps) {
+                return null;
+            }
+            InternalButton.displayName = 'PublicButton';
+            InternalButton.defaultProps = { size: 'md' };
+        "#;
+        let path = Utf8Path::new("/test/button.tsx");
+        let data = parse_file(path, source);
+
+        let names: Vec<&str> = data.component_mappings.iter().map(|m| m.component_name.as_str()).collect();
+        assert!(names.contains(&"PublicButton"), "expected the displayName rename to apply, got {:?}", names);
+
+        let button = data.component_mappings.iter().find(|m| m.component_name == "PublicButton");
+        let button = button.expect("PublicButton mapping not found");
+        let size_default = button.param_defaults.get("size");
+        assert!(
+            size_default.is_some(),
+            "expected 'size' default from defaultProps to have been merged despite the earlier \
+             displayName rename to a different string, got {:?}",
+            button.param_defaults
+        );
+    }
+
+    #[test]
+    fn test_two_aliases_to_the_same_base_component_both_survive() {
+        // Adversarial review finding: try_rename_identifier_wrapped_component
+        // mutated the matched mapping's component_name in place. A second,
+        // different alias to the same base component (a real pattern —
+        // exposing both a legacy and a new name for the same implementation)
+        // could never find the base again, since the first alias had already
+        // renamed it away — silently dropping the second alias with no trace.
+        let source = r#"
+            interface ButtonProps { label: string; }
+            const InternalButton = React.forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => {
+                return null;
+            });
+            const LegacyButton = InternalButton;
+            const Button = InternalButton;
+            export default Button;
+        "#;
+        let path = Utf8Path::new("/test/button.tsx");
+        let data = parse_file(path, source);
+
+        let names: Vec<&str> = data.component_mappings.iter().map(|m| m.component_name.as_str()).collect();
+        assert!(names.contains(&"LegacyButton"), "expected LegacyButton to survive as its own alias, got {:?}", names);
+        assert!(names.contains(&"Button"), "expected Button to survive as its own alias, got {:?}", names);
+        assert!(
+            !names.contains(&"InternalButton"),
+            "the internal implementation name should not also appear as a separate public component, got {:?}",
+            names
+        );
     }
 
     #[test]

@@ -299,6 +299,14 @@ impl<'src> SourceDataCollector<'src> {
     /// Also handles the same rename with no wrapper call at all — a bare passthrough
     /// alias, `const Button = InternalCompoundedButton;` (optionally `as X`), antd's
     /// real `Button` export shape.
+    ///
+    /// Clones the matched mapping under the new name rather than renaming it in
+    /// place: a second, different alias to the same base
+    /// (`const A = Base; const Bcopy = Base;`) is a genuinely distinct exported
+    /// binding, not the same rename twice, and renaming in place would make the
+    /// base unfindable for that second alias — silently dropping it. The base's
+    /// own (implementation-only) name is filtered out of the final output in
+    /// `finish()` via `aliased_away`.
     pub(super) fn try_rename_identifier_wrapped_component<'a>(&mut self, decl: &VariableDeclarator<'a>, name: &str) {
         let Some(init) = decl.init.as_ref() else { return };
         let inner_name = match unwrap_as_expression(init) {
@@ -310,12 +318,13 @@ impl<'src> SourceDataCollector<'src> {
             _ => return,
         };
 
-        for mapping in &mut self.data.component_mappings {
-            if mapping.component_name == inner_name {
-                mapping.component_name = name.to_owned();
-                return;
-            }
-        }
+        let Some(base) = self.data.component_mappings.iter().find(|m| m.component_name == inner_name) else {
+            return;
+        };
+        let mut alias = base.clone();
+        alias.component_name = name.to_owned();
+        self.data.component_mappings.push(alias);
+        self.aliased_away.insert(inner_name.into());
     }
 
     /// Extract the callee name of a call expression (simple ident or member expr).

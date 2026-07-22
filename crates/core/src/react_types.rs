@@ -169,7 +169,7 @@ pub fn notable_html_attrs(element: &str) -> &'static [&'static str] {
 }
 
 /// React 18 vs 19 behavioral differences for component detection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReactVersion {
     /// React 18: FC implicitly includes `children` prop.
     /// React 19: FC does NOT implicitly include children.
@@ -183,3 +183,35 @@ pub const REACT_18: ReactVersion = ReactVersion { implicit_children: true, ref_a
 
 /// React 19 config: no implicit children, ref is a regular prop.
 pub const REACT_19: ReactVersion = ReactVersion { implicit_children: false, ref_as_prop: true };
+
+/// Parse a user-supplied react-version string ("react18"/"react19") into a
+/// `ReactVersion`. Returns `Err` (the original string, for a caller to build
+/// its own error message from) for anything else — a typo like "react20" or
+/// "React18" must not silently fall back to react19, the same "never fail
+/// silently" rule this crate's non-negotiables apply everywhere else. Shared
+/// by every caller that accepts this string (CLI flag, docgen.config.ts,
+/// NAPI options) so there's exactly one place this mapping can drift.
+pub fn parse_react_version(s: &str) -> Result<ReactVersion, &str> {
+    match s {
+        "react18" => Ok(REACT_18),
+        "react19" => Ok(REACT_19),
+        other => Err(other),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_react_version_accepts_known_values() {
+        assert_eq!(parse_react_version("react18"), Ok(REACT_18));
+        assert_eq!(parse_react_version("react19"), Ok(REACT_19));
+    }
+
+    #[test]
+    fn parse_react_version_rejects_a_typo_instead_of_silently_defaulting() {
+        assert_eq!(parse_react_version("react20"), Err("react20"));
+        assert_eq!(parse_react_version("React18"), Err("React18"));
+    }
+}

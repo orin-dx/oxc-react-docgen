@@ -49,10 +49,15 @@ pub struct JsExtractOptions {
     pub known_type_overrides_json: Option<String>,
 }
 
-// ─── From<JsExtractOptions> for PipelineOptions ───────────────────────────────
+// ─── TryFrom<JsExtractOptions> for PipelineOptions ────────────────────────────
 
-impl From<JsExtractOptions> for PipelineOptions {
-    fn from(js: JsExtractOptions) -> Self {
+impl TryFrom<JsExtractOptions> for PipelineOptions {
+    /// Names the bad `reactVersion` value — a typo (or a caller bypassing the
+    /// `'react18' | 'react19'` TS type, e.g. via `as any`) must not silently
+    /// fall back to react19 (crates/core/CLAUDE.md non-negotiable #6).
+    type Error = String;
+
+    fn try_from(js: JsExtractOptions) -> Result<Self, Self::Error> {
         use compact_str::CompactString;
 
         let extra_builtins: rustc_hash::FxHashSet<CompactString> =
@@ -75,13 +80,16 @@ impl From<JsExtractOptions> for PipelineOptions {
         let known_type_overrides: rustc_hash::FxHashMap<String, oxc_react_docgen_core::pipeline::KnownTypeOverride> =
             js.known_type_overrides_json.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
 
-        PipelineOptions {
+        let react_version = match js.react_version.as_deref() {
+            Some(v) => oxc_react_docgen_core::react_types::parse_react_version(v)
+                .map_err(|bad| format!("reactVersion is '{bad}', expected \"react18\" or \"react19\""))?,
+            None => oxc_react_docgen_core::react_types::REACT_19,
+        };
+
+        Ok(PipelineOptions {
             src_dirs: js.src_dirs.into_iter().map(Into::into).collect(),
             exclude_patterns: js.exclude.unwrap_or_default(),
-            react_version: match js.react_version.as_deref() {
-                Some("react18") => oxc_react_docgen_core::react_types::REACT_18,
-                _ => oxc_react_docgen_core::react_types::REACT_19,
-            },
+            react_version,
             cross_package: js.cross_package.unwrap_or(true),
             pandacss_outdir: js.pandacss_outdir.map(Into::into),
             variant_functions: js
@@ -100,7 +108,7 @@ impl From<JsExtractOptions> for PipelineOptions {
             cache_dir: js.cache_dir.map(Into::into),
             resolve_complex_types: js.resolve_complex_types.unwrap_or(false),
             exclude_prefixes: vec![],
-        }
+        })
     }
 }
 
@@ -110,7 +118,7 @@ impl From<JsExtractOptions> for PipelineOptions {
 /// Use for: build-time extraction, CLI backing, one-off runs.
 #[napi]
 pub async fn extract_all(options: JsExtractOptions) -> napi::Result<String> {
-    let pipeline_options = PipelineOptions::from(options);
+    let pipeline_options = PipelineOptions::try_from(options).map_err(napi::Error::from_reason)?;
     tokio::task::spawn_blocking(move || {
         let output = oxc_react_docgen_core::pipeline::extract(&pipeline_options);
         extraction_output_to_json(&output).map_err(|e| napi::Error::from_reason(e.to_string()))
@@ -122,11 +130,12 @@ pub async fn extract_all(options: JsExtractOptions) -> napi::Result<String> {
 /// Create a persistent watch session. Returns session ID.
 /// Call this in Vite's configResolved hook.
 #[napi]
-pub fn create_session(options: JsExtractOptions) -> u32 {
+pub fn create_session(options: JsExtractOptions) -> napi::Result<u32> {
+    let pipeline_options = PipelineOptions::try_from(options).map_err(napi::Error::from_reason)?;
     let id = next_session_id();
-    let session = Arc::new(WatchSession::new(PipelineOptions::from(options)));
+    let session = Arc::new(WatchSession::new(pipeline_options));
     SESSIONS.insert(id, session);
-    id
+    Ok(id)
 }
 
 /// Incremental extraction for a single changed file.
@@ -138,10 +147,15 @@ pub async fn extract_file_incremental(
     session_id: u32,
     options: JsExtractOptions,
 ) -> napi::Result<String> {
-    let session = SESSIONS
-        .entry(session_id)
-        .or_insert_with(|| Arc::new(WatchSession::new(PipelineOptions::from(options))))
-        .clone();
+    let session = match SESSIONS.get(&session_id) {
+        Some(s) => s.clone(),
+        None => {
+            let pipeline_options = PipelineOptions::try_from(options).map_err(napi::Error::from_reason)?;
+            let s = Arc::new(WatchSession::new(pipeline_options));
+            SESSIONS.insert(session_id, s.clone());
+            s
+        }
+    };
 
     tokio::task::spawn_blocking(move || {
         let path = Utf8Path::new(&file_path);
@@ -160,7 +174,8 @@ pub async fn initialize_session(session_id: u32, options: JsExtractOptions) -> n
     let session = match SESSIONS.get(&session_id) {
         Some(s) => s.clone(),
         None => {
-            let s = Arc::new(WatchSession::new(PipelineOptions::from(options)));
+            let pipeline_options = PipelineOptions::try_from(options).map_err(napi::Error::from_reason)?;
+            let s = Arc::new(WatchSession::new(pipeline_options));
             SESSIONS.insert(session_id, s.clone());
             s
         }

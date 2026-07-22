@@ -1,9 +1,12 @@
-use miette::Result;
+use miette::{IntoDiagnostic, Result};
 
 use crate::config::{build_options, BuildOptionsArgs};
 use crate::output::{print_diagnostics, print_summary};
 
-pub fn cmd_check(args: crate::CheckArgs, quiet: bool, config_path: Option<&str>) -> Result<()> {
+/// Returns the process exit code (0 = clean, 1 = --strict and warnings found,
+/// 2 = errors found) rather than calling `std::process::exit` directly — see
+/// `cmd_extract`'s doc comment for why.
+pub fn cmd_check(args: crate::CheckArgs, quiet: bool, config_path: Option<&str>) -> Result<i32> {
     let options = build_options(BuildOptionsArgs {
         src: &args.src,
         no_cross_package: false,
@@ -26,17 +29,31 @@ pub fn cmd_check(args: crate::CheckArgs, quiet: bool, config_path: Option<&str>)
         .filter(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Warning))
         .collect();
 
-    if !quiet {
+    if args.json {
+        println!("{}", serde_json::to_string(&output.diagnostics).into_diagnostic()?);
+    } else if !quiet {
         print_summary(&output, quiet);
         print_diagnostics(&output.diagnostics);
     }
 
     if !errors.is_empty() {
-        std::process::exit(2);
+        return Ok(2);
     }
     if args.strict && !warnings.is_empty() {
-        std::process::exit(1);
+        return Ok(1);
     }
 
-    Ok(())
+    Ok(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_mode_still_returns_the_error_exit_code() {
+        let args = crate::CheckArgs { src: vec!["/nonexistent/does-not-exist".into()], strict: false, json: true };
+        let code = cmd_check(args, true, None).expect("cmd_check itself should not error");
+        assert_eq!(code, 2, "expected exit code 2 for a nonexistent src dir even in --json mode");
+    }
 }

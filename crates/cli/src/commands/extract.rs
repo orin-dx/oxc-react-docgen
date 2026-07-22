@@ -3,7 +3,11 @@ use miette::{IntoDiagnostic, Result, WrapErr};
 use crate::config::{build_options, BuildOptionsArgs};
 use crate::output::{print_diagnostics, print_summary};
 
-pub fn cmd_extract(args: crate::ExtractArgs, json_mode: bool, quiet: bool, config_path: Option<&str>) -> Result<()> {
+/// Returns the process exit code (0 = success, 2 = extraction reported an
+/// error-severity diagnostic) rather than calling `std::process::exit`
+/// directly — keeps the exit decision testable and lets `main()` be the only
+/// place that actually terminates the process.
+pub fn cmd_extract(args: crate::ExtractArgs, quiet: bool, config_path: Option<&str>) -> Result<i32> {
     use indicatif::{ProgressBar, ProgressStyle};
 
     let html_attributes = args.html_attributes.map(|m| match m {
@@ -21,7 +25,7 @@ pub fn cmd_extract(args: crate::ExtractArgs, json_mode: bool, quiet: bool, confi
         extra_builtins: &args.extra_builtins,
     })?;
 
-    let pb = if !quiet && !json_mode {
+    let pb = if !quiet && !args.json {
         let pb = ProgressBar::new_spinner();
         pb.set_style(ProgressStyle::default_spinner().template("{spinner:.cyan} {msg}").into_diagnostic()?);
         pb.set_message("Extracting...");
@@ -37,33 +41,35 @@ pub fn cmd_extract(args: crate::ExtractArgs, json_mode: bool, quiet: bool, confi
         pb.finish_and_clear();
     }
 
-    if json_mode {
+    // --json ignores --out/--format — see ExtractArgs::json's doc comment.
+    if args.json {
         println!("{}", serde_json::to_string(&output).into_diagnostic()?);
-        return Ok(());
+    } else {
+        if !quiet {
+            print_summary(&output, quiet);
+            print_diagnostics(&output.diagnostics);
+        }
+
+        let json = match args.format {
+            crate::OutputFormat::Canonical => serde_json::to_string_pretty(&output).into_diagnostic()?,
+            crate::OutputFormat::Rdt => serialize_rdt(&output),
+            crate::OutputFormat::Storybook => serialize_storybook(&output),
+        };
+
+        match args.out {
+            Some(ref path) => std::fs::write(path, &json).into_diagnostic().wrap_err(format!("Writing to {path}"))?,
+            None => println!("{json}"),
+        }
     }
 
-    if !quiet {
-        print_summary(&output, quiet);
-        print_diagnostics(&output.diagnostics);
-    }
+    // Must run regardless of --json — this is the one thing CI actually
+    // depends on the exit code for.
+    let has_errors = output
+        .diagnostics
+        .iter()
+        .any(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Error));
 
-    let json = match args.format {
-        crate::OutputFormat::Canonical => serde_json::to_string_pretty(&output).into_diagnostic()?,
-        crate::OutputFormat::Rdt => serialize_rdt(&output),
-        crate::OutputFormat::Storybook => serialize_storybook(&output),
-    };
-
-    match args.out {
-        Some(ref path) => std::fs::write(path, &json).into_diagnostic().wrap_err(format!("Writing to {path}"))?,
-        None => println!("{json}"),
-    }
-
-    if output.diagnostics.iter().any(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Error))
-    {
-        std::process::exit(2);
-    }
-
-    Ok(())
+    Ok(if has_errors { 2 } else { 0 })
 }
 
 /// RDT's type-name convention for literal unions: `{"name": "enum", "value": [...]}`
@@ -149,4 +155,41 @@ pub fn serialize_storybook(output: &oxc_react_docgen_core::types::ExtractionOutp
         );
     }
     serde_json::to_string_pretty(&serde_json::Value::Object(map)).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args_for(src: &str, json: bool) -> crate::ExtractArgs {
+        crate::ExtractArgs {
+            src: vec![src.to_owned()],
+            out: None,
+            format: crate::OutputFormat::Canonical,
+            no_cross_package: false,
+            react_version: None,
+            cache_dir: None,
+            html_attributes: None,
+            extra_builtins: vec![],
+            json,
+        }
+    }
+
+    #[test]
+    fn json_mode_still_returns_the_error_exit_code() {
+        // Adversarial review finding: --json returned before the error-
+        // diagnostic exit-code check, so `extract --json` always exited 0
+        // even on hard errors — the one signal CI actually depends on.
+        let code = cmd_extract(args_for("/nonexistent/does-not-exist", true), true, None)
+            .expect("cmd_extract itself should not error");
+        assert_eq!(code, 2, "expected exit code 2 for a nonexistent src dir even in --json mode");
+    }
+
+    #[test]
+    fn non_json_mode_returns_the_same_error_exit_code() {
+        // Same check, non-json path — both must agree.
+        let code = cmd_extract(args_for("/nonexistent/does-not-exist", false), true, None)
+            .expect("cmd_extract itself should not error");
+        assert_eq!(code, 2);
+    }
 }

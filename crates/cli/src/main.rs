@@ -24,10 +24,6 @@ pub struct Cli {
     #[command(subcommand)]
     command: Command,
 
-    /// Machine-readable JSON output (suppresses human-readable output)
-    #[arg(global = true, long, short = 'j')]
-    json: bool,
-
     /// Verbose output (repeat for more: -v, -vv)
     #[arg(global = true, long, short, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -94,6 +90,12 @@ pub struct ExtractArgs {
     /// e.g. a library-specific type this tool doesn't already know
     #[arg(long, value_delimiter = ',')]
     pub extra_builtins: Vec<String>,
+
+    /// Machine-readable JSON output: the canonical schema, compact, always to
+    /// stdout, ignoring --out/--format (which govern the human/RDT/Storybook
+    /// paths below), and suppresses the human-readable summary/diagnostics.
+    #[arg(long, short = 'j')]
+    pub json: bool,
 }
 
 #[derive(clap::ValueEnum, Clone)]
@@ -146,6 +148,10 @@ pub struct CheckArgs {
     /// Fail on warnings in addition to errors (exits 1, distinct from the exit-2 error path)
     #[arg(long)]
     pub strict: bool,
+
+    /// Machine-readable JSON diagnostics instead of the human-readable table
+    #[arg(long, short = 'j')]
+    pub json: bool,
 }
 
 #[derive(clap::Args)]
@@ -160,13 +166,27 @@ fn main() -> Result<()> {
 
     init_tracing(cli.verbose);
 
-    match cli.command {
-        Command::Extract(args) => cmd_extract(args, cli.json, cli.quiet, cli.config.as_deref()),
-        Command::Watch(args) => cmd_watch(args, cli.quiet, cli.config.as_deref()),
-        Command::Check(args) => cmd_check(args, cli.quiet, cli.config.as_deref()),
-        Command::Inspect(args) => cmd_inspect(args, cli.config.as_deref()),
-        Command::Completions(args) => cmd_completions(args),
+    let exit_code = match cli.command {
+        Command::Extract(args) => cmd_extract(args, cli.quiet, cli.config.as_deref())?,
+        Command::Watch(args) => {
+            cmd_watch(args, cli.quiet, cli.config.as_deref())?;
+            0
+        }
+        Command::Check(args) => cmd_check(args, cli.quiet, cli.config.as_deref())?,
+        Command::Inspect(args) => {
+            cmd_inspect(args, cli.config.as_deref())?;
+            0
+        }
+        Command::Completions(args) => {
+            cmd_completions(args)?;
+            0
+        }
+    };
+
+    if exit_code != 0 {
+        std::process::exit(exit_code);
     }
+    Ok(())
 }
 
 fn init_tracing(verbose: u8) {

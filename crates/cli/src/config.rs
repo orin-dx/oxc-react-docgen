@@ -1,4 +1,4 @@
-use miette::{IntoDiagnostic, Result};
+use miette::{IntoDiagnostic, Result, WrapErr};
 use oxc_react_docgen_core::pipeline::{HtmlAttributeMode, PipelineOptions};
 use serde::Deserialize;
 
@@ -28,7 +28,9 @@ struct DocgenConfigSchema {
 }
 
 impl DocgenConfigSchema {
-    fn into_pipeline_options(self) -> PipelineOptions {
+    /// `Err` names the bad `reactVersion` value — a typo must not silently
+    /// fall back to react19 (non-negotiable #6: never fail silently).
+    fn into_pipeline_options(self) -> Result<PipelineOptions, String> {
         let mut opts = PipelineOptions::default();
         if let Some(dirs) = self.src_dirs {
             opts.src_dirs = dirs.into_iter().map(Into::into).collect();
@@ -40,11 +42,8 @@ impl DocgenConfigSchema {
             opts.exclude_prefixes = prefixes;
         }
         if let Some(v) = self.react_version.as_deref() {
-            opts.react_version = if v == "react18" {
-                oxc_react_docgen_core::react_types::REACT_18
-            } else {
-                oxc_react_docgen_core::react_types::REACT_19
-            };
+            opts.react_version = oxc_react_docgen_core::react_types::parse_react_version(v)
+                .map_err(|bad| format!("reactVersion is '{bad}', expected \"react18\" or \"react19\""))?;
         }
         if let Some(cross_package) = self.cross_package {
             opts.cross_package = cross_package;
@@ -74,7 +73,7 @@ impl DocgenConfigSchema {
         if let Some(names) = self.extra_builtins {
             opts.extra_builtins = names.into_iter().map(Into::into).collect();
         }
-        opts
+        Ok(opts)
     }
 }
 
@@ -127,7 +126,7 @@ pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>
         .env("__DOCGEN_CONFIG_PATH", path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
+        .stderr(std::process::Stdio::piped());
     // Resolve `tsx` (and anything the config file itself imports) relative to the
     // config file's own directory, not wherever the CLI happened to be invoked
     // from — matters for `--config ../other-project/docgen.config.ts` pointing
@@ -136,7 +135,10 @@ pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>
     if let Some(dir) = path.parent() {
         command.current_dir(dir);
     }
-    let mut child = command.spawn().into_diagnostic()?;
+    let mut child = command
+        .spawn()
+        .into_diagnostic()
+        .wrap_err("Failed to spawn node to evaluate docgen.config.ts — is node installed and on PATH?")?;
 
     // Write the script to stdin, then close stdin to signal EOF.
     let mut stdin =
@@ -147,11 +149,13 @@ pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>
     let output = child.wait_with_output().into_diagnostic()?;
 
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(miette::miette!(
             help = "Check docgen.config.ts for syntax errors, or remove it to use defaults.",
-            "docgen.config.ts at {} failed to evaluate ({})",
+            "docgen.config.ts at {} failed to evaluate ({}):\n{}",
             path.display(),
             output.status,
+            stderr.trim(),
         ));
     }
 
@@ -167,7 +171,9 @@ pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>
         )
     })?;
 
-    Ok(Some(schema.into_pipeline_options()))
+    let opts =
+        schema.into_pipeline_options().map_err(|e| miette::miette!("docgen.config.ts at {}: {}", path.display(), e))?;
+    Ok(Some(opts))
 }
 
 /// CLI-flag overrides for [`build_options`], bundled to stay under this crate's
@@ -198,11 +204,13 @@ pub fn build_options(args: BuildOptionsArgs) -> Result<PipelineOptions> {
         opts.cross_package = false;
     }
     if let Some(v) = args.react_version {
-        opts.react_version = if v == "react18" {
-            oxc_react_docgen_core::react_types::REACT_18
-        } else {
-            oxc_react_docgen_core::react_types::REACT_19
-        };
+        opts.react_version = oxc_react_docgen_core::react_types::parse_react_version(v).map_err(|bad| {
+            miette::miette!(
+                help = "Expected \"react18\" or \"react19\".",
+                "--react-version is '{}', which isn't a recognized value",
+                bad
+            )
+        })?;
     }
     if let Some(dir) = args.cache_dir {
         opts.cache_dir = Some(dir.into());
@@ -235,7 +243,7 @@ mod tests {
             "extraBuiltins": ["MyCustomType", "AnotherType"]
         }"#;
         let schema: DocgenConfigSchema = serde_json::from_str(json).expect("valid config JSON");
-        let opts = schema.into_pipeline_options();
+        let opts = schema.into_pipeline_options().expect("valid reactVersion");
 
         assert_eq!(opts.src_dirs, vec![camino::Utf8PathBuf::from("app/components")]);
         assert!(!opts.cross_package);
@@ -258,9 +266,19 @@ mod tests {
     }
 
     #[test]
+    fn config_schema_rejects_a_typo_d_react_version_instead_of_defaulting() {
+        // Adversarial review finding: a typo'd reactVersion silently defaulted
+        // to react19 with no error at all.
+        let json = r#"{ "reactVersion": "react20" }"#;
+        let schema: DocgenConfigSchema = serde_json::from_str(json).expect("valid config JSON");
+        let err = schema.into_pipeline_options().expect_err("react20 is not a recognized reactVersion");
+        assert!(err.contains("react20"), "expected the bad value named in the error, got: {err}");
+    }
+
+    #[test]
     fn config_schema_defaults_are_used_when_a_field_is_absent() {
         let schema: DocgenConfigSchema = serde_json::from_str("{}").expect("empty object is valid");
-        let opts = schema.into_pipeline_options();
+        let opts = schema.into_pipeline_options().expect("no reactVersion means no validation to fail");
         let defaults = PipelineOptions::default();
 
         assert_eq!(opts.src_dirs, defaults.src_dirs);
@@ -296,6 +314,30 @@ export default {
         assert_eq!(opts.src_dirs, vec![camino::Utf8PathBuf::from("src/components")]);
         assert_eq!(opts.html_attributes, HtmlAttributeMode::Full);
         assert!(!opts.cross_package);
+    }
+
+    #[test]
+    fn try_load_config_surfaces_the_real_syntax_error_not_just_an_exit_status() {
+        // Adversarial review finding: node/tsx's stderr was sent to
+        // Stdio::null(), so a config file that failed to evaluate produced a
+        // generic "failed to evaluate (exit status: 1)" with the actual
+        // syntax error/stack trace thrown away — the one piece of
+        // information that would actually tell the user what's wrong.
+        let validate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/validate");
+        let tmp = tempfile::TempDir::new_in(&validate_dir).unwrap();
+        let config_path = tmp.path().join("docgen.config.ts");
+        std::fs::write(&config_path, "export default {{{{ this is not valid javascript").unwrap();
+
+        let err = try_load_config(&config_path).expect_err("a real syntax error should fail to evaluate");
+        let message = format!("{err:?}");
+        // This repo's apps/validate uses tsx's esbuild-based transform, which
+        // reports "ERROR: Expected identifier..."; a native TS-stripping
+        // toolchain would instead say "SyntaxError" — accept either so this
+        // isn't pinned to one specific transpiler's exact wording.
+        assert!(
+            message.contains("Expected identifier") || message.contains("SyntaxError"),
+            "expected the real node/tsx error output in the message, got: {message}"
+        );
     }
 
     #[test]

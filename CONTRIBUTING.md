@@ -15,7 +15,7 @@ After installing proto, run `moon setup` once to pull the pinned Node version an
 ```bash
 # Rust
 cargo build                                            # dev build
-cargo test -p oxc-react-docgen-core                   # 100 unit + snapshot tests
+cargo test -p oxc-react-docgen-core                   # unit + snapshot tests
 cargo clippy -p oxc-react-docgen-core -- -D warnings
 cargo fmt --all
 

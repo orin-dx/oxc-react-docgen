@@ -8,7 +8,7 @@ Thin command layer — no extraction logic. Each command parses args and delegat
 ```
 main.rs              — Cli struct, Command enum, *Args structs, main(), init_tracing()
 commands/            — one file per subcommand (extract, watch, inspect, check, completions)
-config.rs            — docgen.config.ts loading (currently stubbed)
+config.rs            — docgen.config.ts loading, maps to PipelineOptions
 output.rs            — comfy-table formatting helpers
 ```
 

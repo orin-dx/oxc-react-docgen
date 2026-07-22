@@ -175,9 +175,14 @@ Component props and enums are serialized as `BTreeMap<String, …>` rather than 
 
 | Feature | Status |
 |---------|--------|
-| Config file (`docgen.config.ts`) | Discovered and evaluated via node+tsx; result discarded. Wire `JSON → PipelineOptions` mapping. |
 | Preset system (`@oxc-react-docgen/presets`) | Designed; no Rust changes needed — config-side only. |
-| Cross-package resolution | Multi-pass import-graph loader designed in `docs/10-QUALITY-AND-ARCHITECTURE.md`; `ResolveState.needed_specifiers` placeholder exists. |
 | LSP server | `lsp-types` dep present; nothing implemented. |
-| Conditional types (`T extends U ? X : Y`) | Emitted as `opaque`. |
+| React 19 `ref`-as-prop | `ReactVersion::ref_as_prop` field exists; nothing reads it yet. |
+| Compound components (`Dialog.Trigger`) | Not detected as separate components. |
+| Static `defaultProps` assignment | Destructured defaults are read; `X.defaultProps = {...}` is not. |
+| Conditional types (`T extends U ? X : Y`) | Emitted as `opaque` — needs a real type checker, see `docs/type-checker-integration.md`. |
 | Mapped types with computed keys | Emitted as `opaque`. |
+
+Config file loading and cross-package `.d.ts` resolution are both fully
+implemented — see `docs/STATUS.md` if you're checking whether an older doc's
+claim about either is still true.

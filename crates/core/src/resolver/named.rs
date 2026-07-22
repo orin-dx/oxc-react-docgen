@@ -25,15 +25,7 @@ pub(super) fn resolve_named(
     depth: u8,
 ) -> PropType {
     if depth > MAX_DEPTH {
-        state.diagnostics.push(Diagnostic {
-            severity: DiagnosticSeverity::Warning,
-            message: format!("Max resolution depth exceeded for named type '{}'", name),
-            file: Some(consuming_file.to_string()),
-            line: None,
-            column: None,
-            help: None,
-            code: DiagnosticCode::MaxDepthExceeded,
-        });
+        state.diagnostics.push(super::max_depth_diagnostic(&format!("named type '{}'", name), consuming_file));
         return PropType::Opaque { raw: name.to_string(), reason: OpaqueReason::DepthExceeded };
     }
 
@@ -158,7 +150,10 @@ pub(super) fn resolve_named(
     // ── 7. Unresolvable — emit diagnostic, return Named ───────────────────────
     state.diagnostics.push(Diagnostic {
         severity: DiagnosticSeverity::Warning,
-        message: format!("Cannot resolve type '{}' in '{}' — it will appear as opaque", name, consuming_file),
+        message: format!(
+            "Cannot resolve type '{}' in '{}' — it will appear as an unexpanded named reference",
+            name, consuming_file
+        ),
         file: Some(consuming_file.to_string()),
         line: None,
         column: None,

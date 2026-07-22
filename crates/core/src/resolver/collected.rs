@@ -21,15 +21,7 @@ pub fn resolve_collected_type(
     depth: u8,
 ) -> PropType {
     if depth > MAX_DEPTH {
-        state.diagnostics.push(Diagnostic {
-            severity: DiagnosticSeverity::Warning,
-            message: format!("Max resolution depth exceeded resolving type: {}", ct.to_raw_string()),
-            file: Some(consuming_file.to_string()),
-            line: None,
-            column: None,
-            help: None,
-            code: DiagnosticCode::MaxDepthExceeded,
-        });
+        state.diagnostics.push(super::max_depth_diagnostic(&format!("type '{}'", ct.to_raw_string()), consuming_file));
         return PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::DepthExceeded };
     }
 
@@ -156,7 +148,7 @@ pub fn resolve_collected_type(
                 PropType::Named { name: trimmed.into(), args: vec![] }
             } else {
                 push_opaque_diagnostic(state, "an unparsable raw type expression", ct, consuming_file);
-                PropType::Opaque { raw: s.clone(), reason: OpaqueReason::DepthExceeded }
+                PropType::Opaque { raw: s.clone(), reason: OpaqueReason::UnsupportedExpression }
             }
         }
     }

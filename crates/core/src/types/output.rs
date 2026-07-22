@@ -386,6 +386,10 @@ impl PropType {
                     OpaqueReason::TemplateLiteral { expression } => {
                         serde_json::json!({"type": "templateLiteral", "expression": expression})
                     }
+                    OpaqueReason::MultiParamFunction => serde_json::json!({"type": "multiParamFunction"}),
+                    OpaqueReason::UnsupportedExpression => {
+                        serde_json::json!({"type": "unsupportedExpression"})
+                    }
                 };
                 serde_json::json!({"kind": "opaque", "raw": raw, "reason": reason_val})
             }
@@ -518,6 +522,8 @@ impl PropType {
                     "templateLiteral" => OpaqueReason::TemplateLiteral {
                         expression: v["reason"]["expression"].as_str().unwrap_or("").to_owned(),
                     },
+                    "multiParamFunction" => OpaqueReason::MultiParamFunction,
+                    "unsupportedExpression" => OpaqueReason::UnsupportedExpression,
                     _ => OpaqueReason::DepthExceeded,
                 };
                 Ok(PropType::Opaque { raw, reason })
@@ -577,6 +583,13 @@ pub enum OpaqueReason {
     IndexedAccess { expression: std::string::String },
     /// Template literal type — partially or fully unresolvable.
     TemplateLiteral { expression: std::string::String },
+    /// A function type with more than one parameter — describing it fully
+    /// needs a real type signature, not just an EventHandler-shaped summary.
+    MultiParamFunction,
+    /// A raw type expression the extractor couldn't parse into any recognized
+    /// structural shape (not a depth or circularity problem — see
+    /// DepthExceeded for that).
+    UnsupportedExpression,
 }
 
 /// A field in an object type.

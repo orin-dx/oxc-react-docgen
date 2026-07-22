@@ -27,15 +27,7 @@ pub(super) fn resolve_props_chain(
     depth: u8,
 ) -> ResolvedChain {
     if depth > MAX_DEPTH {
-        state.diagnostics.push(Diagnostic {
-            severity: DiagnosticSeverity::Warning,
-            message: format!("Max resolution depth exceeded for type '{}'", type_name),
-            file: Some(consuming_file.to_string()),
-            line: None,
-            column: None,
-            help: Some("This may indicate a circular type reference".into()),
-            code: DiagnosticCode::MaxDepthExceeded,
-        });
+        state.diagnostics.push(super::max_depth_diagnostic(&format!("type '{}'", type_name), consuming_file));
         return ResolvedChain::empty_with_compose(type_name.to_owned());
     }
 

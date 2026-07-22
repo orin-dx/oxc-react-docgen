@@ -42,6 +42,24 @@ mod template;
 /// Prevents infinite loops on circular type references.
 const MAX_DEPTH: u8 = 20;
 
+/// Shared "max resolution depth exceeded" diagnostic — every recursive
+/// resolver entry point (resolve_named, resolve_props_chain,
+/// resolve_collected_type) hits this same guard, and previously each built
+/// its own slightly different message with only one of the three including
+/// the circular-reference hint. `what` should read naturally after
+/// "resolving", e.g. "type 'Foo'" or "named type 'Bar'".
+pub(super) fn max_depth_diagnostic(what: &str, file: &Utf8Path) -> Diagnostic {
+    Diagnostic {
+        severity: DiagnosticSeverity::Warning,
+        message: format!("Max resolution depth exceeded resolving {what}"),
+        file: Some(file.to_string()),
+        line: None,
+        column: None,
+        help: Some("This may indicate a circular type reference.".into()),
+        code: DiagnosticCode::MaxDepthExceeded,
+    }
+}
+
 // ─── ResolutionContext ────────────────────────────────────────────────────────
 
 /// Shared, read-only context passed to all resolution functions.
@@ -1938,6 +1956,26 @@ mod tests {
             matches!(&result, PropType::EventHandler { event_type, param_name }
                 if event_type == "MouseEvent" && param_name.as_deref() == Some("e")),
             "Expected EventHandler<MouseEvent> with param_name 'e', got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_function_type_multi_param_tags_multi_param_function_not_conditional_type() {
+        // Adversarial review finding: a multi-param function type's Opaque
+        // result was tagged OpaqueReason::ConditionalType — factually wrong,
+        // it's not a conditional type at all — misleading anyone consuming
+        // the "reason" field to understand why a prop degraded.
+        let ctx = empty_ctx();
+        let ct = CollectedType::Function {
+            params: vec![CollectedType::String, CollectedType::Number],
+            param_names: vec![Some("a".into()), Some("b".into())],
+            return_type: Box::new(CollectedType::Void),
+        };
+        let result = resolve_type(&ct, &ctx);
+        assert!(
+            matches!(result, PropType::Opaque { reason: OpaqueReason::MultiParamFunction, .. }),
+            "Expected MultiParamFunction opaque, got {:?}",
             result
         );
     }

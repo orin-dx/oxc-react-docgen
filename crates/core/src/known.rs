@@ -46,6 +46,8 @@ pub fn push_known_opaque_diagnostic(
         OpaqueReason::DepthExceeded => "exceeded the maximum resolution depth".to_string(),
         OpaqueReason::IndexedAccess { expression } => format!("is an indexed access type ('{expression}')"),
         OpaqueReason::TemplateLiteral { expression } => format!("is a template literal type ('{expression}')"),
+        OpaqueReason::MultiParamFunction => "is a function type with more than one parameter".to_string(),
+        OpaqueReason::UnsupportedExpression => "is a type expression this tool doesn't recognize".to_string(),
     };
     diagnostics.push(Diagnostic {
         severity: DiagnosticSeverity::Info,

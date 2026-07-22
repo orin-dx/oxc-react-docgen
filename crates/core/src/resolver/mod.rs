@@ -75,6 +75,24 @@ pub struct ResolutionContext {
 
 impl ResolutionContext {
     pub fn new(global: Arc<GlobalSourceData>, options: &PipelineOptions) -> Self {
+        Self::build(global, options, compute_ambient_global_files(options))
+    }
+
+    /// Same as `new`, but for a caller that already knows the answer to
+    /// `compute_ambient_global_files` and wants to skip its filesystem walk —
+    /// `options.src_dirs` (the only input that walk depends on) never changes
+    /// within a `WatchSession`'s lifetime, so re-walking it on every single
+    /// `update_file` call (i.e. every file save) is pure waste. See
+    /// `WatchSession::update_file`.
+    pub fn new_with_cached_ambient_global_files(
+        global: Arc<GlobalSourceData>,
+        options: &PipelineOptions,
+        ambient_global_files: Vec<Utf8PathBuf>,
+    ) -> Self {
+        Self::build(global, options, ambient_global_files)
+    }
+
+    fn build(global: Arc<GlobalSourceData>, options: &PipelineOptions, ambient_global_files: Vec<Utf8PathBuf>) -> Self {
         let alias: Vec<(String, Vec<AliasValue>)> = react::read_tsconfig_paths(options.tsconfig_path.as_deref());
 
         let resolve_options = ResolveOptions {
@@ -99,14 +117,6 @@ impl ResolutionContext {
                 .or_insert_with(|| CompactString::from(key.as_str()));
         }
 
-        let ambient_global_files = options
-            .src_dirs
-            .first()
-            .and_then(|dir| std::fs::canonicalize(dir).ok())
-            .and_then(|p| Utf8PathBuf::from_path_buf(p).ok())
-            .map(|from_dir| resolve_ts_lib_paths(&from_dir).into_iter().map(Utf8PathBuf::from).collect())
-            .unwrap_or_default();
-
         Self {
             import_map: Arc::new(ImportResolutionMap::build(&global)),
             global,
@@ -118,6 +128,18 @@ impl ResolutionContext {
             ambient_global_files,
         }
     }
+}
+
+/// Resolve TypeScript's own `lib.es5.d.ts`/`lib.dom.d.ts` paths for the given
+/// options' first source directory, if resolvable — see `resolve_ts_lib_paths`.
+pub fn compute_ambient_global_files(options: &PipelineOptions) -> Vec<Utf8PathBuf> {
+    options
+        .src_dirs
+        .first()
+        .and_then(|dir| std::fs::canonicalize(dir).ok())
+        .and_then(|p| Utf8PathBuf::from_path_buf(p).ok())
+        .map(|from_dir| resolve_ts_lib_paths(&from_dir).into_iter().map(Utf8PathBuf::from).collect())
+        .unwrap_or_default()
 }
 
 /// Resolve `package_name` (e.g. "react") to its real `.d.ts` file path, for

@@ -188,6 +188,24 @@ pub fn incremental_update_to_json(update: &IncrementalUpdate) -> Result<String, 
 
 /// Stateless extraction — suitable for CLI and NAPI cold runs.
 pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
+    extract_with_global(options, false).0
+}
+
+/// Shared implementation for `extract()` and `WatchSession::initialize()`.
+/// Runs every phase (discover, parse, merge, Full-mode `@types/react`,
+/// ambient lib.d.ts, resolve) exactly once and hands back everything a caller
+/// might need beyond the public-facing output: the fully-merged
+/// `GlobalSourceData` (so watch mode doesn't have to hand-rebuild a second,
+/// easily-incomplete one just for incremental updates — see `WatchSession`'s
+/// prior bug, where its own rebuild skipped the Full-mode/ambient-lib.d.ts
+/// merges entirely) and each file's own parsed `SourceData` (so watch mode can
+/// seed its per-file cache without re-parsing). `capture_source_data` is
+/// `false` for the one-shot `extract()` path, which never looks at the third
+/// tuple element — skip the extra per-file clone in that case.
+pub(crate) fn extract_with_global(
+    options: &PipelineOptions,
+    capture_source_data: bool,
+) -> (ExtractionOutput, Arc<GlobalSourceData>, Vec<(Utf8PathBuf, SourceData)>) {
     let start = Instant::now();
     let mut diagnostics = Vec::new();
 
@@ -272,6 +290,7 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
 
     // Phase 3: Merge into GlobalSourceData (sequential — fast hash-map insertions).
     let mut global = GlobalSourceData::default();
+    let mut per_file_data = Vec::new();
     for (path, mut data, io_diag) in source_data_vec {
         if let Some(d) = io_diag {
             diagnostics.push(d);
@@ -279,6 +298,9 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
         // Surface any diagnostics the extractor raised while parsing this file
         // (excessive nesting, syntax errors) — never drop them silently.
         diagnostics.append(&mut data.diagnostics);
+        if capture_source_data {
+            per_file_data.push((path.clone(), data.clone()));
+        }
         global.merge(&path, data);
     }
 
@@ -305,16 +327,7 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
         match crate::resolver::resolve_package_dts_path(&from_dir, "react") {
             Some(react_dts_path) => {
                 let react_dts_path = Utf8PathBuf::from(react_dts_path);
-                let data = match cache.get(&react_dts_path) {
-                    Some(cached) => cached,
-                    None => {
-                        let source = std::fs::read_to_string(&react_dts_path).unwrap_or_default();
-                        let data = crate::extractor::parse_file(&react_dts_path, &source);
-                        cache.insert(&react_dts_path, data.clone());
-                        data
-                    }
-                };
-                global.merge(&react_dts_path, data);
+                merge_cached_dts_file(&react_dts_path, &cache, &mut global, &mut diagnostics);
             }
             None => {
                 diagnostics.push(Diagnostic {
@@ -349,16 +362,7 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
     if let Some(from_dir) = from_dir {
         for lib_path in crate::resolver::resolve_ts_lib_paths(&from_dir) {
             let lib_path = Utf8PathBuf::from(lib_path);
-            let data = match cache.get(&lib_path) {
-                Some(cached) => cached,
-                None => {
-                    let source = std::fs::read_to_string(&lib_path).unwrap_or_default();
-                    let data = crate::extractor::parse_file(&lib_path, &source);
-                    cache.insert(&lib_path, data.clone());
-                    data
-                }
-            };
-            global.merge(&lib_path, data);
+            merge_cached_dts_file(&lib_path, &cache, &mut global, &mut diagnostics);
         }
     }
 
@@ -410,7 +414,7 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
     let duration_ms = start.elapsed().as_millis() as u64;
     let components_extracted = components.len() as u32;
 
-    ExtractionOutput {
+    let output = ExtractionOutput {
         components,
         enums,
         diagnostics,
@@ -421,10 +425,38 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
             duration_ms,
             ..Default::default()
         },
-    }
+    };
+    (output, global, per_file_data)
 }
 
 // ─── Helper functions ─────────────────────────────────────────────────────────
+
+/// Parse-or-load-from-cache a single `.d.ts` file and merge it into `global`,
+/// draining any diagnostics the parse produced into `diagnostics` first —
+/// matching how the main per-project-file loop (Phase 3) already handles this.
+/// Shared by the Full-mode `@types/react` merge (Phase 3.5) and the ambient
+/// `lib.d.ts` merge (Phase 3.6), which previously each merged the parsed data
+/// directly with no diagnostics drain at all: an excessive-nesting trip or a
+/// parse error while parsing either file would have been silently discarded,
+/// since `GlobalSourceData` itself has no diagnostics field to catch it later.
+fn merge_cached_dts_file(
+    path: &Utf8Path,
+    cache: &DtsCache,
+    global: &mut GlobalSourceData,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut data = match cache.get(path) {
+        Some(cached) => cached,
+        None => {
+            let source = std::fs::read_to_string(path).unwrap_or_default();
+            let data = crate::extractor::parse_file(path, &source);
+            cache.insert(path, data.clone());
+            data
+        }
+    };
+    diagnostics.append(&mut data.diagnostics);
+    global.merge(path, data);
+}
 
 /// Collect enum entries that are exported from their source files.
 fn collect_public_enums(global: &GlobalSourceData) -> std::collections::BTreeMap<String, Vec<EnumEntry>> {
@@ -461,6 +493,34 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn merge_cached_dts_file_does_not_drop_parse_diagnostics() {
+        // Adversarial review finding: Phase 3.5 (@types/react Full-mode merge)
+        // and Phase 3.6 (ambient lib.d.ts merge) each called global.merge()
+        // directly on freshly-parsed data with no diagnostics drain first —
+        // GlobalSourceData has no diagnostics field, so anything the extractor
+        // flagged while parsing either file (an excessive-nesting trip, a
+        // parse error) was silently lost. Mirrors
+        // extractor::tests::test_excessive_nesting_guard's exact repro shape.
+        let tmp = TempDir::new().unwrap();
+        let nested = "(".repeat(2500) + &")".repeat(2500);
+        let source = format!("const x = {nested};");
+        let path = write_file(&tmp, "lib.d.ts", &source);
+
+        let cache_dir = Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap();
+        let cache = DtsCache::load_from_disk(Some(&cache_dir));
+        let mut global = GlobalSourceData::default();
+        let mut diagnostics = Vec::new();
+
+        merge_cached_dts_file(&path, &cache, &mut global, &mut diagnostics);
+
+        assert!(
+            diagnostics.iter().any(|d| d.code == DiagnosticCode::ExcessiveNesting),
+            "expected the excessive-nesting diagnostic to survive the merge, got {:?}",
+            diagnostics
+        );
+    }
 
     /// Write a file into a temp dir and return its Utf8PathBuf.
     fn write_file(dir: &TempDir, name: &str, content: &str) -> Utf8PathBuf {
@@ -933,7 +993,15 @@ Button.defaultProps = { size: 'md' };
         // With the stub resolver, no components are returned (mappings list may be
         // empty for a simple stub file), but the call must complete without panic.
         assert!(update.duration_ms < 5_000, "update should complete quickly");
-        // The changed file itself must appear in affected_files.
-        assert!(update.affected_files.contains(&button_path), "changed file should always appear in affected_files");
+        // The changed file itself must appear in affected_files. update_file
+        // canonicalizes its input (matching discover_files' own symlink-
+        // resolved output, e.g. macOS's /var -> /private/var) so compare
+        // against the canonicalized form, not necessarily the raw input.
+        let canonical_button_path =
+            Utf8PathBuf::from_path_buf(std::fs::canonicalize(button_path.as_std_path()).unwrap()).unwrap();
+        assert!(
+            update.affected_files.contains(&canonical_button_path),
+            "changed file should always appear in affected_files"
+        );
     }
 }

@@ -785,6 +785,56 @@ export function DatePicker(props: DatePickerProps) { return null; }
         );
     }
 
+    // ── test_indexed_access_into_ambient_dom_interface_resolves_via_real_lib ──
+    //
+    // Regression test for: day-picker's `HTMLDivElement["dir"]` (also "nonce",
+    // "title", "lang") degraded to Opaque even after `lib.dom.d.ts` became
+    // parseable. Two compounding bugs, both now fixed: (1) `lib.dom.d.ts` was
+    // silently skipped entirely because `max_bracket_nesting_depth` miscounted
+    // JSDoc comments containing unmatched brackets (see
+    // `extractor::tests::test_nesting_guard_ignores_brackets_inside_comments`);
+    // (2) `dir` isn't declared directly on `HTMLDivElement` — only inherited
+    // via `extends HTMLElement` — and `resolve_indexed_access` only searched
+    // an interface's own fields, never its extends chain. This test proves
+    // both fixes compose correctly against this repo's real installed
+    // `typescript` package, not just fabricated in-memory data.
+
+    #[test]
+    fn test_indexed_access_into_ambient_dom_interface_resolves_via_real_lib() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+        write_file(
+            &tmp,
+            "Foo.tsx",
+            r#"
+interface FooProps {
+  dir?: HTMLDivElement["dir"];
+}
+export function Foo(props: FooProps) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let unresolvable = output.diagnostics.iter().find(|d| d.message.contains("HTMLDivElement"));
+        assert!(
+            unresolvable.is_none(),
+            "expected HTMLDivElement[\"dir\"] to resolve via this repo's real lib.dom.d.ts, got diagnostic: {:?}",
+            unresolvable
+        );
+
+        let foo = output.components.get("Foo").expect("Foo component not found");
+        let dir_prop = foo.props.get("dir").expect("'dir' prop not found");
+        assert_eq!(dir_prop.prop_type, PropType::String, "expected String, got {:?}", dir_prop.prop_type);
+    }
+
     // ── test_pipeline_options_default ─────────────────────────────────────────
 
     #[test]

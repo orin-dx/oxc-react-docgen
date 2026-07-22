@@ -478,6 +478,66 @@ mod tests {
         );
     }
 
+    // ── Test 5c: Indexed access into an ambient DOM interface, walking its
+    // extends chain ───────────────────────────────────────────────────────────
+    // Regression test for: day-picker's `HTMLDivElement["dir"]` (also "nonce",
+    // "title", "lang") degraded to Opaque. `dir` is not declared directly on
+    // `HTMLDivElement` — it's inherited via `extends HTMLElement`, and both
+    // interfaces are ambient (declared in TypeScript's own `lib.dom.d.ts`, never
+    // imported by the consuming file). `resolve_indexed_access`'s interface
+    // lookup only checked the consuming file's own imports/declarations (never
+    // `ctx.ambient_global_files`), and only searched an interface's own `props`
+    // (never its `extends` chain).
+
+    #[test]
+    fn test_indexed_access_into_ambient_dom_interface_walks_extends_chain() {
+        let lib_file = Utf8PathBuf::from("/fake/lib.dom.d.ts");
+        let mut global = GlobalSourceData::default();
+
+        global.interfaces.insert(
+            format!("{}:HTMLDivElement", lib_file),
+            CollectedInterface {
+                scoped_key: format!("{}:HTMLDivElement", lib_file),
+                name: "HTMLDivElement".into(),
+                file_path: lib_file.clone(),
+                props: vec![],
+                extends: vec![ExtendsRef::SameFile { name: "HTMLElement".into(), type_args: vec![] }],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interfaces.insert(
+            format!("{}:HTMLElement", lib_file),
+            CollectedInterface {
+                scoped_key: format!("{}:HTMLElement", lib_file),
+                name: "HTMLElement".into(),
+                file_path: lib_file.clone(),
+                props: vec![RawProp {
+                    name: "dir".into(),
+                    collected_type: CollectedType::String,
+                    required: true,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let mut ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        ctx.ambient_global_files = vec![lib_file];
+
+        let ct = CollectedType::IndexedAccess {
+            obj: Box::new(CollectedType::Named { name: "HTMLDivElement".into(), args: vec![] }),
+            key: Box::new(CollectedType::StringLiteral("dir".into())),
+        };
+        let result = resolve_type(&ct, &ctx);
+        assert_eq!(result, PropType::String, "Expected String for HTMLDivElement[\"dir\"], got {:?}", result);
+    }
+
     // ── Test 6: Primitives pass through ──────────────────────────────────────
 
     #[test]

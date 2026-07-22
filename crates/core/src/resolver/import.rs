@@ -68,6 +68,23 @@ pub(super) fn lookup_type_alias<'g>(
     global.type_aliases.get(&qualified_key).map(|alias| (qualified_key, alias))
 }
 
+/// Same as `lookup_interface`, but also falls back to TypeScript's own ambient
+/// lib files (`ctx.ambient_global_files`) when the name isn't found via
+/// import/same-file resolution — e.g. `HTMLDivElement`, declared ambiently in
+/// `lib.dom.d.ts`, is never imported, so `resolve_to_canonical` never resolves
+/// it to that file and `canonical_file` stays the consuming file instead.
+pub(super) fn lookup_interface_including_ambient<'g>(
+    ctx: &'g ResolutionContext,
+    canonical_file: &str,
+    canonical_name: &str,
+) -> Option<&'g CollectedInterface> {
+    lookup_interface(&ctx.global, canonical_file, canonical_name).or_else(|| {
+        ctx.ambient_global_files
+            .iter()
+            .find_map(|lib_file| ctx.global.interfaces.get(&format!("{lib_file}:{canonical_name}")))
+    })
+}
+
 /// Look up a name directly on TypeScript's own ambient lib files
 /// (`ctx.ambient_global_files` — `lib.es5.d.ts`/`lib.dom.d.ts`), by bare name
 /// only (these are ambient globals, never namespace-qualified). Deliberately

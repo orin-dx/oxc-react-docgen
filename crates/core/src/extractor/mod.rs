@@ -42,20 +42,52 @@ const MAX_SOURCE_NESTING_DEPTH: usize = 2000;
 /// Cheap linear scan bounding the maximum bracket-nesting depth of `source`.
 ///
 /// Only tracks a running max, not full balance — sufficient to bound recursion depth
-/// before handing the source to the real parser.
+/// before handing the source to the real parser. Comments and string/template
+/// literals are skipped entirely rather than scanned for brackets: real .d.ts
+/// files (TypeScript's own `lib.dom.d.ts` included) ship prose JSDoc with
+/// unmatched brackets — e.g. MDN-scraped artifacts like `MISSING: RFC(5646,
+/// '...')].` — that would otherwise drive `depth` negative and, once negative
+/// enough, wrap on the next legitimate bracket. Doesn't track `${...}`
+/// interpolation inside template literals as real nesting; under-counting a
+/// rare template-literal type's internal depth is an acceptable trade-off for
+/// a crash-prevention heuristic, never causing a false rejection.
 fn max_bracket_nesting_depth(source: &str) -> usize {
-    let mut depth: i64 = 0;
+    let bytes = source.as_bytes();
+    let mut depth: usize = 0;
     let mut max_depth: usize = 0;
-    for b in source.bytes() {
-        match b {
-            b'(' | b'{' | b'[' => {
-                depth += 1;
-                if depth as usize > max_depth {
-                    max_depth = depth as usize;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                i += 2;
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
                 }
             }
-            b')' | b'}' | b']' => depth -= 1,
-            _ => {}
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                i = (i + 2).min(bytes.len());
+            }
+            quote @ (b'\'' | b'"' | b'`') => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != quote {
+                    i += if bytes[i] == b'\\' && i + 1 < bytes.len() { 2 } else { 1 };
+                }
+                i = (i + 1).min(bytes.len());
+            }
+            b'(' | b'{' | b'[' => {
+                depth += 1;
+                max_depth = max_depth.max(depth);
+                i += 1;
+            }
+            b')' | b'}' | b']' => {
+                depth = depth.saturating_sub(1);
+                i += 1;
+            }
+            _ => i += 1,
         }
     }
     max_depth
@@ -1233,6 +1265,26 @@ interface ButtonProps {
         assert_eq!(data.diagnostics[0].code, DiagnosticCode::ExcessiveNesting);
         assert!(data.component_mappings.is_empty(), "no components should be extracted from a skipped file");
         assert!(data.interfaces.is_empty());
+    }
+
+    #[test]
+    fn test_nesting_guard_ignores_brackets_inside_comments() {
+        // Regression test for: TypeScript's own real lib.dom.d.ts ships JSDoc
+        // comments scraped from MDN containing artifacts like
+        // `... MISSING: RFC(5646, '...')].` — a stray, unmatched `]` with no
+        // opening `[` anywhere nearby (confirmed present verbatim ~2000 times
+        // in the real file). `max_bracket_nesting_depth` counted brackets
+        // byte-by-byte with no comment/string awareness, so each of these
+        // drove its running depth negative; once enough had accumulated, the
+        // next legitimate `(`/`{`/`[` in real code still left depth negative,
+        // and casting that negative `i64` to `usize` wrapped to ~u64::MAX,
+        // spuriously tripping the "exceeds maximum nesting depth" guard and
+        // silently discarding the entire file — 0 interfaces extracted from a
+        // 1.8MB file whose real code nesting never exceeds a handful of levels.
+        let noisy_comment = "/** MISSING: RFC(5646, 'tag')]. */\n".repeat(10);
+        let source = format!("{noisy_comment}interface Foo {{ bar: string; }}");
+        let observed = max_bracket_nesting_depth(&source);
+        assert!(observed < 5, "expected shallow depth (comment brackets should not count), got {observed}");
     }
 
     #[test]

@@ -212,6 +212,8 @@ gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash o
 | ✅ done | Named type-only imports from `react` (wrong file + bare-vs-namespace-qualified key) | `fixtures/react-resizable-panels`; fixed, see below |
 | ✅ done | Indexed access into a generic interface's own field | `fixtures/react-final-form`; fixed, see below |
 | ✅ done | Type aliases silently dropped for any unhandled body shape (generalized beyond the two prior special cases) | `fixtures/storybook-emotion`; fixed, see below |
+| ✅ done | Entire file silently discarded when JSDoc prose contains unmatched brackets | real `typescript` package's own `lib.dom.d.ts`; fixed, see below |
+| ✅ done | Indexed access into an ambient DOM interface not walking its `extends` chain | `fixtures/day-picker` (`HTMLDivElement["dir"/"nonce"/"title"/"lang"]`); fixed, see below |
 | N/A | `void` kind | standalone `void` not a real prop type |
 | N/A | `never` kind | broken discriminant, not a real prop type |
 | N/A | `any` kind | suppressed by `strict` mode |
@@ -432,6 +434,39 @@ entirely, no diagnostic, same failure mode already fixed twice this session for 
 `ts_type_to_collected` already produces, rather than adding a third narrow special case. 171 → 153 diagnostics
 across all fixtures (curated), 224 → 206 (full) — fixed the same silent-drop in other fixtures too, not just
 this one.
+
+### Fixed: entire file silently discarded when JSDoc prose contains unmatched brackets
+
+**Fixture:** the real `typescript` npm package's own `lib.dom.d.ts` (found while extending native-global
+resolution to DOM ambient types for the fix below).
+
+`max_bracket_nesting_depth` — the pre-parse guard that bails out before handing pathologically nested types to
+`oxc_parser`'s recursive-descent parser — counted `(`/`{`/`[`/`)`/`}`/`]` byte-by-byte with no awareness of
+comments or string/template literals. Real-world `.d.ts` prose routinely contains unbalanced brackets (MDN-
+scraped JSDoc in `lib.dom.d.ts` has artifacts like `... MISSING: RFC(5646, '...')].`, a stray `]` with no
+opening `[`, roughly 2000 times); each one drove the running depth negative, and once negative enough, the next
+legitimate bracket in real code still left it negative — casting that negative `i64` to `usize` wrapped to
+~`u64::MAX`, tripping the "exceeds maximum nesting depth" guard and silently discarding the entire 1.8MB file
+(0 interfaces extracted, no diagnostic reaching the user beyond a generic skip message). Rewrote the scan to
+skip `//`/`/* */` comments and `'...'`/`"..."`/`` `...` `` literals entirely rather than counting their bracket
+content, and switched `depth` to `usize` with `saturating_sub` so it can never go negative regardless of any
+remaining edge case. Confirmed against the real installed `lib.dom.d.ts`: 0 → thousands of interfaces
+extracted, no more false-positive `ExcessiveNesting` diagnostic.
+
+### Fixed: indexed access into an ambient DOM interface not walking its `extends` chain
+
+**Fixture:** `fixtures/day-picker/props.ts`
+
+`dir?: HTMLDivElement["dir"]` (also `nonce`, `title`, `lang`) degraded to `Opaque` even after `lib.dom.d.ts`
+became parseable (previous fix). Two compounding gaps: `resolve_indexed_access`'s interface lookup only checked
+the consuming file's own imports/declarations, never TypeScript's own ambient lib files, so `HTMLDivElement`
+(never imported — it's a global) was never found at all; and even once found, `dir`/`nonce`/`title`/`lang`
+aren't declared directly on `HTMLDivElement` — they're inherited via `extends HTMLElement` (and, for `nonce`,
+`HTMLElement extends ... HTMLOrSVGElement`) — and the existing field lookup only checked an interface's own
+`props`, never its extends chain. Added `lookup_interface_including_ambient` (checks
+`ctx.ambient_global_files` as a fallback) and a small recursive ancestor-chain search over `ExtendsRef::SameFile`
+entries. All 4 props now resolve to `string`; `day-picker/DayPicker` prop count now matches
+react-docgen-typescript exactly (68/68).
 
 ---
 

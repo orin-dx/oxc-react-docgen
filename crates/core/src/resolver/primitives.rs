@@ -5,9 +5,9 @@ use camino::Utf8Path;
 use crate::types::*;
 
 use super::collected::resolve_collected_type;
-use super::import::{lookup_interface, resolve_to_canonical};
+use super::import::{lookup_interface, lookup_interface_including_ambient, resolve_to_canonical};
 use super::substitute::{build_substitution, substitute_type};
-use super::ResolutionContext;
+use super::{ResolutionContext, MAX_DEPTH};
 
 pub(super) fn resolve_union(
     members: &[CollectedType],
@@ -126,7 +126,7 @@ pub(super) fn resolve_indexed_access(
         let (canonical_file, canonical_name) =
             resolve_to_canonical(obj_type_name.as_str(), consuming_file, ctx, &mut state.diagnostics)
                 .unwrap_or_else(|| (consuming_file.to_owned(), obj_type_name.to_string()));
-        if let Some(iface) = lookup_interface(&ctx.global, canonical_file.as_str(), &canonical_name) {
+        if let Some(iface) = lookup_interface_including_ambient(ctx, canonical_file.as_str(), &canonical_name) {
             if let Some(field) = iface.props.iter().find(|f| f.name == key_str) {
                 let field_type = match ctx.global.interface_type_params.get(&iface.scoped_key) {
                     Some(params) if !params.is_empty() && !obj_args.is_empty() => {
@@ -137,6 +137,14 @@ pub(super) fn resolve_indexed_access(
                 };
                 let iface_file_path = iface.file_path.clone();
                 return resolve_collected_type(&field_type, &iface_file_path, ctx, state, depth + 1);
+            }
+            // Not declared directly on this interface — DOM/ambient interfaces
+            // commonly inherit shared attributes through `extends` (e.g.
+            // `HTMLDivElement extends HTMLElement`, which declares `dir`/`lang`/
+            // `title`), so walk the chain before giving up.
+            if let Some((field, owner)) = find_field_in_ancestors(iface, key_str, ctx, depth) {
+                let owner_file_path = owner.file_path.clone();
+                return resolve_collected_type(&field.collected_type, &owner_file_path, ctx, state, depth + 1);
             }
         }
     }
@@ -160,4 +168,34 @@ pub(super) fn resolve_indexed_access(
         code: DiagnosticCode::IndexedAccessOpaque,
     });
     PropType::Opaque { raw: expression.clone(), reason: OpaqueReason::IndexedAccess { expression } }
+}
+
+/// Search an interface's `extends` chain (depth-first) for a field, returning
+/// it alongside the interface that actually declares it. Only `SameFile`
+/// ancestors are followed — TypeScript's own ambient lib files (the only
+/// callers of this today) declare their whole DOM interface hierarchy in one
+/// file, so cross-file ancestry never applies here.
+fn find_field_in_ancestors<'g>(
+    iface: &'g CollectedInterface,
+    key_str: &str,
+    ctx: &'g ResolutionContext,
+    depth: u8,
+) -> Option<(&'g RawProp, &'g CollectedInterface)> {
+    if depth > MAX_DEPTH {
+        return None;
+    }
+    for extends_ref in &iface.extends {
+        let parent = match extends_ref {
+            ExtendsRef::SameFile { name, .. } => lookup_interface(&ctx.global, iface.file_path.as_str(), name.as_str()),
+            ExtendsRef::Imported { .. } | ExtendsRef::Builtin { .. } => None,
+        };
+        let Some(parent) = parent else { continue };
+        if let Some(field) = parent.props.iter().find(|f| f.name == key_str) {
+            return Some((field, parent));
+        }
+        if let Some(found) = find_field_in_ancestors(parent, key_str, ctx, depth + 1) {
+            return Some(found);
+        }
+    }
+    None
 }

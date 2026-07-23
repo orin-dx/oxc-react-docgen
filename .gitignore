@@ -4,8 +4,8 @@ node_modules/
 
 # Build outputs
 dist/
-debug
-target
+debug/
+target/
 *.node
 
 # Rust build artifacts

@@ -14,5 +14,5 @@
     "@oxc-react-docgen/cli-win32-x64-msvc": "0.1.0",
     "@oxc-react-docgen/cli-linux-arm64-gnu": "0.1.0"
   },
-  "license": "MIT"
+  "license": "AGPL-3.0-or-later"
 }

@@ -27,5 +27,5 @@
     "typescript": "^5.8.0",
     "@types/node": "^22.0.0"
   },
-  "license": "MIT"
+  "license": "AGPL-3.0-or-later"
 }

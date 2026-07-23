@@ -9,7 +9,7 @@
     "oxc_react_docgen_napi.win32-x64-msvc.node"
   ],
   "description": "Native Node.js bindings for oxc-react-docgen",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "os": [
     "win32"
   ]

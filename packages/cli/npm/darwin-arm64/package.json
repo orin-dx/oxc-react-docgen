@@ -5,5 +5,5 @@
   "os": ["darwin"],
   "cpu": ["arm64"],
   "files": ["oxc-react-docgen"],
-  "license": "MIT"
+  "license": "AGPL-3.0-or-later"
 }

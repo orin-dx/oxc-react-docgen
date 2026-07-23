@@ -5,5 +5,5 @@
   "os": ["win32"],
   "cpu": ["x64"],
   "files": ["oxc-react-docgen.exe"],
-  "license": "MIT"
+  "license": "AGPL-3.0-or-later"
 }

@@ -153,4 +153,4 @@ fixtures/             real library .d.ts/.tsx files (shadcn, MUI, Chakra, Mantin
 
 ## License
 
-MIT
+AGPL-3.0-or-later — see [LICENSE](LICENSE).

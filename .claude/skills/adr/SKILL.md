@@ -1,22 +1,28 @@
 ---
 name: adr
-description: Apply when a decision was just made that's expensive to reverse and not obvious from the code, or when asked to write or review an Architecture Decision Record.
+description: Apply when an architectural decision was just made — one shaping system structure, boundaries, or a contract other code depends on — or when asked to write or review an Architecture Decision Record.
 ---
 
 **Goal:** A future contributor (or you, in six months) understands why a
-hard-to-reverse decision was made, in under a minute of reading.
+hard-to-reverse architectural decision was made, in under a minute of
+reading.
 
 ## Decide if it's ADR material
 
-Ask: if this gets reverted in a year, what breaks, and would anyone know why?
-If the answer is "nothing" or "it's obvious from the code," it's not an ADR —
-it's a commit message.
+Two gates, both required:
 
-Real candidates: a format/dependency/architecture choice with a hidden
-constraint, an approach that was tried and abandoned, a trade-off that isn't
-visible just from reading the result. Not candidates: bug fixes,
-behavior-preserving refactors, anything `CLAUDE.md`'s non-negotiables already
-cover.
+1. **Architectural** — it affects system structure (module/crate boundaries,
+   how components interact), a dependency or technology choice that ripples
+   across the codebase, a data format/contract other code depends on, or a
+   cross-cutting constraint (performance model, correctness discipline,
+   security model).
+2. **Expensive to reverse and not obvious from the code** — if it gets
+   reverted in a year, what breaks, and would anyone know why?
+
+If either answer is no, skip it — it's a commit message, a code comment, or
+a line in `rdt-coverage.md`, not an ADR. A clever algorithm confined to one
+function, a naming convention, a behavior-preserving refactor: none of these
+are architectural even if someone spent real thought on them.
 
 Unsure? Ask rather than guess — writing one nobody wanted is worse than
 skipping one that mattered.

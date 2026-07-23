@@ -1,25 +1,40 @@
 # Architecture Decision Records
 
-Short, dated records of decisions that are expensive to reverse and not obvious
-from reading the code. Not a changelog, not a design doc, not a place to
-explain what the code does — comments and `ARCHITECTURE.md` already do that.
+Short, dated records of *architectural* decisions — ones that shape system
+structure, boundaries, or contracts other code depends on. Not a changelog,
+not a design doc, not a place to explain what the code does — comments and
+`ARCHITECTURE.md` already do that.
 
 ## When to write one
 
-Ask: if this gets reverted in a year, what breaks, and would anyone know why?
-If the answer is "nothing" or "it's obvious," skip it.
+Two gates, both required:
+
+1. **Architectural.** It affects one of: system structure (module/crate
+   boundaries, how components interact), a dependency or technology choice
+   that ripples across the codebase, a data format or contract other code
+   depends on, or a cross-cutting constraint (performance model, correctness
+   discipline, security model).
+2. **Expensive to reverse and not obvious from the code.** If it gets
+   reverted in a year, what breaks, and would anyone know why?
+
+If either answer is no, it's not an ADR.
 
 Good candidates:
 
-- Choosing OXC over the TypeScript compiler
-- A serialization format with a hidden constraint (msgpack's positional encoding)
+- Choosing OXC over the TypeScript compiler — a technology choice that
+  shapes the whole extraction pipeline
+- A serialization format with a hidden constraint (msgpack's positional
+  encoding) — a data contract other code depends on
 - Dropping a dependency, or an approach that was tried and abandoned
 
 Not ADR material:
 
+- A single function's algorithm choice, confined to that function — that's a
+  code comment
 - A bug fix — commit message, and if it's the kind of thing that could recur,
   a line in `rdt-coverage.md`
 - A behavior-preserving refactor — commit message is enough
+- A naming or style convention — that's `CLAUDE.md` or a lint rule
 - Anything already obvious from the code or from `CLAUDE.md`'s non-negotiables
 
 ## Format

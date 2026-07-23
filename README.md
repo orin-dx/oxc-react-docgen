@@ -15,8 +15,8 @@ The CLI can emit an RDT-compatible shape via `--format rdt` (see [MIGRATING.md](
 `@oxc-react-docgen/napi`, `@oxc-react-docgen/vite-plugin`, and `@oxc-react-docgen/cli` are not yet published to npm — there are no per-platform prebuilt binaries to install today. Until a release ships:
 
 ```bash
-git clone https://github.com/castrog/oxc-react-codegen
-cd oxc-react-codegen
+git clone https://github.com/orin-dx/oxc-react-docgen
+cd oxc-react-docgen
 pnpm install
 pnpm --filter @oxc-react-docgen/napi run build:napi   # builds the native addon for your platform
 pnpm --filter @oxc-react-docgen/vite-plugin build

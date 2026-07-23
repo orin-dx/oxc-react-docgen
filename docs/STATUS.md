@@ -48,6 +48,10 @@ roadmap unless typescript-go's Corsa API stabilizes (see
 - **What broke and why, historically** → `rdt-coverage.md` — every bug found
   during real-library validation, root cause, and the fix. Keep this updated;
   it's the project's memory.
+- **Why a hard-to-reverse decision was made** → `docs/adr/` — OXC over the
+  TypeScript compiler, manual serde for `PropType`, positional msgpack
+  encoding, deferring type-checker integration. Write a new one when you make
+  a decision like these (see `docs/adr/README.md`).
 - **How the pipeline fits together** → `ARCHITECTURE.md`
 - **Setup, testing, code style, commit conventions** → `CONTRIBUTING.md`
 - **Migrating from react-docgen-typescript** → `MIGRATING.md`

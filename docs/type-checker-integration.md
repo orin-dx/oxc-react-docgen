@@ -1,15 +1,12 @@
 # Type Checker Integration: Future Work
 
-This document describes which resolver gaps genuinely require a TypeScript type checker,
-the state of the tsgo (TypeScript 7.0) ecosystem, and the integration plan for when the
-Corsa API is stable.
+This document describes which resolver gaps genuinely require a TypeScript type checker, the state of the tsgo (TypeScript 7.0) ecosystem, and the integration plan for when the Corsa API is stable.
 
 ---
 
 ## What we can fix structurally (no type checker needed)
 
-The six fundamental gap patterns discovered during the RDT compatibility audit break into
-two groups:
+The six fundamental gap patterns discovered during the RDT compatibility audit break into two groups:
 
 **Fixable now — pure AST/structural:**
 
@@ -21,7 +18,7 @@ two groups:
 | `typeof` expression depth | `typeof Primitive.button` not followed through | `extractor/mod.rs` TSTypeQuery arm |
 | Inline `Pick<T,K>` in `extends` | Step 1 silences Pick regardless of type_args | `resolver/chain.rs` step 0.5 |
 
-**Implementation plan:** `docs/superpowers/plans/2026-06-28-structural-gap-fixes.md`
+**Implementation plan:** `docs/archive/2026-06-28-structural-gap-fixes.md` (done — see `docs/STATUS.md`)
 
 **Deferred — require type inference:**
 
@@ -38,8 +35,7 @@ two groups:
 
 ### What happened
 
-TypeScript 7.0 RC shipped 2026-06-18. This is the Go rewrite of the compiler ("tsgo"),
-not a JavaScript refactor. The key changes:
+TypeScript 7.0 RC shipped 2026-06-18. This is the Go rewrite of the compiler ("tsgo"), not a JavaScript refactor. The key changes:
 
 - **TypeScript 6.0** = last JavaScript-based tsc (maintenance only)
 - **TypeScript 7.0** = Go rewrite; 10× build speed, same semantics
@@ -62,22 +58,17 @@ The OXC team already tackled cross-language integration with `tsgolint`:
 - Communicates via JSON IPC using tsgo's internal (unstable) shims
 - This pattern works but depends on internal APIs that will break when Corsa lands
 
-We should NOT follow the tsgolint approach — it creates maintenance debt on an unstable
-internal API. Wait for Corsa.
+We should NOT follow the tsgolint approach — it creates maintenance debt on an unstable internal API. Wait for Corsa.
 
 ### Why oxc-react-docgen is unaffected by TS 7.0
 
-We parse TypeScript with OXC (Rust), not tsc. We have no dependency on the Strada API.
-Consumers running TS 7.0 can use oxc-react-docgen without any changes. This is a
-competitive advantage during the TS 6→7 migration window.
+We parse TypeScript with OXC (Rust), not tsc. We have no dependency on the Strada API. Consumers running TS 7.0 can use oxc-react-docgen without any changes. This is a competitive advantage during the TS 6→7 migration window.
 
 ---
 
 ## Integration architecture (when Corsa is stable)
 
-The integration should be **opt-in**, not always-on. Most projects need only the structural
-analysis for prop documentation. The type checker adds latency (~100-500ms cold start) and
-a Node.js process dependency that many CI environments won't want.
+The integration should be **opt-in**, not always-on. Most projects need only the structural analysis for prop documentation. The type checker adds latency (~100-500ms cold start) and a Node.js process dependency that many CI environments won't want.
 
 ### Proposed design
 
@@ -117,9 +108,7 @@ When the Corsa API is available, the following operations unblock the deferred g
 | Expand mapped type | `checker.getIndexedAccessType(type, key)` | Mapped opaque |
 | Follow `typeof expr` | `checker.getTypeOfExpression(expr)` | typeof depth |
 
-The integration point is `resolver/chain.rs:resolve_props_chain` — after step 5 fails to
-find the interface in our global map, step 6 currently emits an `UnresolvableImport`
-diagnostic. With Corsa, a step 5.5 would ask the type checker for the props instead.
+The integration point is `resolver/chain.rs:resolve_props_chain` — after step 5 fails to find the interface in our global map, step 6 currently emits an `UnresolvableImport` diagnostic. With Corsa, a step 5.5 would ask the type checker for the props instead.
 
 ### File plan (future)
 
@@ -130,8 +119,7 @@ crates/core/src/typechecker/          (new module, feature-gated)
   prop_enricher.rs    — walk ExtractionOutput, replace opaque props
 ```
 
-Feature gate: `cargo build --features=type-checker` — keeps the no-Node-dependency
-build path as the default.
+Feature gate: `cargo build --features=type-checker` — keeps the no-Node-dependency build path as the default.
 
 ---
 
@@ -144,5 +132,4 @@ build path as the default.
 | TS 7.1 stable + Corsa stable | ~Q1 2027 | Implement generic substitution, `typeof` depth |
 | Public release of `--with-type-checker` | ~Q1 2027 | Feature-complete RDT replacement |
 
-Until then: fix the 5 structural gaps (see implementation plan), ship, and let users
-migrate to oxc-react-docgen during the TS 7 disruption window.
+Until then: fix the 5 structural gaps (see implementation plan), ship, and let users migrate to oxc-react-docgen during the TS 7 disruption window.

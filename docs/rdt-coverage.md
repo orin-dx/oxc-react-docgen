@@ -1,9 +1,6 @@
 # RDT Spec Coverage Matrix
 
-Maps each react-docgen-typescript (RDT) output field and component pattern to the fixtures that exercise it.
-Run `cargo test -p oxc-react-docgen-core --test snapshots` to validate the original 8 snapshot fixtures.
-The 8 real-world library fixtures added since (fluentui, base-ui, antd, ark-ui, zendesk-garden, day-picker,
-headlessui, blueprint) aren't snapshot-tested — validate them via `pnpm --filter @oxc-react-docgen/validate compare:all`.
+Maps each react-docgen-typescript (RDT) output field and component pattern to the fixtures that exercise it. Run `cargo test -p oxc-react-docgen-core --test snapshots` to validate the original 8 snapshot fixtures. The 8 real-world library fixtures added since (fluentui, base-ui, antd, ark-ui, zendesk-garden, day-picker, headlessui, blueprint) aren't snapshot-tested — validate them via `pnpm --filter @oxc-react-docgen/validate compare:all`.
 
 ---
 
@@ -41,9 +38,7 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it.
 | `never` | ❌ not covered — no real-world prop has type `never` |
 | `any` | ❌ not covered — `any` suppressed by TypeScript `strict` in fixtures |
 
-> **Note on `void` / `never`:** These kinds exist in the type system for completeness but are not
-> realistic prop types. A function return type `() => void` is always emitted as `eventHandler`,
-> and `never` typically indicates a broken discriminant. No fixture is planned for either.
+> **Note on `void` / `never`:** These kinds exist in the type system for completeness but are not realistic prop types. A function return type `() => void` is always emitted as `eventHandler`, and `never` typically indicates a broken discriminant. No fixture is planned for either.
 
 ---
 
@@ -152,25 +147,13 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it.
 
 ## HtmlAttributeMode: curated / full / none
 
-`PipelineOptions.html_attributes` (CLI: `--html-attributes <curated|full|none>`; NAPI: `htmlAttributes: 'curated' | 'full' | 'none'`;
-config file: `htmlAttributes` in `docgen.config.ts`) controls how much of an inherited HTML element's attribute
-surface gets exposed:
+`PipelineOptions.html_attributes` (CLI: `--html-attributes <curated|full|none>`; NAPI: `htmlAttributes: 'curated' | 'full' | 'none'`; config file: `htmlAttributes` in `docgen.config.ts`) controls how much of an inherited HTML element's attribute surface gets exposed:
 
-- **Curated (default)** — unchanged original behavior: ~15-20 hand-picked, commonly-documented attributes per
-  element (`onClick`, `disabled`, `aria-*`, etc.) synthesized into `notableInherited`.
-- **Full** — actually resolves `@types/react`'s real `HTMLAttributes`/`AriaAttributes`/`DOMAttributes`/
-  `<Element>HTMLAttributes` interface chain (merged into `GlobalSourceData` by the pipeline, looked up by the
-  resolver like any other interface) and merges the real fields directly into `props` — matching how RDT
-  flattens everything into one props map. Verified against a real button: 238 of ~250 real attributes resolve
-  (the remainder is a narrower, separate gap — see below). Costs ~16ms once per `@types/react` version (cached
-  the same way any other `.d.ts` is), not per extraction run.
+- **Curated (default)** — unchanged original behavior: ~15-20 hand-picked, commonly-documented attributes per element (`onClick`, `disabled`, `aria-*`, etc.) synthesized into `notableInherited`.
+- **Full** — actually resolves `@types/react`'s real `HTMLAttributes`/`AriaAttributes`/`DOMAttributes`/`<Element>HTMLAttributes` interface chain (merged into `GlobalSourceData` by the pipeline, looked up by the resolver like any other interface) and merges the real fields directly into `props` — matching how RDT flattens everything into one props map. Verified against a real button: 238 of ~250 real attributes resolve (the remainder is a narrower, separate gap — see below). Costs ~16ms once per `@types/react` version (cached the same way any other `.d.ts` is), not per extraction run.
 - **None** — no inherited HTML attributes synthesized at all; own props only.
 
-**Known residual gap, not fixed:** a handful of fields inside `@types/react`'s own interface chain
-(`AriaAttributes` referenced bare from within the same enclosing `declare namespace React {}` block, not
-through an explicit `React.` qualifier) don't resolve — same-namespace *sibling* reference resolution is
-narrower than the namespace-*qualified* reference resolution fixed for cross-file/explicit cases. Degrades
-gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash or component loss).
+**Known residual gap, not fixed:** a handful of fields inside `@types/react`'s own interface chain (`AriaAttributes` referenced bare from within the same enclosing `declare namespace React {}` block, not through an explicit `React.` qualifier) don't resolve — same-namespace *sibling* reference resolution is narrower than the namespace-*qualified* reference resolution fixed for cross-file/explicit cases. Degrades gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash or component loss).
 
 ---
 
@@ -234,10 +217,7 @@ gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash o
 
 **Fixture:** `fixtures/rdt-compat/controlled.tsx`
 
-Previously: `onValueChange?(value: string): void` (TSMethodSignature form) emitted `eventType: "..."` instead of
-`eventType: "string"`, while the arrow-function form correctly emitted `eventType: "boolean"`. Root cause: the
-extractor's method-signature handling didn't extract parameter types the same way as property-signature
-handling. Fixed — confirmed live: `onValueChange` now correctly resolves to `(value: string) => void`.
+Previously: `onValueChange?(value: string): void` (TSMethodSignature form) emitted `eventType: "..."` instead of `eventType: "string"`, while the arrow-function form correctly emitted `eventType: "boolean"`. Root cause: the extractor's method-signature handling didn't extract parameter types the same way as property-signature handling. Fixed — confirmed live: `onValueChange` now correctly resolves to `(value: string) => void`.
 
 ---
 
@@ -245,9 +225,7 @@ handling. Fixed — confirmed live: `onValueChange` now correctly resolves to `(
 
 **Fixture:** `fixtures/rdt-compat/pick-source.tsx`
 
-Previously: `interface IconButtonProps extends Pick<ButtonBaseProps, 'disabled' | 'type' | 'form'>` lost the
-picked props entirely — only `icon`/`label` (the interface's own props) appeared. Fixed — confirmed live:
-`IconButton` now correctly includes `disabled`, `form`, `type` alongside `icon`/`label`.
+Previously: `interface IconButtonProps extends Pick<ButtonBaseProps, 'disabled' | 'type' | 'form'>` lost the picked props entirely — only `icon`/`label` (the interface's own props) appeared. Fixed — confirmed live: `IconButton` now correctly includes `disabled`, `form`, `type` alongside `icon`/`label`.
 
 ---
 
@@ -255,8 +233,7 @@ picked props entirely — only `icon`/`label` (the interface's own props) appear
 
 **Fixture:** `fixtures/rdt-compat/discriminated-union.tsx`
 
-Previously: `Accordion` with props type `AccordionSingleProps | AccordionMultipleProps` was completely absent
-from the output, no diagnostic. Fixed — confirmed live: `Accordion` now resolves with all 5 real props.
+Previously: `Accordion` with props type `AccordionSingleProps | AccordionMultipleProps` was completely absent from the output, no diagnostic. Fixed — confirmed live: `Accordion` now resolves with all 5 real props.
 
 ---
 
@@ -264,9 +241,7 @@ from the output, no diagnostic. Fixed — confirmed live: `Accordion` now resolv
 
 **Fixtures:** `fixtures/rdt-compat/controlled.tsx`, `pick-source.tsx`, `memo.tsx`
 
-Previously: when a component had no JSDoc of its own, `ComponentEntry.description` picked up the last prop's
-JSDoc instead of staying empty (the extractor's proximity-based `find_jsdoc` scan finding the wrong nearest
-comment). Fixed — confirmed live: `Select`/`IconButton`/`Avatar` all correctly show `description: ""`.
+Previously: when a component had no JSDoc of its own, `ComponentEntry.description` picked up the last prop's JSDoc instead of staying empty (the extractor's proximity-based `find_jsdoc` scan finding the wrong nearest comment). Fixed — confirmed live: `Select`/`IconButton`/`Avatar` all correctly show `description: ""`.
 
 ---
 
@@ -274,12 +249,7 @@ comment). Fixed — confirmed live: `Select`/`IconButton`/`Avatar` all correctly
 
 **Fixtures:** `fixtures/fluentui/Button.tsx`, `fixtures/ark-ui/Select.tsx`
 
-Fluent UI's real Button (and Ark UI's real Select) are authored as
-`const X: SomeWrapper<Props> = React.forwardRef((props, ref) => {...}) as SomeWrapper<Props>` — neither
-`try_fc_annotation` (the wrapper type name wasn't recognized) nor `try_forward_ref`/`try_hoc_wrapped` (both
-required the initializer to be a `CallExpression` directly, not a `TSAsExpression` wrapping one) detected this;
-the component was silently invisible. Fixed by recognizing `ForwardRefComponent<P>` as a wrapper annotation and
-peeling `as`-casts before matching the call expression underneath. Confirmed: Fluent's Button 0 → 8 props.
+Fluent UI's real Button (and Ark UI's real Select) are authored as `const X: SomeWrapper<Props> = React.forwardRef((props, ref) => {...}) as SomeWrapper<Props>` — neither `try_fc_annotation` (the wrapper type name wasn't recognized) nor `try_forward_ref`/`try_hoc_wrapped` (both required the initializer to be a `CallExpression` directly, not a `TSAsExpression` wrapping one) detected this; the component was silently invisible. Fixed by recognizing `ForwardRefComponent<P>` as a wrapper annotation and peeling `as`-casts before matching the call expression underneath. Confirmed: Fluent's Button 0 → 8 props.
 
 ---
 
@@ -287,11 +257,7 @@ peeling `as`-casts before matching the call expression underneath. Confirmed: Fl
 
 **Fixture:** `fixtures/base-ui/MenuRoot.tsx`, `MenuTrigger.tsx`
 
-Base UI's real pattern is `namespace MenuRoot { export type Props<Payload> = ... }`, referenced elsewhere in
-the same file as `MenuRoot.Props`. Storage keyed on the bare member name while the resolver looked up the
-fully-qualified dotted name — same-file namespace member references could never resolve. Fixed by tracking an
-enclosing-namespace stack during extraction and qualifying storage keys to match. Confirmed:
-MenuRoot 0 → 15 props (exact match with real RDT), MenuTrigger invisible → 11 props.
+Base UI's real pattern is `namespace MenuRoot { export type Props<Payload> = ... }`, referenced elsewhere in the same file as `MenuRoot.Props`. Storage keyed on the bare member name while the resolver looked up the fully-qualified dotted name — same-file namespace member references could never resolve. Fixed by tracking an enclosing-namespace stack during extraction and qualifying storage keys to match. Confirmed: MenuRoot 0 → 15 props (exact match with real RDT), MenuTrigger invisible → 11 props.
 
 ---
 
@@ -299,11 +265,7 @@ MenuRoot 0 → 15 props (exact match with real RDT), MenuTrigger invisible → 1
 
 **Fixture:** `fixtures/antd/Button.tsx`
 
-`find_jsdoc` (description) tracked consumed comment spans so two elements never share one description;
-`extract_jsdoc_tags` (the `@tag` map) ran a separate scan with no consumed-tracking at all, so a `@deprecated`
-tag correctly claimed by one prop was still "found" and inherited by a later sibling with no JSDoc of its own.
-Fixed by merging both lookups into one consuming pass. Confirmed: only `iconPosition` carries `@deprecated`
-now, not `iconPlacement`/`shape`/`size`/`disabled`.
+`find_jsdoc` (description) tracked consumed comment spans so two elements never share one description; `extract_jsdoc_tags` (the `@tag` map) ran a separate scan with no consumed-tracking at all, so a `@deprecated` tag correctly claimed by one prop was still "found" and inherited by a later sibling with no JSDoc of its own. Fixed by merging both lookups into one consuming pass. Confirmed: only `iconPosition` carries `@deprecated` now, not `iconPlacement`/`shape`/`size`/`disabled`.
 
 ---
 
@@ -311,13 +273,7 @@ now, not `iconPlacement`/`shape`/`size`/`disabled`.
 
 **Fixture:** `fixtures/ark-ui/Select.tsx`
 
-`type Assign<T, U> = Omit<T, keyof U> & U` used with concrete call-site arguments (Ark UI's real
-`SelectRootProps<T> = Assign<HTMLProps<'div'>, SelectRootBaseProps<T>>`) never substituted `T`/`U` — type alias
-declarations didn't record their own declared parameters, and call-site type arguments were computed but
-discarded before alias resolution ran. `Omit<T, keyof U>`'s `keyof U` was also silently treated as an empty key
-list. Fixed via a structural walk-and-replace substitution engine (no type inference — real field names for
-`keyof U` come from resolving `U` as its own props chain). Confirmed: SelectRoot 0 → 36 real props via the
-actual, unmodified upstream pattern.
+`type Assign<T, U> = Omit<T, keyof U> & U` used with concrete call-site arguments (Ark UI's real `SelectRootProps<T> = Assign<HTMLProps<'div'>, SelectRootBaseProps<T>>`) never substituted `T`/`U` — type alias declarations didn't record their own declared parameters, and call-site type arguments were computed but discarded before alias resolution ran. `Omit<T, keyof U>`'s `keyof U` was also silently treated as an empty key list. Fixed via a structural walk-and-replace substitution engine (no type inference — real field names for `keyof U` come from resolving `U` as its own props chain). Confirmed: SelectRoot 0 → 36 real props via the actual, unmodified upstream pattern.
 
 ---
 
@@ -325,11 +281,7 @@ actual, unmodified upstream pattern.
 
 **Fixture:** `fixtures/blueprint/Table.tsx`
 
-`TableProps extends Partial<RowHeights>, Partial<ColumnWidths>` — the resolver's cycle-detection visited-key
-was built from the bare type name alone (`"Partial"`), not its type arguments, so the second `Partial<X>`
-extends target collided with the first's cycle-guard entry and silently resolved to nothing, with zero
-diagnostic. Fixed by folding type arguments into the key. Confirmed: Table 45 → 48 props, exact match with real
-RDT.
+`TableProps extends Partial<RowHeights>, Partial<ColumnWidths>` — the resolver's cycle-detection visited-key was built from the bare type name alone (`"Partial"`), not its type arguments, so the second `Partial<X>` extends target collided with the first's cycle-guard entry and silently resolved to nothing, with zero diagnostic. Fixed by folding type arguments into the key. Confirmed: Table 45 → 48 props, exact match with real RDT.
 
 ---
 
@@ -337,15 +289,7 @@ RDT.
 
 **Fixture:** `fixtures/day-picker/DayPicker.tsx`
 
-Discriminant detection only ran when a type alias's RHS was *directly* a union (`type X = A | B`). Real Day
-Picker's `DayPickerProps = PropsBase & (7-way union)` — an intersection whose union member fell into a naive
-per-member merge instead, keeping only whichever branch's type was seen first per prop instead of unioning
-across all branches. Fixed by having the intersection-nested-union case delegate to the same discriminant-merge
-logic a direct union alias uses. Confirmed: `selected`'s type now correctly merges `Date | Date[] | DateRange`
-across all 7 branches (previously collapsed to bare `Date`). Also confirmed (and this is *correct*, not a
-remaining bug): `discriminantProp` stays `null` for Day Picker's real union, because `mode` repeats the same
-value across `PropsSingle`/`PropsSingleRequired` — it's only jointly unique with a second field (`required`),
-so no single field actually identifies the variant.
+Discriminant detection only ran when a type alias's RHS was *directly* a union (`type X = A | B`). Real Day Picker's `DayPickerProps = PropsBase & (7-way union)` — an intersection whose union member fell into a naive per-member merge instead, keeping only whichever branch's type was seen first per prop instead of unioning across all branches. Fixed by having the intersection-nested-union case delegate to the same discriminant-merge logic a direct union alias uses. Confirmed: `selected`'s type now correctly merges `Date | Date[] | DateRange` across all 7 branches (previously collapsed to bare `Date`). Also confirmed (and this is *correct*, not a remaining bug): `discriminantProp` stays `null` for Day Picker's real union, because `mode` repeats the same value across `PropsSingle`/`PropsSingleRequired` — it's only jointly unique with a second field (`required`), so no single field actually identifies the variant.
 
 ---
 
@@ -353,11 +297,7 @@ so no single field actually identifies the variant.
 
 **Fixture:** `fixtures/day-picker/props.ts`
 
-`type OnSelectHandler<T> = (selected: T, ...) => void` — a bare function type as an alias body — fell through
-`classify_type_alias`'s catch-all and vanished from `type_aliases` with no diagnostic, same failure mode as the
-already-fixed inline-object-literal case. Fixed by routing `TSFunctionType` through the same `Passthrough`
-wrapping `TSTypeLiteral` already used. Confirmed: `OnSelectHandler` no longer triggers a "cannot resolve"
-warning.
+`type OnSelectHandler<T> = (selected: T, ...) => void` — a bare function type as an alias body — fell through `classify_type_alias`'s catch-all and vanished from `type_aliases` with no diagnostic, same failure mode as the already-fixed inline-object-literal case. Fixed by routing `TSFunctionType` through the same `Passthrough` wrapping `TSTypeLiteral` already used. Confirmed: `OnSelectHandler` no longer triggers a "cannot resolve" warning.
 
 ---
 
@@ -365,17 +305,7 @@ warning.
 
 **Fixture:** `fixtures/headlessui/Listbox.tsx`
 
-Headless UI's real Listbox family: standalone top-level function declarations (`function ButtonFn(props, ref)`)
-wrapped by a library-defined `forwardRefWithAs` (not React's own `forwardRef`) and reassigned
-(`export let ListboxButton = forwardRefWithAs(ButtonFn) as X`). `ButtonFn` was already independently detected
-as its own component (a valid top-level PascalCase function with a typed first param) under the wrong,
-inner-implementation-only name — neither `try_forward_ref` (the callee isn't `React.forwardRef`) nor
-`try_hoc_wrapped` (the argument is a bare identifier, not an inline function) recognized the wrapping
-assignment. Fixed the same way the existing `displayName`-scan already handles a similar after-the-fact rename:
-when a variable's initializer is (after unwrapping any `as` cast) a call whose sole argument is a bare
-identifier matching an already-collected component, rename that mapping to the outer binding. Confirmed: all
-three components (`Listbox`, `ListboxButton`, `ListboxOption`) now report their real export names, matching
-real RDT.
+Headless UI's real Listbox family: standalone top-level function declarations (`function ButtonFn(props, ref)`) wrapped by a library-defined `forwardRefWithAs` (not React's own `forwardRef`) and reassigned (`export let ListboxButton = forwardRefWithAs(ButtonFn) as X`). `ButtonFn` was already independently detected as its own component (a valid top-level PascalCase function with a typed first param) under the wrong, inner-implementation-only name — neither `try_forward_ref` (the callee isn't `React.forwardRef`) nor `try_hoc_wrapped` (the argument is a bare identifier, not an inline function) recognized the wrapping assignment. Fixed the same way the existing `displayName`-scan already handles a similar after-the-fact rename: when a variable's initializer is (after unwrapping any `as` cast) a call whose sole argument is a bare identifier matching an already-collected component, rename that mapping to the outer binding. Confirmed: all three components (`Listbox`, `ListboxButton`, `ListboxOption`) now report their real export names, matching real RDT.
 
 ---
 
@@ -383,95 +313,43 @@ real RDT.
 
 **Fixture:** `fixtures/tanstack-table/types.ts`
 
-`ColumnDef<TData, TValue> = DisplayColumnDef<...> | GroupColumnDef<...> | AccessorColumnDef<...>` — a union whose
-members are same-file siblings of the alias, imported cross-file into `data-table.tsx` as just `ColumnDef`.
-`resolve_type_alias_type` forwarded the *caller's* `consuming_file` into the recursive member resolution instead
-of the alias's own declaring file, so `DisplayColumnDef` etc. were looked up relative to `data-table.tsx` (which
-never imports them directly) and spuriously flagged as unresolvable, even though the actual `PropType::Named`
-output was already correct. Fixed by giving `CollectedTypeAlias` a `file_path()` accessor and using it instead of
-the passed-in file for every recursive call.
+`ColumnDef<TData, TValue> = DisplayColumnDef<...> | GroupColumnDef<...> | AccessorColumnDef<...>` — a union whose members are same-file siblings of the alias, imported cross-file into `data-table.tsx` as just `ColumnDef`. `resolve_type_alias_type` forwarded the *caller's* `consuming_file` into the recursive member resolution instead of the alias's own declaring file, so `DisplayColumnDef` etc. were looked up relative to `data-table.tsx` (which never imports them directly) and spuriously flagged as unresolvable, even though the actual `PropType::Named` output was already correct. Fixed by giving `CollectedTypeAlias` a `file_path()` accessor and using it instead of the passed-in file for every recursive call.
 
 ### Fixed: generic interface/alias's own type parameters flagged as unresolvable
 
 **Fixture:** `fixtures/tanstack-table/data-table.tsx`
 
-`DataTableProps<TData, TValue>` referencing its own `TData`/`TValue` in its body (`columns: ColumnDef<TData,
-TValue>[]`) had every such reference warned as "cannot resolve — will appear as opaque", even though a bare
-generic placeholder is the objectively correct, expected output. The resolver had no concept of a type's own
-declared parameters. Added `interface_type_params` (mirroring the existing `type_alias_params`) and a
-`ResolveState.in_scope_type_params` set populated when entering a generic interface/alias body;
-`resolve_named` checks it before warning. 234 → 173 diagnostics across all fixtures.
+`DataTableProps<TData, TValue>` referencing its own `TData`/`TValue` in its body (`columns: ColumnDef<TData, TValue>[]`) had every such reference warned as "cannot resolve — will appear as opaque", even though a bare generic placeholder is the objectively correct, expected output. The resolver had no concept of a type's own declared parameters. Added `interface_type_params` (mirroring the existing `type_alias_params`) and a `ResolveState.in_scope_type_params` set populated when entering a generic interface/alias body; `resolve_named` checks it before warning. 234 → 173 diagnostics across all fixtures.
 
 ### Fixed: named type-only imports from `react` resolved to the wrong file/key
 
 **Fixture:** `fixtures/react-resizable-panels/types.ts`
 
-`import type { X } from "react"` (any `X` not special-cased via `html_element_for`) failed for two independent
-reasons: (1) `react`'s own `package.json` has no `"types"` field/condition — its real declarations live in the
-separate `@types/react` package — so the general import resolver landed on `index.js`; (2) `@types/react`
-declares everything inside `declare namespace React { ... }`, so even the right file's declarations are keyed
-`"React.X"`, not bare `"X"`. Fixed resolver-wide: `resolve_import_specifier` now tries `resolve_dts` + the
-`@types/<package>` fallback for bare specifiers (reusing the logic already proven for `HtmlAttributeMode::Full`),
-and new `lookup_interface`/`lookup_type_alias` helpers try the bare key before the `React.`-qualified one,
-replacing direct map lookups at every interface/alias resolution site.
+`import type { X } from "react"` (any `X` not special-cased via `html_element_for`) failed for two independent reasons: (1) `react`'s own `package.json` has no `"types"` field/condition — its real declarations live in the separate `@types/react` package — so the general import resolver landed on `index.js`; (2) `@types/react` declares everything inside `declare namespace React { ... }`, so even the right file's declarations are keyed `"React.X"`, not bare `"X"`. Fixed resolver-wide: `resolve_import_specifier` now tries `resolve_dts` + the `@types/<package>` fallback for bare specifiers (reusing the logic already proven for `HtmlAttributeMode::Full`), and new `lookup_interface`/`lookup_type_alias` helpers try the bare key before the `React.`-qualified one, replacing direct map lookups at every interface/alias resolution site.
 
 ### Fixed: indexed access into a generic interface's own field
 
 **Fixture:** `fixtures/react-final-form/types.ts`
 
-`RenderableProps<FieldRenderProps<FieldValue, T>>["children"]` (the real "children as a render-function-or-
-ReactNode union" pattern) degraded to `Opaque` — `resolve_indexed_access`'s only fallback resolved the object
-type and checked for `PropType::Object`, but an interface always resolves to a bare `PropType::Named` at the
-type level (never expanded there), so it never matched. Added a path that looks the field up directly on the
-interface's declaration and substitutes its declared type parameters with the caller's concrete arguments,
-reusing the existing generic-alias substitution machinery. Both indexed-access fields in this fixture
-(`children`, `component`) now resolve to real structured types with the correct substituted argument threaded
-through, zero diagnostics.
+`RenderableProps<FieldRenderProps<FieldValue, T>>["children"]` (the real "children as a render-function-or-ReactNode union" pattern) degraded to `Opaque` — `resolve_indexed_access`'s only fallback resolved the object type and checked for `PropType::Object`, but an interface always resolves to a bare `PropType::Named` at the type level (never expanded there), so it never matched. Added a path that looks the field up directly on the interface's declaration and substitutes its declared type parameters with the caller's concrete arguments, reusing the existing generic-alias substitution machinery. Both indexed-access fields in this fixture (`children`, `component`) now resolve to real structured types with the correct substituted argument threaded through, zero diagnostics.
 
 ### Fixed: type aliases silently dropped for any unhandled body shape
 
 **Fixture:** `fixtures/storybook-emotion/Button.tsx`
 
-`type API_KeyCollection = string[]` — found while investigating the fixture below. `classify_type_alias`'s
-catch-all was `_ => None`: any alias body shape without a dedicated match arm vanished from `type_aliases`
-entirely, no diagnostic, same failure mode already fixed twice this session for `TSTypeLiteral` and
-`TSFunctionType` individually. Generalized the catch-all itself to `Passthrough`-wrap whatever
-`ts_type_to_collected` already produces, rather than adding a third narrow special case. 171 → 153 diagnostics
-across all fixtures (curated), 224 → 206 (full) — fixed the same silent-drop in other fixtures too, not just
-this one.
+`type API_KeyCollection = string[]` — found while investigating the fixture below. `classify_type_alias`'s catch-all was `_ => None`: any alias body shape without a dedicated match arm vanished from `type_aliases` entirely, no diagnostic, same failure mode already fixed twice this session for `TSTypeLiteral` and `TSFunctionType` individually. Generalized the catch-all itself to `Passthrough`-wrap whatever `ts_type_to_collected` already produces, rather than adding a third narrow special case. 171 → 153 diagnostics across all fixtures (curated), 224 → 206 (full) — fixed the same silent-drop in other fixtures too, not just this one.
 
 ### Fixed: entire file silently discarded when JSDoc prose contains unmatched brackets
 
-**Fixture:** the real `typescript` npm package's own `lib.dom.d.ts` (found while extending native-global
-resolution to DOM ambient types for the fix below).
+**Fixture:** the real `typescript` npm package's own `lib.dom.d.ts` (found while extending native-global resolution to DOM ambient types for the fix below).
 
-`max_bracket_nesting_depth` — the pre-parse guard that bails out before handing pathologically nested types to
-`oxc_parser`'s recursive-descent parser — counted `(`/`{`/`[`/`)`/`}`/`]` byte-by-byte with no awareness of
-comments or string/template literals. Real-world `.d.ts` prose routinely contains unbalanced brackets (MDN-
-scraped JSDoc in `lib.dom.d.ts` has artifacts like `... MISSING: RFC(5646, '...')].`, a stray `]` with no
-opening `[`, roughly 2000 times); each one drove the running depth negative, and once negative enough, the next
-legitimate bracket in real code still left it negative — casting that negative `i64` to `usize` wrapped to
-~`u64::MAX`, tripping the "exceeds maximum nesting depth" guard and silently discarding the entire 1.8MB file
-(0 interfaces extracted, no diagnostic reaching the user beyond a generic skip message). Rewrote the scan to
-skip `//`/`/* */` comments and `'...'`/`"..."`/`` `...` `` literals entirely rather than counting their bracket
-content, and switched `depth` to `usize` with `saturating_sub` so it can never go negative regardless of any
-remaining edge case. Confirmed against the real installed `lib.dom.d.ts`: 0 → thousands of interfaces
-extracted, no more false-positive `ExcessiveNesting` diagnostic.
+`max_bracket_nesting_depth` — the pre-parse guard that bails out before handing pathologically nested types to `oxc_parser`'s recursive-descent parser — counted `(`/`{`/`[`/`)`/`}`/`]` byte-by-byte with no awareness of comments or string/template literals. Real-world `.d.ts` prose routinely contains unbalanced brackets (MDN-scraped JSDoc in `lib.dom.d.ts` has artifacts like `... MISSING: RFC(5646, '...')].`, a stray `]` with no opening `[`, roughly 2000 times); each one drove the running depth negative, and once negative enough, the next legitimate bracket in real code still left it negative — casting that negative `i64` to `usize` wrapped to ~`u64::MAX`, tripping the "exceeds maximum nesting depth" guard and silently discarding the entire 1.8MB file (0 interfaces extracted, no diagnostic reaching the user beyond a generic skip message). Rewrote the scan to skip `//`/`/* */` comments and `'...'`/`"..."`/`` `...` `` literals entirely rather than counting their bracket content, and switched `depth` to `usize` with `saturating_sub` so it can never go negative regardless of any remaining edge case. Confirmed against the real installed `lib.dom.d.ts`: 0 → thousands of interfaces extracted, no more false-positive `ExcessiveNesting` diagnostic.
 
 ### Fixed: indexed access into an ambient DOM interface not walking its `extends` chain
 
 **Fixture:** `fixtures/day-picker/props.ts`
 
-`dir?: HTMLDivElement["dir"]` (also `nonce`, `title`, `lang`) degraded to `Opaque` even after `lib.dom.d.ts`
-became parseable (previous fix). Two compounding gaps: `resolve_indexed_access`'s interface lookup only checked
-the consuming file's own imports/declarations, never TypeScript's own ambient lib files, so `HTMLDivElement`
-(never imported — it's a global) was never found at all; and even once found, `dir`/`nonce`/`title`/`lang`
-aren't declared directly on `HTMLDivElement` — they're inherited via `extends HTMLElement` (and, for `nonce`,
-`HTMLElement extends ... HTMLOrSVGElement`) — and the existing field lookup only checked an interface's own
-`props`, never its extends chain. Added `lookup_interface_including_ambient` (checks
-`ctx.ambient_global_files` as a fallback) and a small recursive ancestor-chain search over `ExtendsRef::SameFile`
-entries. All 4 props now resolve to `string`; `day-picker/DayPicker` prop count now matches
-react-docgen-typescript exactly (68/68).
+`dir?: HTMLDivElement["dir"]` (also `nonce`, `title`, `lang`) degraded to `Opaque` even after `lib.dom.d.ts` became parseable (previous fix). Two compounding gaps: `resolve_indexed_access`'s interface lookup only checked the consuming file's own imports/declarations, never TypeScript's own ambient lib files, so `HTMLDivElement` (never imported — it's a global) was never found at all; and even once found, `dir`/`nonce`/`title`/`lang` aren't declared directly on `HTMLDivElement` — they're inherited via `extends HTMLElement` (and, for `nonce`, `HTMLElement extends ... HTMLOrSVGElement`) — and the existing field lookup only checked an interface's own `props`, never its extends chain. Added `lookup_interface_including_ambient` (checks `ctx.ambient_global_files` as a fallback) and a small recursive ancestor-chain search over `ExtendsRef::SameFile` entries. All 4 props now resolve to `string`; `day-picker/DayPicker` prop count now matches react-docgen-typescript exactly (68/68).
 
 ### Fixed: `(typeof X)[number]` on a flat `const X = [...] as const` array
 
@@ -482,57 +360,28 @@ const _ButtonTypes = ['default', 'primary', 'dashed', 'link', 'text'] as const;
 export type ButtonType = (typeof _ButtonTypes)[number];
 ```
 
-Two gaps, neither previously covered: nothing captured a plain array-literal `const` (only cva/tv's `variants`
-object shape and const-object enums), and indexed access never handled a `[number]` key — `key` there is
-`CollectedType::Number` (the `number` keyword type), not a string literal, so the existing string-literal-keyed
-lookup always missed it. Added `SourceData::const_arrays` (deliberately separate from `enums`, which has
-per-entry variant names and is surfaced directly in the public output — a plain array has neither), populated by
-a new `try_collect_const_array` mirroring `try_collect_const_enum`'s shape but for `ArrayExpression`. Added a
-matching `const_array_bare_index` on `ResolutionContext` (same O(1) pattern as `enum_bare_index`) and a new
-branch in `resolve_indexed_access` that builds a `LiteralUnion` from the array's values when `obj` is `TypeOf`
-and `key` is `Number`. All 5 exported unions in the fixture (`ButtonType`, `ButtonShape`, `ButtonHTMLType`,
-`ButtonVariantType`, `ButtonColorType`) now resolve correctly; the 10 associated diagnostics are gone.
+Two gaps, neither previously covered: nothing captured a plain array-literal `const` (only cva/tv's `variants` object shape and const-object enums), and indexed access never handled a `[number]` key — `key` there is `CollectedType::Number` (the `number` keyword type), not a string literal, so the existing string-literal-keyed lookup always missed it. Added `SourceData::const_arrays` (deliberately separate from `enums`, which has per-entry variant names and is surfaced directly in the public output — a plain array has neither), populated by a new `try_collect_const_array` mirroring `try_collect_const_enum`'s shape but for `ArrayExpression`. Added a matching `const_array_bare_index` on `ResolutionContext` (same O(1) pattern as `enum_bare_index`) and a new branch in `resolve_indexed_access` that builds a `LiteralUnion` from the array's values when `obj` is `TypeOf` and `key` is `Number`. All 5 exported unions in the fixture (`ButtonType`, `ButtonShape`, `ButtonHTMLType`, `ButtonVariantType`, `ButtonColorType`) now resolve correctly; the 10 associated diagnostics are gone.
 
-`ButtonColorType`'s source array uses a spread (`['default', 'primary', 'danger', ...PresetColors]`) — the
-spread element is silently skipped (no expression to read a literal from), so that one union resolves with 3 of
-its real ~19 members. A known, honest partial result, not a crash or a wrong type; matches how cva/tv variant
-extraction already treats constructs it can't statically read.
+`ButtonColorType`'s source array uses a spread (`['default', 'primary', 'danger', ...PresetColors]`) — the spread element is silently skipped (no expression to read a literal from), so that one union resolves with 3 of its real ~19 members. A known, honest partial result, not a crash or a wrong type; matches how cva/tv variant extraction already treats constructs it can't statically read.
 
 ### Fixed: static `X.defaultProps = {...}` assignment not read
 
-`ComponentMapping::param_defaults` already had a `DefaultSource::DefaultProps` variant — designed for but never
-wired up. Only destructured defaults (`function Button({ size = 'md' })`, via `extract_param_defaults`) were
-ever populated. Real components (MUI ships this on several) also set defaults via a static assignment after the
-declaration:
+`ComponentMapping::param_defaults` already had a `DefaultSource::DefaultProps` variant — designed for but never wired up. Only destructured defaults (`function Button({ size = 'md' })`, via `extract_param_defaults`) were ever populated. Real components (MUI ships this on several) also set defaults via a static assignment after the declaration:
 
 ```ts
 function Button(props: ButtonProps) { ... }
 Button.defaultProps = { size: 'md' };
 ```
 
-Added `try_scan_default_props`, mirroring the existing `try_scan_display_name`'s shape (same "find the
-`ExpressionStatement` assigning to `X.<prop>`, look up the matching `ComponentMapping`" pattern) — extracts each
-object property via `eval_expr_as_default`, now parameterized with a `DefaultSource` instead of hardcoding
-`Destructuring`, so both call sites tag their defaults correctly. The resolver's consumption side
-(`resolver/chain.rs`'s `mapping.param_defaults.get(&raw_prop.name)`) needed no changes — it was already
-source-agnostic, just never had anything to read from this path.
+Added `try_scan_default_props`, mirroring the existing `try_scan_display_name`'s shape (same "find the `ExpressionStatement` assigning to `X.<prop>`, look up the matching `ComponentMapping`" pattern) — extracts each object property via `eval_expr_as_default`, now parameterized with a `DefaultSource` instead of hardcoding `Destructuring`, so both call sites tag their defaults correctly. The resolver's consumption side (`resolver/chain.rs`'s `mapping.param_defaults.get(&raw_prop.name)`) needed no changes — it was already source-agnostic, just never had anything to read from this path.
 
-No fixture ships a real static `defaultProps` assignment today — `fixtures/blueprint/Table.tsx` had in fact been
-deliberately written *around* this exact gap (its header comment said so explicitly). Comment updated; fixture
-coverage stays as destructured defaults since upstream Blueprint's `Table` is a class component and this fixture
-uses a function component by design (a separate, unrelated tradeoff — see the fixture's own comment). Covered
-instead by a dedicated extractor unit test and a pipeline end-to-end test proving the value reaches
-`ParsedProp.default_value`.
+No fixture ships a real static `defaultProps` assignment today — `fixtures/blueprint/Table.tsx` had in fact been deliberately written *around* this exact gap (its header comment said so explicitly). Comment updated; fixture coverage stays as destructured defaults since upstream Blueprint's `Table` is a class component and this fixture uses a function component by design (a separate, unrelated tradeoff — see the fixture's own comment). Covered instead by a dedicated extractor unit test and a pipeline end-to-end test proving the value reaches `ParsedProp.default_value`.
 
 ---
 
 ## Note: React 19 `ref`-as-prop — investigated, not a real gap
 
-`ReactVersion::ref_as_prop`/`implicit_children` (`react_types.rs`) exist as fields, are correctly plumbed from
-the `--react-version`/`docgen.config.ts` CLI surface down to `PipelineOptions.react_version` (tested), and are
-then never read by anything in `crates/core`. That looked like a real gap — the original spec's worry was that
-`function Button({ ref, ...props }: ButtonProps)` (React 19's plain-prop `ref`, no `forwardRef`) wouldn't be
-recognized.
+`ReactVersion::ref_as_prop`/`implicit_children` (`react_types.rs`) exist as fields, are correctly plumbed from the `--react-version`/`docgen.config.ts` CLI surface down to `PipelineOptions.react_version` (tested), and are then never read by anything in `crates/core`. That looked like a real gap — the original spec's worry was that `function Button({ ref, ...props }: ButtonProps)` (React 19's plain-prop `ref`, no `forwardRef`) wouldn't be recognized.
 
 Tested directly against both real shapes:
 
@@ -546,24 +395,15 @@ type ButtonProps = BaseProps & { ref?: Ref<HTMLButtonElement> };
 export function Button({ ref, ...props }: ButtonProps) { ... }
 ```
 
-Both already extract `ref` correctly as `{ kind: 'ref', element: 'HTMLButtonElement' }`, no special-casing
-involved — the extractor doesn't care that the member happens to be named `ref`; it walks whatever the props
-type structurally contains, same as any other member, regardless of React version. The one case this doesn't
-cover — `ref` implicitly present via `ComponentProps<'button'>`'s real React 19 typing rather than an explicit
-member — falls under the existing, already-accepted "curated mode doesn't expand full HTML attributes" limit,
-not a version-specific gap.
+Both already extract `ref` correctly as `{ kind: 'ref', element: 'HTMLButtonElement' }`, no special-casing involved — the extractor doesn't care that the member happens to be named `ref`; it walks whatever the props type structurally contains, same as any other member, regardless of React version. The one case this doesn't cover — `ref` implicitly present via `ComponentProps<'button'>`'s real React 19 typing rather than an explicit member — falls under the existing, already-accepted "curated mode doesn't expand full HTML attributes" limit, not a version-specific gap.
 
-Left the `ReactVersion` fields and CLI flag in place (real, tested, user-facing surface) rather than ripping them
-out — but didn't invent speculative behavior for a bug that isn't reproducible. If a concrete React-version-
-dependent extraction difference ever surfaces, this is where it'd get wired in.
+Left the `ReactVersion` fields and CLI flag in place (real, tested, user-facing surface) rather than ripping them out — but didn't invent speculative behavior for a bug that isn't reproducible. If a concrete React-version-dependent extraction difference ever surfaces, this is where it'd get wired in.
 
 ### Fixed: bare passthrough identifier alias not renaming the component
 
 **Fixture:** `fixtures/antd/Button.tsx`
 
-Found by a full-fixture validation sweep (`apps/validate`'s comparison across all 20 libraries at once, not a
-per-fixture check) — `antd/Button/Button` showed `ours found nothing` despite the component clearly being
-extracted correctly under a different name. antd's real `Button` export:
+Found by a full-fixture validation sweep (`apps/validate`'s comparison across all 20 libraries at once, not a per-fixture check) — `antd/Button/Button` showed `ours found nothing` despite the component clearly being extracted correctly under a different name. antd's real `Button` export:
 
 ```ts
 const InternalCompoundedButton = React.forwardRef<...>((props, ref) => { ... });
@@ -572,35 +412,15 @@ Button.displayName = 'Button';
 export default Button;
 ```
 
-`try_scan_display_name` couldn't help here — it matches the assignment's left-hand object name
-(`"Button"`) against an existing mapping's name, but the mapping was still `"InternalCompoundedButton"`, so the
-match never fired. The actual gap was one level earlier:
-`try_rename_identifier_wrapped_component` (added for Headless UI's `forwardRefWithAs(ButtonFn) as X` — an
-*unrecognized wrapper call* around an already-detected component) only matched a `CallExpression` init. antd's
-shape has no wrapper call at all — just a bare `const NewName = OldName;` passthrough, optionally `as`-cast.
-Added a second match arm for a bare `Expression::Identifier` init, reusing the same rename logic. `Button` now
-surfaces with all 23 real props under its actual export name.
+`try_scan_display_name` couldn't help here — it matches the assignment's left-hand object name (`"Button"`) against an existing mapping's name, but the mapping was still `"InternalCompoundedButton"`, so the match never fired. The actual gap was one level earlier: `try_rename_identifier_wrapped_component` (added for Headless UI's `forwardRefWithAs(ButtonFn) as X` — an *unrecognized wrapper call* around an already-detected component) only matched a `CallExpression` init. antd's shape has no wrapper call at all — just a bare `const NewName = OldName;` passthrough, optionally `as`-cast. Added a second match arm for a bare `Expression::Identifier` init, reusing the same rename logic. `Button` now surfaces with all 23 real props under its actual export name.
 
 ## Note: compound components (`Dialog.Trigger`) — investigated, not a real gap
 
-The original worry: `Dialog.Trigger`, `Select.Item` — sub-components hung off a parent via dot access — aren't
-detected as separate components at all.
+The original worry: `Dialog.Trigger`, `Select.Item` — sub-components hung off a parent via dot access — aren't detected as separate components at all.
 
-Checked every fixture with a multi-component "family" shape. None uses the actual `<Namespace.Member>` dot-
-access pattern. `fixtures/ariakit`'s `Menu`/`MenuButton`/`MenuItem`/`MenuProvider` are just independently
-exported, independently named components — nothing to detect beyond what already works.
-`fixtures/headlessui/Listbox.tsx` gets closest — real Ark UI/Headless UI code does
-`Object.assign(ListboxRoot, { Button: ListboxButton, ... })` to expose `Listbox.Button` as a deprecated
-convenience alias — but `ListboxButton` is *also* independently exported (`export let ListboxButton =
-forwardRefWithAs(ButtonFn) as _internal_ComponentListboxButton`) as the primary, non-deprecated API, and that
-already gets detected and extracted correctly today (confirmed: `Listbox`, `ListboxButton`, `ListboxOption` all
-present in the output, each with accurate props).
+Checked every fixture with a multi-component "family" shape. None uses the actual `<Namespace.Member>` dot-access pattern. `fixtures/ariakit`'s `Menu`/`MenuButton`/`MenuItem`/`MenuProvider` are just independently exported, independently named components — nothing to detect beyond what already works. `fixtures/headlessui/Listbox.tsx` gets closest — real Ark UI/Headless UI code does `Object.assign(ListboxRoot, { Button: ListboxButton, ... })` to expose `Listbox.Button` as a deprecated convenience alias — but `ListboxButton` is *also* independently exported (`export let ListboxButton = forwardRefWithAs(ButtonFn) as _internal_ComponentListboxButton`) as the primary, non-deprecated API, and that already gets detected and extracted correctly today (confirmed: `Listbox`, `ListboxButton`, `ListboxOption` all present in the output, each with accurate props).
 
-What's actually missing, if anything, is purely cosmetic: no dot-qualified display name (`"Listbox.Button"`
-instead of `"ListboxButton"`) and no parent/child grouping metadata for doc tools that want to nest sub-
-components under their parent. There's no fixture or test demonstrating this as broken, and no evidence for
-which of several plausible designs (rename the display name vs. add a separate grouping field) real consumers
-would actually want — building either now would be speculative, not a fix. Left alone.
+What's actually missing, if anything, is purely cosmetic: no dot-qualified display name (`"Listbox.Button"` instead of `"ListboxButton"`) and no parent/child grouping metadata for doc tools that want to nest sub-components under their parent. There's no fixture or test demonstrating this as broken, and no evidence for which of several plausible designs (rename the display name vs. add a separate grouping field) real consumers would actually want — building either now would be speculative, not a fix. Left alone.
 
 ## Note: slot recipes — partial support
 

@@ -180,6 +180,4 @@ Component props and enums are serialized as `BTreeMap<String, …>` rather than 
 | Conditional types (`T extends U ? X : Y`) | Emitted as `opaque` — needs a real type checker, see `docs/type-checker-integration.md`. |
 | Mapped types with computed keys | Emitted as `opaque`. |
 
-Config file loading and cross-package `.d.ts` resolution are both fully
-implemented — see `docs/STATUS.md` if you're checking whether an older doc's
-claim about either is still true.
+Config file loading and cross-package `.d.ts` resolution are both fully implemented — see `docs/STATUS.md` if you're checking whether an older doc's claim about either is still true.

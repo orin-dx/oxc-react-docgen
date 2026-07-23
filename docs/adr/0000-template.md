@@ -20,5 +20,4 @@ What this costs and what it buys. Bullets.
 
 ## Alternatives considered (optional)
 
-Only if something else was a real contender. Name it and say why it lost —
-don't list every option that was never serious.
+Only if something else was a real contender. Name it and say why it lost — don't list every option that was never serious.

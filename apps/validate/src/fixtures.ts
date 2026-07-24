@@ -20,7 +20,9 @@ export function discoverFixtures(): Fixture[] {
     for (const file of readdirSync(dirPath)) {
       if (!file.endsWith('.ts') && !file.endsWith('.tsx')) continue
       if (file === 'index.ts') continue // skip barrel files for now
-      const ext = file.endsWith('.d.ts') ? '.d.ts' : file.endsWith('.tsx') ? '.tsx' : '.ts'
+      let ext = '.ts'
+      if (file.endsWith('.d.ts')) ext = '.d.ts'
+      else if (file.endsWith('.tsx')) ext = '.tsx'
       fixtures.push({
         name: `${dir}/${file.replace(/\.tsx?$/, '').replace(/\.d$/, '')}`,
         path: resolve(dirPath, file),
@@ -30,5 +32,5 @@ export function discoverFixtures(): Fixture[] {
       })
     }
   }
-  return fixtures.sort((a, b) => a.name.localeCompare(b.name))
+  return fixtures.toSorted((a, b) => a.name.localeCompare(b.name))
 }

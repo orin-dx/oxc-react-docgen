@@ -42,13 +42,13 @@ for (const fixture of fixtures) {
       durationMs,
       output: normalize(Array.isArray(raw) ? raw : [raw]),
     })
-  } catch (e: any) {
+  } catch (error: any) {
     results.push({
       tool: 'react-docgen',
       fixture: fixture.name,
       durationMs: performance.now() - start,
       output: {},
-      error: e.message,
+      error: error.message,
     })
   }
 }

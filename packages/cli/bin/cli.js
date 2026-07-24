@@ -7,7 +7,7 @@
 'use strict'
 
 const { existsSync } = require('node:fs')
-const { join, dirname } = require('node:path')
+const { join } = require('node:path')
 const { spawnSync } = require('node:child_process')
 
 const BINARY_NAME = process.platform === 'win32' ? 'oxc-react-docgen.exe' : 'oxc-react-docgen'
@@ -51,12 +51,13 @@ const binary = findBinary()
 if (!binary) {
   const pkg = platformPackageName()
   process.stderr.write(
-    'oxc-react-docgen: native binary not found.\n' +
-      (pkg
+    `oxc-react-docgen: native binary not found.\n${
+      pkg
         ? `Expected it via the optional dependency '${pkg}' — make sure your package manager installs ` +
           `optionalDependencies for your platform (${process.platform}-${process.arch}), or run ` +
           `'pnpm run build:napi' (from packages/napi) if developing this repo directly.\n`
-        : `Unsupported platform: ${process.platform}-${process.arch}.\n`),
+        : `Unsupported platform: ${process.platform}-${process.arch}.\n`
+    }`,
   )
   process.exit(1)
 }

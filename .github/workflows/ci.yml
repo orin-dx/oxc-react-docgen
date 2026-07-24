@@ -146,7 +146,7 @@ jobs:
   # ── TypeScript ─────────────────────────────────────────────────────────────
 
   format:
-    name: Format check
+    name: Format & lint check
     needs: detect-changes
     if: needs.detect-changes.outputs.typescript == 'true'
     runs-on: ubuntu-latest
@@ -164,6 +164,13 @@ jobs:
           pnpm exec oxfmt --check
           'packages/vite-plugin/src/**/*.ts' 'packages/vite-plugin/tests/**/*.ts'
           'packages/napi/index.d.ts' 'packages/cli/bin/cli.js' 'apps/validate/src/**/*.ts'
+      - run: >-
+          pnpm exec oxlint
+          'packages/vite-plugin/src' 'packages/napi/index.d.ts' 'packages/cli/bin/cli.js' 'apps/validate/src'
+      - run: >-
+          pnpm exec oxlint -A pedantic -A perf -A style
+          -A unicorn/consistent-function-scoping -A vitest/require-mock-type-parameters
+          --vitest-plugin 'packages/vite-plugin/tests'
 
   typescript:
     name: TypeScript / Node ${{ matrix.node }}

@@ -1,7 +1,7 @@
 import * as path from 'node:path'
 import { withCustomConfig } from 'react-docgen-typescript'
 import { discoverFixtures, FIXTURES_ROOT } from './fixtures.ts'
-import type { ToolResult, NormalizedOutput } from './types.ts'
+import type { ToolResult } from './types.ts'
 
 const tsconfigPath = path.resolve(FIXTURES_ROOT, '..', 'tsconfig.json')
 
@@ -16,29 +16,6 @@ function makeParser() {
   } catch {
     return withCustomConfig(tsconfigPath, { shouldExtractLiteralValuesFromEnum: true })
   }
-}
-
-function normalize(rdtOutput: any[]): NormalizedOutput {
-  const result: NormalizedOutput = {}
-  for (const comp of rdtOutput) {
-    result[comp.displayName] = {
-      displayName: comp.displayName,
-      description: comp.description ?? '',
-      props: Object.fromEntries(
-        Object.entries(comp.props ?? {}).map(([propName, prop]: [string, any]) => [
-          propName,
-          {
-            name: propName,
-            required: prop.required ?? false,
-            type: prop.type?.name ?? 'unknown',
-            description: prop.description ?? '',
-            defaultValue: prop.defaultValue?.value,
-          },
-        ]),
-      ),
-    }
-  }
-  return result
 }
 
 const parser = makeParser()
@@ -85,13 +62,13 @@ for (const fixture of fixtures) {
         error: 'no components found',
       })
     }
-  } catch (e: any) {
+  } catch (error: any) {
     results.push({
       tool: 'react-docgen-typescript',
       fixture: fixture.name,
       durationMs: performance.now() - start,
       output: {},
-      error: e.message,
+      error: error.message,
     })
   }
 }

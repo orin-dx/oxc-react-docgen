@@ -1,0 +1,49 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "promise", "node"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "pedantic": "error",
+    "perf": "error",
+    "style": "error"
+  },
+  "rules": {
+    "eslint/no-magic-numbers": "off",
+    "eslint/id-length": "off",
+    "eslint/sort-keys": "off",
+    "eslint/sort-imports": "off",
+    "eslint/sort-vars": "off",
+    "eslint/func-style": "off",
+    "eslint/capitalized-comments": "off",
+    "eslint/no-inline-comments": "off",
+    "eslint/init-declarations": "off",
+    "eslint/no-continue": "off",
+    "eslint/no-underscore-dangle": "off",
+    "eslint/require-unicode-regexp": "off",
+    "eslint/prefer-named-capture-group": "off",
+    "eslint/curly": "off",
+    "eslint/no-ternary": "off",
+    "eslint/max-statements": "off",
+    "eslint/max-lines-per-function": "off",
+    "typescript/method-signature-style": "off",
+    "typescript/array-type": "off",
+    "unicorn/no-null": "off"
+  },
+  "ignorePatterns": ["fixtures/**", "**/binding.d.ts", "packages/napi/index.js", "dist/**"],
+  "overrides": [
+    {
+      "files": ["**/tests/**/*.ts", "**/*.test.ts"],
+      "plugins": ["typescript", "unicorn", "oxc", "vitest"]
+    },
+    {
+      "files": ["apps/validate/src/**/*.ts", "packages/cli/bin/cli.js"],
+      "rules": {
+        "node/no-sync": "off"
+      }
+    }
+  ],
+  "env": {
+    "builtin": true
+  }
+}

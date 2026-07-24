@@ -3,7 +3,7 @@ import * as napi from '@oxc-react-docgen/napi'
 import type { ExtractionOutput, IncrementalUpdate } from '@oxc-react-docgen/napi'
 
 const VIRTUAL_ID = 'virtual:oxc-react-docgen'
-const RESOLVED_VIRTUAL_ID = '\0' + VIRTUAL_ID
+const RESOLVED_VIRTUAL_ID = `\0${VIRTUAL_ID}`
 
 export interface OxcDocgenOptions {
   srcDirs: string[]
@@ -54,22 +54,21 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
     try {
       currentOutput = JSON.parse(json) as ExtractionOutput
       return true
-    } catch (err) {
-      console.error('[oxc-react-docgen] Failed to parse initializeSession output:', err)
+    } catch (error) {
+      console.error('[oxc-react-docgen] Failed to parse initializeSession output:', error)
       return false
     }
   }
 
   function isSrcFile(file: string): boolean {
-    return (file.endsWith('.tsx') || file.endsWith('.ts')) && resolvedSrcDirs.some((dir) => file.startsWith(dir + '/'))
+    return (file.endsWith('.tsx') || file.endsWith('.ts')) && resolvedSrcDirs.some((dir) => file.startsWith(`${dir}/`))
   }
 
   return {
     name: 'oxc-react-docgen',
 
     configResolved(config: ResolvedConfig) {
-      root = config.root
-      command = config.command
+      ;({ root, command } = config)
       resolvedSrcDirs = options.srcDirs.map((d) => (d.startsWith('/') ? d : `${root}/${d}`))
       sessionId = napi.createSession(napiOptions())
     },
@@ -81,14 +80,20 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
       if (command !== 'build') return
       try {
         await coldExtract()
-      } catch (err) {
-        console.error('[oxc-react-docgen] initializeSession failed:', err)
+      } catch (error) {
+        console.error('[oxc-react-docgen] initializeSession failed:', error)
       }
     },
 
     configureServer(server: ViteDevServer) {
       // Vite guarantees configResolved fires before configureServer;
       // sessionId and resolvedSrcDirs are safe to use here.
+      //
+      // This hook must return its teardown function synchronously — it can't
+      // be `async` or `await` coldExtract() here without breaking that contract,
+      // so the fire-and-forget .then()/.catch() chain below is intentional,
+      // not an oversight.
+      /* oxlint-disable promise/prefer-await-to-then, promise/always-return, promise/prefer-await-to-callbacks */
       initPromise = coldExtract()
         .then((ok) => {
           if (!ok) return
@@ -97,9 +102,10 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
             components: currentOutput.components,
           })
         })
-        .catch((err: unknown) => {
-          console.error('[oxc-react-docgen] initializeSession failed:', err)
+        .catch((error: unknown) => {
+          console.error('[oxc-react-docgen] initializeSession failed:', error)
         })
+      /* oxlint-enable promise/prefer-await-to-then, promise/always-return, promise/prefer-await-to-callbacks */
 
       // Return a teardown function — Vite calls this on dev-server close.
       // buildEnd is not called in dev mode, so this is the only reliable cleanup hook.
@@ -127,8 +133,8 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
       let update: IncrementalUpdate
       try {
         update = JSON.parse(json) as IncrementalUpdate
-      } catch (err) {
-        console.error('[oxc-react-docgen] Failed to parse extractFileIncremental output:', err)
+      } catch (error) {
+        console.error('[oxc-react-docgen] Failed to parse extractFileIncremental output:', error)
         env.hot.send('oxc-react-docgen:update', { file: opts.file, updatedComponents: [], diagnostics: [] })
         return
       }

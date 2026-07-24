@@ -38,12 +38,16 @@ coverage:
     cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --html --open
 
 ts_src := "'packages/vite-plugin/src/**/*.ts' 'packages/vite-plugin/tests/**/*.ts' 'packages/napi/index.d.ts' 'packages/cli/bin/cli.js' 'apps/validate/src/**/*.ts'"
+ts_src_only := "'packages/vite-plugin/src' 'packages/napi/index.d.ts' 'packages/cli/bin/cli.js' 'apps/validate/src'"
+ts_tests_only := "'packages/vite-plugin/tests'"
 
 # Lint and format check
 lint:
     cargo fmt --check
     cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings
     pnpm exec oxfmt --check {{ts_src}}
+    pnpm exec oxlint {{ts_src_only}}
+    pnpm exec oxlint -A pedantic -A perf -A style -A unicorn/consistent-function-scoping -A vitest/require-mock-type-parameters --vitest-plugin {{ts_tests_only}}
 
 # Format code
 fmt:

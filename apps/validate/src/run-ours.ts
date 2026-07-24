@@ -1,10 +1,9 @@
 import { execSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { existsSync, readdirSync, statSync } from 'node:fs'
+import { resolve } from 'node:path'
 import type { ToolResult, NormalizedOutput } from './types.ts'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+const __dirname = import.meta.dirname
 const FIXTURES_ROOT = resolve(__dirname, '../../../fixtures')
 // Prefer release build (faster, has all fixes); fall back to debug for dev convenience.
 const CLI = existsSync(resolve(__dirname, '../../../target/release/oxc-react-docgen'))
@@ -15,69 +14,97 @@ const CLI = existsSync(resolve(__dirname, '../../../target/release/oxc-react-doc
 function discoverLibraries(): string[] {
   return readdirSync(FIXTURES_ROOT)
     .filter((d) => statSync(resolve(FIXTURES_ROOT, d)).isDirectory())
-    .sort()
+    .toSorted()
 }
 
 // Map our PropType to a human-readable string for comparison
 function propTypeToString(pt: any): string {
   if (!pt || typeof pt !== 'object') return 'unknown'
   switch (pt.kind) {
-    case 'string':
+    case 'string': {
       return 'string'
-    case 'number':
+    }
+    case 'number': {
       return 'number'
-    case 'boolean':
+    }
+    case 'boolean': {
       return 'boolean'
-    case 'null':
+    }
+    case 'null': {
       return 'null'
-    case 'undefined':
+    }
+    case 'undefined': {
       return 'undefined'
-    case 'any':
+    }
+    case 'any': {
       return 'any'
-    case 'never':
+    }
+    case 'never': {
       return 'never'
-    case 'unknown':
+    }
+    case 'unknown': {
       return 'unknown'
-    case 'void':
+    }
+    case 'void': {
       return 'void'
-    case 'reactNode':
+    }
+    case 'reactNode': {
       return 'ReactNode'
-    case 'cssProperties':
+    }
+    case 'cssProperties': {
       return 'CSSProperties'
-    case 'elementType':
+    }
+    case 'elementType': {
       return 'ElementType'
-    case 'sxProps':
+    }
+    case 'sxProps': {
       return 'SxProps'
-    case 'stringLiteral':
+    }
+    case 'stringLiteral': {
       return JSON.stringify(pt.value)
-    case 'numberLiteral':
+    }
+    case 'numberLiteral': {
       return String(pt.value)
-    case 'boolLiteral':
+    }
+    case 'boolLiteral': {
       return String(pt.value)
-    case 'union':
-      return (pt.members as any[]).map(propTypeToString).join(' | ')
-    case 'intersection':
-      return (pt.members as any[]).map(propTypeToString).join(' & ')
-    case 'array':
+    }
+    case 'union': {
+      return (pt.members as any[]).map((member) => propTypeToString(member)).join(' | ')
+    }
+    case 'intersection': {
+      return (pt.members as any[]).map((member) => propTypeToString(member)).join(' & ')
+    }
+    case 'array': {
       return `${propTypeToString(pt.element)}[]`
-    case 'tuple':
-      return `[${(pt.elements as any[]).map(propTypeToString).join(', ')}]`
-    case 'object':
+    }
+    case 'tuple': {
+      return `[${(pt.elements as any[]).map((member) => propTypeToString(member)).join(', ')}]`
+    }
+    case 'object': {
       return '{ ... }'
-    case 'named':
-      return pt.args?.length ? `${pt.name}<${pt.args.map(propTypeToString).join(', ')}>` : pt.name
-    case 'eventHandler':
+    }
+    case 'named': {
+      return pt.args?.length ? `${pt.name}<${pt.args.map((member) => propTypeToString(member)).join(', ')}>` : pt.name
+    }
+    case 'eventHandler': {
       return `(${pt.paramName ?? 'e'}: ${pt.eventType}) => void`
-    case 'ref':
+    }
+    case 'ref': {
       return pt.element ? `Ref<${pt.element}>` : 'Ref'
-    case 'htmlAttributes':
+    }
+    case 'htmlAttributes': {
       return `${pt.element}HTMLAttributes`
-    case 'literalUnion':
+    }
+    case 'literalUnion': {
       return pt.members.map((m: string) => JSON.stringify(m)).join(' | ')
-    case 'opaque':
+    }
+    case 'opaque': {
       return pt.raw
-    default:
+    }
+    default: {
       return JSON.stringify(pt)
+    }
   }
 }
 
@@ -118,7 +145,7 @@ for (const lib of libraries) {
     })
     // CLI prints a spinner line then JSON — find the JSON start
     const jsonStart = raw.indexOf('{')
-    const json = jsonStart >= 0 ? raw.slice(jsonStart) : raw
+    const json = jsonStart === -1 ? raw : raw.slice(jsonStart)
     const parsed = JSON.parse(json)
     const durationMs = performance.now() - start
 
@@ -142,13 +169,13 @@ for (const lib of libraries) {
         notableInheritedNames,
       })
     }
-  } catch (e: any) {
+  } catch (error: any) {
     results.push({
       tool: 'oxc-react-docgen',
       fixture: lib,
       durationMs: performance.now() - start,
       output: {},
-      error: e.stderr ?? e.message,
+      error: error.stderr ?? error.message,
     })
   }
 }

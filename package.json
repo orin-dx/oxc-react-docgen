@@ -26,6 +26,7 @@
     "@radix-ui/react-slot": "^1.0.0",
     "@types/react": "^19.0.0",
     "class-variance-authority": "^0.7.0",
+    "oxfmt": "^0.60.0",
     "react": "^19.0.0",
     "typescript": "^5.8.0"
   }

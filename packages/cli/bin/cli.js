@@ -34,7 +34,7 @@ function findBinary() {
     join(__dirname, '../../../target/release', BINARY_NAME),
     join(__dirname, '../../../target/debug', BINARY_NAME),
   ]
-  const devFound = devCandidates.find(p => existsSync(p))
+  const devFound = devCandidates.find((p) => existsSync(p))
   if (devFound) return devFound
 
   const pkg = platformPackageName()

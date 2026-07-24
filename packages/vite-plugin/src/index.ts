@@ -61,10 +61,7 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
   }
 
   function isSrcFile(file: string): boolean {
-    return (
-      (file.endsWith('.tsx') || file.endsWith('.ts')) &&
-      resolvedSrcDirs.some(dir => file.startsWith(dir + '/'))
-    )
+    return (file.endsWith('.tsx') || file.endsWith('.ts')) && resolvedSrcDirs.some((dir) => file.startsWith(dir + '/'))
   }
 
   return {
@@ -73,7 +70,7 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
     configResolved(config: ResolvedConfig) {
       root = config.root
       command = config.command
-      resolvedSrcDirs = options.srcDirs.map(d => (d.startsWith('/') ? d : `${root}/${d}`))
+      resolvedSrcDirs = options.srcDirs.map((d) => (d.startsWith('/') ? d : `${root}/${d}`))
       sessionId = napi.createSession(napiOptions())
     },
 
@@ -93,7 +90,7 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
       // Vite guarantees configResolved fires before configureServer;
       // sessionId and resolvedSrcDirs are safe to use here.
       initPromise = coldExtract()
-        .then(ok => {
+        .then((ok) => {
           if (!ok) return
           // environments.client.hot is Vite 6+ API; cast avoids typing fight across patch versions
           ;(server as any).environments?.client?.hot?.send('oxc-react-docgen:ready', {

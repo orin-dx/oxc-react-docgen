@@ -34,7 +34,7 @@ function normalize(rdtOutput: any[]): NormalizedOutput {
             description: prop.description ?? '',
             defaultValue: prop.defaultValue?.value,
           },
-        ])
+        ]),
       ),
     }
   }
@@ -42,7 +42,7 @@ function normalize(rdtOutput: any[]): NormalizedOutput {
 }
 
 const parser = makeParser()
-const fixtures = discoverFixtures().filter(f => !f.isDts) // RDT needs real TS files
+const fixtures = discoverFixtures().filter((f) => !f.isDts) // RDT needs real TS files
 const results: ToolResult[] = []
 
 for (const fixture of fixtures) {
@@ -70,7 +70,7 @@ for (const fixture of fixtures) {
                   description: prop.description ?? '',
                   defaultValue: prop.defaultValue?.value,
                 },
-              ])
+              ]),
             ),
           },
         },

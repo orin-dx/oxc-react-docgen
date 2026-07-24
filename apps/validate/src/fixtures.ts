@@ -4,9 +4,9 @@ import { readdirSync, statSync } from 'node:fs'
 export const FIXTURES_ROOT = resolve(import.meta.dirname, '../../../fixtures')
 
 export interface Fixture {
-  name: string      // e.g. "shadcn/button"
-  path: string      // absolute path
-  ext: string       // ".tsx" | ".ts" | ".d.ts"
+  name: string // e.g. "shadcn/button"
+  path: string // absolute path
+  ext: string // ".tsx" | ".ts" | ".d.ts"
   isTsx: boolean
   isDts: boolean
 }

@@ -2,7 +2,7 @@
 export interface NormalizedProp {
   name: string
   required: boolean
-  type: string          // raw type string
+  type: string // raw type string
   description: string
   defaultValue?: string
 }

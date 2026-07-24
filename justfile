@@ -37,15 +37,18 @@ bench:
 coverage:
     cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --html --open
 
+ts_src := "'packages/vite-plugin/src/**/*.ts' 'packages/vite-plugin/tests/**/*.ts' 'packages/napi/index.d.ts' 'packages/cli/bin/cli.js' 'apps/validate/src/**/*.ts'"
+
 # Lint and format check
 lint:
     cargo fmt --check
     cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings
+    pnpm exec oxfmt --check {{ts_src}}
 
 # Format code
 fmt:
     cargo fmt
-    pnpm exec prettier --write .
+    pnpm exec oxfmt {{ts_src}}
 
 # Check licenses, advisories, and banned crates
 deny:

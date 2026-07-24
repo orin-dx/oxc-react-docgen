@@ -145,6 +145,26 @@ jobs:
 
   # ── TypeScript ─────────────────────────────────────────────────────────────
 
+  format:
+    name: Format check
+    needs: detect-changes
+    if: needs.detect-changes.outputs.typescript == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: >-
+          pnpm exec oxfmt --check
+          'packages/vite-plugin/src/**/*.ts' 'packages/vite-plugin/tests/**/*.ts'
+          'packages/napi/index.d.ts' 'packages/cli/bin/cli.js' 'apps/validate/src/**/*.ts'
+
   typescript:
     name: TypeScript / Node ${{ matrix.node }}
     needs: detect-changes

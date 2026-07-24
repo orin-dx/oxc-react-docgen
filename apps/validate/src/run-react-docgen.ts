@@ -20,14 +20,14 @@ function normalize(rdgOutput: any[]): NormalizedOutput {
             description: prop.description ?? '',
             defaultValue: prop.defaultValue?.value,
           },
-        ])
+        ]),
       ),
     }
   }
   return result
 }
 
-const fixtures = discoverFixtures().filter(f => f.isTsx)
+const fixtures = discoverFixtures().filter((f) => f.isTsx)
 const results: ToolResult[] = []
 
 for (const fixture of fixtures) {

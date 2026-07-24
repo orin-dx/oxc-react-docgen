@@ -3,16 +3,29 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Mock BEFORE importing plugin — vi.mock is hoisted by Vitest
 vi.mock('@oxc-react-docgen/napi', () => ({
   createSession: vi.fn().mockReturnValue(42),
-  initializeSession: vi.fn().mockResolvedValue(
-    JSON.stringify({ components: {}, enums: {}, diagnostics: [], stats: {} })
-  ),
+  initializeSession: vi
+    .fn()
+    .mockResolvedValue(JSON.stringify({ components: {}, enums: {}, diagnostics: [], stats: {} })),
   extractFileIncremental: vi.fn().mockResolvedValue(
     JSON.stringify({
-      updatedComponents: [{ displayName: 'Button', filePath: '/project/src/Button.tsx', props: {}, inheritance: [], notableInherited: {}, description: '', discriminantProp: null, composes: [], tags: {}, methods: [] }],
+      updatedComponents: [
+        {
+          displayName: 'Button',
+          filePath: '/project/src/Button.tsx',
+          props: {},
+          inheritance: [],
+          notableInherited: {},
+          description: '',
+          discriminantProp: null,
+          composes: [],
+          tags: {},
+          methods: [],
+        },
+      ],
       affectedFiles: ['/project/src/Button.tsx'],
       diagnostics: [],
       durationMs: 5,
-    })
+    }),
   ),
   closeSession: vi.fn(),
 }))
@@ -64,9 +77,7 @@ describe('oxcReactDocgen', () => {
 
   describe('configResolved', () => {
     it('creates a NAPI session with resolved absolute src dirs', () => {
-      expect(napi.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ srcDirs: ['/project/src'] })
-      )
+      expect(napi.createSession).toHaveBeenCalledWith(expect.objectContaining({ srcDirs: ['/project/src'] }))
     })
   })
 
@@ -82,10 +93,7 @@ describe('oxcReactDocgen', () => {
       ;(plugin.configureServer as Function)(mockServer)
       await vi.waitUntil(() => (napi.initializeSession as any).mock.calls.length > 0)
       await (napi.initializeSession as any).mock.results[0].value
-      expect(napi.initializeSession).toHaveBeenCalledWith(
-        42,
-        expect.objectContaining({ srcDirs: ['/project/src'] })
-      )
+      expect(napi.initializeSession).toHaveBeenCalledWith(42, expect.objectContaining({ srcDirs: ['/project/src'] }))
     })
   })
 
@@ -111,7 +119,7 @@ describe('oxcReactDocgen', () => {
       expect(napi.extractFileIncremental).toHaveBeenCalledWith(
         '/project/src/Button.tsx',
         42,
-        expect.objectContaining({ srcDirs: ['/project/src'] })
+        expect.objectContaining({ srcDirs: ['/project/src'] }),
       )
     })
 
@@ -120,7 +128,7 @@ describe('oxcReactDocgen', () => {
       await (plugin.hotUpdate as Function).call(ctx, makeOpts('/project/src/Button.tsx'))
       expect(ctx.environment.hot.send).toHaveBeenCalledWith(
         'oxc-react-docgen:update',
-        expect.objectContaining({ file: '/project/src/Button.tsx' })
+        expect.objectContaining({ file: '/project/src/Button.tsx' }),
       )
     })
 
@@ -176,10 +184,7 @@ describe('oxcReactDocgen', () => {
     it('runs cold extraction when the command is "build"', async () => {
       ;(plugin.configResolved as Function)({ root: '/project', command: 'build' })
       await (plugin.buildStart as Function)()
-      expect(napi.initializeSession).toHaveBeenCalledWith(
-        42,
-        expect.objectContaining({ srcDirs: ['/project/src'] })
-      )
+      expect(napi.initializeSession).toHaveBeenCalledWith(42, expect.objectContaining({ srcDirs: ['/project/src'] }))
       const code = (plugin.load as Function)('\0virtual:oxc-react-docgen') as string
       expect(code).toMatch(/^export default \{/)
     })
@@ -197,17 +202,13 @@ describe('oxcReactDocgen', () => {
     it('maps to htmlAttributes: "none" for the NAPI call', () => {
       const p = oxcReactDocgen({ srcDirs: ['src'], skipHtmlProps: true })
       ;(p.configResolved as Function)({ root: '/project' })
-      expect(napi.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ htmlAttributes: 'none' })
-      )
+      expect(napi.createSession).toHaveBeenCalledWith(expect.objectContaining({ htmlAttributes: 'none' }))
     })
 
     it('leaves htmlAttributes unset when skipHtmlProps is not passed', () => {
       const p = oxcReactDocgen({ srcDirs: ['src'] })
       ;(p.configResolved as Function)({ root: '/project' })
-      expect(napi.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ htmlAttributes: undefined })
-      )
+      expect(napi.createSession).toHaveBeenCalledWith(expect.objectContaining({ htmlAttributes: undefined }))
     })
   })
 })

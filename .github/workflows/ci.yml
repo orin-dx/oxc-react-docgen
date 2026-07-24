@@ -49,7 +49,14 @@ jobs:
             exit 0
           fi
 
-          AFFECTED=$(moon query projects --affected --downstream deep --base "$BASE" --head "${{ github.sha }}")
+          # moon 2.3.3's `query projects` has no --base/--head flags (confirmed against
+          # `moon query projects --help` and the pinned version) — passing them failed
+          # the whole command, which used to silently land in the fail-open branch below
+          # every single run. It reads the base from MOON_BASE instead, and always diffs
+          # against whatever's actually checked out on disk (there's no MOON_HEAD — moon
+          # ignores it if set) — which is exactly github.sha here since actions/checkout
+          # already put us there, so this is the correct comparison without needing one.
+          AFFECTED=$(MOON_BASE="$BASE" moon query projects --affected --downstream deep)
           if [ $? -ne 0 ] || [ -z "$AFFECTED" ]; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
             echo "typescript=true" >> "$GITHUB_OUTPUT"
@@ -65,9 +72,10 @@ jobs:
           for id in $IDS; do
             case "$id" in
               core|cli|crates-binding) RUST=true ;;
-            esac
-            case "$id" in
-              vite-plugin|napi) TS=true ;;
+              vite-plugin|napi|validate|cli-npm) TS=true ;;
+              # Unmapped project (new one added to .moon/workspace.yml and forgotten
+              # here) — fail open rather than silently leaving it with zero CI coverage.
+              *) RUST=true; TS=true ;;
             esac
           done
 

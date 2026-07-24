@@ -4,6 +4,7 @@ $schema: "https://moonrepo.dev/schemas/workspace.json"
 projects:
   core: "crates/core"
   cli: "crates/cli"
+  cli-npm: "packages/cli"
   crates-binding: "crates/binding"
   napi: "packages/napi"
   validate: "apps/validate"
@@ -11,7 +12,7 @@ projects:
 
 vcs:
   client: git
-  defaultBranch: master
+  defaultBranch: main
   sync: true
   hooks:
     pre-commit:

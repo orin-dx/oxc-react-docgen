@@ -1,0 +1,10 @@
+language: rust
+
+tasks:
+  build:
+    command: cargo build -p oxc-react-docgen-napi
+    options:
+      runFromWorkspaceRoot: true
+    inputs:
+      - "src/**/*"
+      - "Cargo.toml"

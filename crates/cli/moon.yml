@@ -3,6 +3,8 @@ language: rust
 tasks:
   build:
     command: cargo build -p oxc-react-docgen
+    deps:
+      - "core:build"
     options:
       runFromWorkspaceRoot: true
     inputs:
@@ -11,6 +13,8 @@ tasks:
 
   test:
     command: cargo nextest run -p oxc-react-docgen --locked
+    deps:
+      - "core:build"
     options:
       runFromWorkspaceRoot: true
     inputs:
@@ -20,6 +24,8 @@ tasks:
 
   lint:
     command: cargo clippy -p oxc-react-docgen --locked -- -D warnings
+    deps:
+      - "core:build"
     options:
       runFromWorkspaceRoot: true
     inputs:

@@ -3,6 +3,8 @@ language: rust
 tasks:
   build:
     command: cargo build -p oxc-react-docgen-napi
+    deps:
+      - "core:build"
     options:
       runFromWorkspaceRoot: true
     inputs:

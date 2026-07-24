@@ -15,10 +15,71 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # Computes which projects (per moon's project graph, including transitive
+  # dependents — a crates/core change correctly marks crates/cli, crates/binding,
+  # and packages/napi as affected too) changed relative to the base ref, so
+  # untouched language groups can skip their jobs entirely. Fails open (treats
+  # everything as affected) on any error or unusual ref — a skipped real check
+  # is a much worse failure mode than an unnecessary one.
+  detect-changes:
+    name: Detect affected projects
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.detect.outputs.rust }}
+      typescript: ${{ steps.detect.outputs.typescript }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: moonrepo/setup-toolchain@v0
+      - id: detect
+        run: |
+          set +e
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+
+          # No usable base (first push to a branch, force-push, etc.) — run everything.
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "typescript=true" >> "$GITHUB_OUTPUT"
+            echo "No usable base ref — running everything."
+            exit 0
+          fi
+
+          AFFECTED=$(moon query projects --affected --downstream deep --base "$BASE" --head "${{ github.sha }}")
+          if [ $? -ne 0 ] || [ -z "$AFFECTED" ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "typescript=true" >> "$GITHUB_OUTPUT"
+            echo "moon query failed — running everything."
+            exit 0
+          fi
+
+          IDS=$(echo "$AFFECTED" | python3 -c "import json,sys; d=json.load(sys.stdin); print(' '.join(p['id'] for p in d['projects']))")
+          echo "Affected projects: ${IDS:-none}"
+
+          RUST=false
+          TS=false
+          for id in $IDS; do
+            case "$id" in
+              core|cli|crates-binding) RUST=true ;;
+            esac
+            case "$id" in
+              vite-plugin|napi) TS=true ;;
+            esac
+          done
+
+          echo "rust=$RUST" >> "$GITHUB_OUTPUT"
+          echo "typescript=$TS" >> "$GITHUB_OUTPUT"
+
   # ── Rust ───────────────────────────────────────────────────────────────────
 
   lint:
     name: Lint
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +92,8 @@ jobs:
 
   test:
     name: Test
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +111,8 @@ jobs:
 
   coverage:
     name: Coverage
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,8 +130,9 @@ jobs:
 
   bench:
     name: Benchmarks
+    needs: detect-changes
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && needs.detect-changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.96.0
@@ -81,6 +147,8 @@ jobs:
 
   typescript:
     name: TypeScript / Node ${{ matrix.node }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.typescript == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -102,6 +170,8 @@ jobs:
   # as a transitive dep — no separate install step required.
   install:
     name: Install / Node ${{ matrix.node }} / ${{ matrix.pm }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.typescript == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

@@ -36,6 +36,9 @@ mod react;
 mod substitute;
 mod template;
 
+#[cfg(test)]
+pub(crate) use import::{follow_reexports_call_count, reset_follow_reexports_call_count};
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /// Maximum recursion depth for type resolution.

@@ -968,6 +968,79 @@ export function Button(props: ButtonProps) { return null; }
         );
     }
 
+    // ── test_barrel_resolution_does_not_exponentially_blow_up_on_shared_descendants ──
+    //
+    // Adversarial-review finding: follow_reexports (resolver/import.rs) had no
+    // visited-set, only the MAX_REEXPORT_DEPTH cap. That bounds the RECURSION
+    // depth but not the number of CALLS — a barrel graph where multiple parents
+    // wildcard-re-export the same shared descendant (ubiquitous in real
+    // component libraries: several sub-barrels all wildcarding a common
+    // `types.ts`) re-explores that shared subtree once per path into it,
+    // multiplying out to branching_factor^depth calls instead of one call per
+    // graph node. Reproduced empirically in the review with real distinct
+    // files: 7 barrels took 9.7s wall time vs 156ms at 2.
+    //
+    // Wall-clock isn't a reliable signal for a small, fast-running unit test:
+    // oxc_resolver caches path resolution by (from_dir, specifier), and this
+    // repo's own per-call work (a couple of hashmap probes) is cheap enough
+    // that even a few thousand redundant calls stay under a second on this
+    // machine. Assert on the actual call count instead — deterministic, and
+    // it's the real mechanism the fix changes.
+    //
+    // This barrel wildcard-re-exports the same next sibling twice, deep enough
+    // to hit MAX_REEXPORT_DEPTH (8), with a name that's never declared
+    // anywhere (the unhappy path, which forces full traversal instead of an
+    // early exit on first match). Without the visited-set fix this explores
+    // 2^8 = 256 calls; with it, exactly 9 (one per graph node, barrel_0..8).
+    #[test]
+    fn test_barrel_resolution_does_not_exponentially_blow_up_on_shared_descendants() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+
+        const DEPTH: usize = 8;
+        for level in 0..DEPTH {
+            write_file(
+                &tmp,
+                &format!("barrel_{level}.ts"),
+                &format!("export * from './barrel_{}';\nexport * from './barrel_{}';\n", level + 1, level + 1),
+            );
+        }
+        write_file(&tmp, &format!("barrel_{DEPTH}.ts"), "export const unrelated = 1;\n");
+        write_file(
+            &tmp,
+            "Component.tsx",
+            r#"
+import type { NeverDeclared } from './barrel_0';
+export function Component(props: { value: NeverDeclared }) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        crate::resolver::reset_follow_reexports_call_count();
+        let output = extract(&options);
+        let calls = crate::resolver::follow_reexports_call_count();
+
+        // Linear in graph size (barrel_0..barrel_8 = 9 nodes) with the
+        // visited-set; without it this would be 2^8 = 256. A generous bound
+        // (well under 256, comfortably above 9) that still fails hard if the
+        // fix regresses back to exponential.
+        assert!(
+            calls < 50,
+            "follow_reexports was called {calls} times on a depth-{DEPTH} shared-descendant \
+             barrel graph (expected ~9, linear in graph size) — looks like the visited-set \
+             regressed back to exploring branching_factor^depth calls"
+        );
+        // NeverDeclared genuinely doesn't exist anywhere — still expect the normal
+        // "cannot resolve" diagnostic, not a crash or a hang.
+        assert!(output.components.contains_key("Component"), "expected Component to still be extracted");
+    }
+
     // ── test_static_default_props_assignment_reaches_parsed_prop ─────────────
     //
     // Regression test for: `Button.defaultProps = { size: 'md' }` (deprecated

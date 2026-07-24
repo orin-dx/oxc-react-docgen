@@ -1,6 +1,8 @@
 //! Import and canonical resolution.
 
 use camino::{Utf8Path, Utf8PathBuf};
+use compact_str::CompactString;
+use rustc_hash::FxHashSet;
 
 use crate::import_map::ReExportStep;
 use crate::types::*;
@@ -10,6 +12,25 @@ use super::ResolutionContext;
 /// Re-export chains in real code are shallow (one or two barrel hops); this
 /// only guards against a pathological or cyclic `export * from` graph.
 const MAX_REEXPORT_DEPTH: u8 = 8;
+
+/// Counts real invocations of `follow_reexports`, so tests can assert the
+/// visited-set is actually collapsing shared-descendant re-exploration
+/// (linear in graph size) instead of just checking wall-clock time — the
+/// per-call work here is cheap enough, and oxc_resolver's own path cache
+/// absorbing enough of the redundant filesystem cost, that wall-clock alone
+/// doesn't reliably distinguish "linear" from "branching_factor^depth".
+#[cfg(test)]
+static FOLLOW_REEXPORTS_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+pub(crate) fn reset_follow_reexports_call_count() {
+    FOLLOW_REEXPORTS_CALLS.store(0, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(test)]
+pub(crate) fn follow_reexports_call_count() -> usize {
+    FOLLOW_REEXPORTS_CALLS.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 /// Resolve `name` to its canonical `(file_path, name)` pair.
 /// Returns `None` if `name` is a local declaration (not imported).
@@ -22,7 +43,8 @@ pub(super) fn resolve_to_canonical(
     if let Some(import_ref) = ctx.import_map.find_import(consuming_file, name) {
         let resolved_file = resolve_import_specifier(&import_ref.specifier, consuming_file, ctx, diagnostics)?;
         let canonical_name = import_ref.exported_name.to_string();
-        return Some(follow_reexports(resolved_file, canonical_name, ctx, diagnostics, 0));
+        let mut visited = FxHashSet::default();
+        return Some(follow_reexports(resolved_file, canonical_name, ctx, diagnostics, &mut visited, 0));
     }
 
     // Namespace-import member access: `import * as React from "react"` then a
@@ -38,7 +60,8 @@ pub(super) fn resolve_to_canonical(
         return None;
     }
     let resolved_file = resolve_import_specifier(&namespace_ref.specifier, consuming_file, ctx, diagnostics)?;
-    Some(follow_reexports(resolved_file, member.to_string(), ctx, diagnostics, 0))
+    let mut visited = FxHashSet::default();
+    Some(follow_reexports(resolved_file, member.to_string(), ctx, diagnostics, &mut visited, 0))
 }
 
 /// A directly-imported name may land on a barrel file (`export { X } from
@@ -53,9 +76,21 @@ fn follow_reexports(
     name: String,
     ctx: &ResolutionContext,
     diagnostics: &mut Vec<Diagnostic>,
+    visited: &mut FxHashSet<(Utf8PathBuf, CompactString)>,
     depth: u8,
 ) -> (Utf8PathBuf, String) {
+    #[cfg(test)]
+    FOLLOW_REEXPORTS_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
     if depth >= MAX_REEXPORT_DEPTH || is_declared_at(&ctx.global, &file, &name) {
+        return (file, name);
+    }
+    // Real barrels commonly share descendants (several sub-barrels wildcarding
+    // the same underlying `types.ts`, say) — without this, re-exploring an
+    // already-visited (file, name) pair from a different parent multiplies out
+    // to branching_factor^depth calls instead of one call per graph node. This
+    // also subsumes cycle detection: a cycle revisits a pair by definition.
+    if !visited.insert((file.clone(), CompactString::from(name.as_str()))) {
         return (file, name);
     }
     match ctx.import_map.resolve_reexport_chain(&file, &name, &ctx.global) {
@@ -63,14 +98,14 @@ fn follow_reexports(
             let Some(next_file) = resolve_import_specifier(&source_specifier, &file, ctx, diagnostics) else {
                 return (file, name);
             };
-            follow_reexports(next_file, source_name, ctx, diagnostics, depth + 1)
+            follow_reexports(next_file, source_name, ctx, diagnostics, visited, depth + 1)
         }
         Some(ReExportStep::Wildcards(specifiers)) => {
             for specifier in &specifiers {
                 let Some(candidate_file) = resolve_import_specifier(specifier, &file, ctx, diagnostics) else {
                     continue;
                 };
-                let resolved = follow_reexports(candidate_file, name.clone(), ctx, diagnostics, depth + 1);
+                let resolved = follow_reexports(candidate_file, name.clone(), ctx, diagnostics, visited, depth + 1);
                 if is_declared_at(&ctx.global, &resolved.0, &resolved.1) {
                     return resolved;
                 }

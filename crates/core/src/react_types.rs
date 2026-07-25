@@ -19,8 +19,50 @@ pub fn html_element_for(type_name: &str) -> Option<&'static str> {
         "HTMLAttributes" => Some("div"),
         "DOMAttributes" => Some("div"),
         "AriaAttributes" => None,             // not an element, but recognized as built-in
-        "SVGAttributes" | "SVGProps" => None, // SVG — no single element to pick
-        "HTMLProps" => Some("div"),           // generic HTML props → div
+        "SVGAttributes" | "SVGProps" => None, // SVG — no single element to pick from the name alone
+        "HTMLProps" => Some("div"), // generic HTML props → div (overridden below when a real element arg is given)
+        _ => None,
+    }
+}
+
+/// `SVGAttributes<T>`/`SVGProps<T>`/`HTMLProps<T>` carry no element in their own
+/// name (unlike `ButtonHTMLAttributes`, where the element is baked into the
+/// name) — but a real call site always supplies a concrete DOM element type as
+/// `T`, e.g. `React.SVGAttributes<SVGSVGElement>` or `React.HTMLProps<HTMLDivElement>`.
+/// Derives the element tag from that argument so these generic forms get the
+/// same real, structural HTML-attribute expansion (Full mode) and
+/// `notableInherited` treatment (Curated mode) that the concrete forms
+/// already get from `html_element_for` alone. Only covers the element types
+/// that actually appear as `SVGAttributes`/`HTMLProps` type arguments in
+/// practice — falls back to `None` (the prior, safe opaque behavior) for
+/// anything not in this list rather than guessing at a tag name that's wrong
+/// (e.g. `HTMLAnchorElement`'s real tag is `a`, not a naive strip-and-lowercase
+/// of the interface name).
+pub fn html_element_from_type_arg(type_arg: &str) -> Option<&'static str> {
+    match type_arg {
+        "HTMLAnchorElement" => Some("a"),
+        "HTMLButtonElement" => Some("button"),
+        "HTMLDivElement" => Some("div"),
+        "HTMLSpanElement" => Some("span"),
+        "HTMLFormElement" => Some("form"),
+        "HTMLImageElement" => Some("img"),
+        "HTMLInputElement" => Some("input"),
+        "HTMLLabelElement" => Some("label"),
+        "HTMLSelectElement" => Some("select"),
+        "HTMLTextAreaElement" => Some("textarea"),
+        "HTMLVideoElement" => Some("video"),
+        "HTMLAudioElement" => Some("audio"),
+        "HTMLParagraphElement" => Some("p"),
+        "HTMLUListElement" => Some("ul"),
+        "HTMLOListElement" => Some("ol"),
+        "HTMLLIElement" => Some("li"),
+        "HTMLTableElement" => Some("table"),
+        "SVGSVGElement" => Some("svg"),
+        "SVGCircleElement" => Some("circle"),
+        "SVGPathElement" => Some("path"),
+        "SVGRectElement" => Some("rect"),
+        "SVGLineElement" => Some("line"),
+        "SVGGElement" => Some("g"),
         _ => None,
     }
 }

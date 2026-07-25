@@ -662,6 +662,53 @@ export function Button(props: ButtonProps) { return null; }
         assert!(button.props.contains_key("variant"), "own prop 'variant' should still be present");
     }
 
+    // ── test_generic_svg_attributes_extends_resolves_to_its_element_in_full_mode ─
+    //
+    // `IconProps extends React.SVGAttributes<SVGSVGElement>` was resolved as an
+    // opaque no-op (react_types::html_element_for("SVGAttributes") returns None
+    // — "no single element to pick", true for the *unparameterized* name but
+    // not for a real call site, which always supplies a concrete element type
+    // argument). classify_extends now derives the element from that argument
+    // for the generic SVGAttributes/SVGProps/HTMLProps forms specifically,
+    // the same way the concrete `<Element>HTMLAttributes` forms already do
+    // from their name alone.
+
+    #[test]
+    fn test_generic_svg_attributes_extends_resolves_to_its_element_in_full_mode() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+        write_file(
+            &tmp,
+            "Icon.tsx",
+            r#"
+import * as React from "react";
+export interface IconProps extends React.SVGAttributes<SVGSVGElement> {
+  size?: number;
+}
+export const Icon = React.forwardRef<SVGSVGElement, IconProps>((props, ref) => <svg ref={ref} {...props} />);
+Icon.displayName = "Icon";
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            html_attributes: HtmlAttributeMode::Full,
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let icon = output.components.get("Icon").expect("Icon component not found");
+        assert!(
+            icon.props.contains_key("suppressHydrationWarning"),
+            "expected a real SVGAttributes field to resolve as an own prop in Full mode, got {:?}",
+            icon.props.keys().collect::<Vec<_>>()
+        );
+        assert!(icon.props.contains_key("size"), "own prop 'size' should still be present");
+    }
+
     // ── test_named_type_only_import_from_react_resolves_to_real_dts ──────────
     //
     // Regression test for: `import type { AriaAttributes } from "react"` used

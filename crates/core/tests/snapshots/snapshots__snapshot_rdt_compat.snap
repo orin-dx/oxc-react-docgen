@@ -771,12 +771,145 @@ expression: value
           ]
         }
       },
-      "inheritance": [],
-      "notableInherited": {},
-      "discriminantProp": null,
-      "composes": [
-        "React.SVGAttributes"
+      "inheritance": [
+        {
+          "typeName": "React.SVGAttributes",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "omitted": [],
+          "htmlElement": "svg",
+          "totalProps": 0
+        }
       ],
+      "notableInherited": {
+        "aria-label": {
+          "name": "aria-label",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "className": {
+          "name": "className",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "id": {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onBlur": {
+          "name": "onBlur",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event",
+            "paramName": null
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onClick": {
+          "name": "onClick",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event",
+            "paramName": null
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "onFocus": {
+          "name": "onFocus",
+          "type": {
+            "kind": "eventHandler",
+            "eventType": "Event",
+            "paramName": null
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "style": {
+          "name": "style",
+          "type": {
+            "kind": "cssProperties"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        },
+        "tabIndex": {
+          "name": "tabIndex",
+          "type": {
+            "kind": "number"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {},
+          "parent": {
+            "name": "HTMLHTMLAttributes",
+            "fileName": "node_modules/@types/react/index.d.ts"
+          },
+          "declarations": []
+        }
+      },
+      "discriminantProp": null,
+      "composes": [],
       "tags": {},
       "methods": []
     },

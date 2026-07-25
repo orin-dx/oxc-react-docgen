@@ -250,6 +250,21 @@ impl<'src> SourceDataCollector<'src> {
         // Strip "React." prefix for lookup in builtin tables
         let lookup_name = name.strip_prefix("React.").unwrap_or(name);
 
+        // SVGAttributes/SVGProps/HTMLProps carry no element in their own name —
+        // unlike html_element_for's other entries (ButtonHTMLAttributes, etc.),
+        // where the element is baked into the interface name itself. Real call
+        // sites always supply a concrete DOM element as the type argument
+        // (`SVGAttributes<SVGSVGElement>`, `HTMLProps<HTMLDivElement>`) — derive
+        // the element from that instead of falling through to html_element_for's
+        // static result (None for SVGAttributes/SVGProps, a generic "div"
+        // fallback for HTMLProps) whenever it's one this crate recognizes.
+        if matches!(lookup_name, "SVGAttributes" | "SVGProps" | "HTMLProps") {
+            if let Some(element) = type_args.first().and_then(|arg| crate::react_types::html_element_from_type_arg(arg))
+            {
+                return ExtendsRef::Builtin { name: name.into(), element: Some(element.to_owned()), type_args };
+            }
+        }
+
         if let Some(element) = crate::react_types::html_element_for(lookup_name) {
             return ExtendsRef::Builtin { name: name.into(), element: Some(element.to_owned()), type_args };
         }

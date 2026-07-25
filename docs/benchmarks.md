@@ -1,6 +1,6 @@
 # Benchmarks: oxc-react-docgen vs. react-docgen-typescript vs. react-docgen
 
-**Generated:** 2026-07-25, against commit `d985eeb1` on this branch.
+**Generated:** 2026-07-25, against commit `d985eeb1` on this branch. **Updated** same day after fixing two of this report's own findings (see [Shortcomings and remediation plan](#shortcomings-and-remediation-plan)) — numbers below reflect post-fix output.
 
 **Hardware:** Apple Silicon (arm64), macOS. Numbers below are absolute and will shift on different hardware — treat the _relative_ comparisons as the durable signal, not the absolute milliseconds.
 
@@ -79,42 +79,43 @@ That's roughly **10-13× faster than this same tool's own cold extraction**, and
 
 Both bugs manufactured fake disagreement that had nothing to do with either tool's actual output. The numbers below are post-fix.
 
+**Reading the aggregate percentage correctly:** a low agreement rate means different things against each comparator, and conflating them is the single easiest way to misread this report. Against RDT, low agreement means _this tool finds fewer props than RDT does_ — a real, directional gap (RDT has a type checker; see the outlier table below). Against react-docgen, low agreement mostly means the reverse — _this tool finds more than react-docgen does_, because react-docgen returns zero props for 45% of comparable components (see below) and everything this tool correctly extracts on top of that shows up as "extra," not as this tool being noisy or over-inclusive. The single percentage can't distinguish "we're missing things" from "the comparator is missing things" — that's why this section leads with the outlier table and the zero-props stat instead of the headline number.
+
 ### Agreement rate vs. react-docgen-typescript
 
 `react-docgen-typescript` always fully expands the real `HTMLAttributes`/`AriaAttributes`/`<Element>HTMLAttributes` interface chain (~250-300 attrs per element) — it has a real type checker to walk that chain. This tool's _default_ is `HtmlAttributeMode::Curated` (~15-20 hand-picked common attrs). Comparing curated-mode output against RDT's always-full output would manufacture a huge fake "missing props" number that's a default-mode mismatch, not a quality gap — so this comparison runs with `--html-attributes full` (this tool structurally resolving the same interface chain RDT does), the fair apples-to-apples setting.
 
 | Metric                                             |     Value |
 | -------------------------------------------------- | --------: |
-| Components compared                                |        32 |
-| Props in union                                     |     5,329 |
-| Matched exactly (name + type + required + default) |       850 |
-| Real type/required/default mismatches              |     1,558 |
-| Missing in ours                                    |     2,908 |
-| Extra in ours                                      |        13 |
-| **Agreement rate**                                 | **16.0%** |
+| Components compared                                |        33 |
+| Props in union                                     |     5,634 |
+| Matched exactly (name + type + required + default) |       946 |
+| Real type/required/default mismatches              |     1,953 |
+| Missing in ours                                    |     2,720 |
+| Extra in ours                                      |        15 |
+| **Agreement rate**                                 | **16.8%** |
 
-That 16% needs immediate context: **it is not evenly distributed.** Of the 32 compared components, most are near-perfect matches — e.g. `antd/Button`: 312 props vs. RDT's 313 (the only difference is `ref`/`key`, React's own special props, which RDT includes and this tool correctly doesn't treat as a real prop). The low aggregate is driven by roughly 10 outlier components where this tool currently resolves only a handful of props against RDT's 250-490:
+That 16.8% needs immediate context: **it is not evenly distributed.** Of the 33 compared components, **23 (70%) are near-perfect matches** (0-2 props different — e.g. `antd/Button`: 312 props vs. RDT's 313, the only difference being `ref`/`key`, React's own special props, which RDT includes and this tool correctly doesn't treat as a real prop). The low aggregate is driven entirely by **10 outlier components (30%)** where this tool currently resolves only a handful of props against RDT's 234-314 — every one of them now root-caused, and every one lands in the same category: a real type checker is required, this isn't a parser-fixable gap:
 
-| Component | Ours | RDT | Root cause (identified below) |
+| Component | Ours | RDT | Root cause |
 | --- | --: | --: | --- |
-| `rdt-compat/svg-icon/Icon` | 2 | 488 | generic `SVGAttributes<T>` not element-mapped |
 | `storybook-emotion/Button` | 7 | 306 | `@emotion/styled` two-arg overload — documented gap |
-| `fluentui/Button` | 8 | 303 | not yet root-caused |
+| `fluentui/Button` | 8 | 303 | conditional type (`Slot<Type,...>`) + indexed access into a generic (`Slots[Primary]`) |
 | `ariakit/menu-button/MenuButton` | 5 | 294 | generic type-param substitution through `Omit<ComponentPropsWithoutRef<T>, keyof O>` |
-| `base-ui/MenuTrigger` | 11 | 293 | not yet root-caused |
+| `base-ui/MenuTrigger` | 11 | 293 | mapped type over a generic (`WithBaseUIEvent<T> = {[K in keyof T]: ...}`) |
 | `ariakit/menu/Menu` | 7 | 286 | same generic-substitution pattern as MenuButton |
 | `ariakit/menu-item/MenuItem` | 5 | 284 | same generic-substitution pattern |
 | `ark-ui/Select/SelectRoot` | 36 | 314 | same generic-substitution pattern |
-| `headlessui/Listbox/*` (3 components) | 5-14 | 234-246 | not yet root-caused |
+| `headlessui/Listbox/*` (3 components) | 5-14 | 234-246 | conditional type (`PropsOf<TTag> = TTag extends ... ? ... : never`) nested inside generic substitution |
 
-See [Shortcomings and remediation plan](#shortcomings-and-remediation-plan) below for what's actually driving these.
+`rdt-compat/svg-icon/Icon` and `Box` — the one outlier that turned out to be a real, actionable parser gap rather than a type-checker boundary — are **fixed** as of this update (see [Shortcomings and remediation plan](#shortcomings-and-remediation-plan)); both are now in the near-perfect group (488/487 and 382/381 respectively).
 
-**Type-diff taxonomy** (1,558 real mismatches, classified by observable shape):
+**Type-diff taxonomy** (1,953 real mismatches, classified by observable shape):
 
 | Bucket | Count | What it means |
 | --- | --: | --- |
-| `structural-type-difference` | 1,427 | genuinely different type shape — dominated by the same ~10 outlier components above, where this tool resolves far fewer props to begin with, so any prop it does share tends to also show as a residual `Named` reference rather than the fully-expanded structural type RDT prints |
-| `union-member-order` | 93 | same union members, different order — cosmetic, not a real disagreement, but counted as a mismatch since exact-string comparison can't tell "same set, different order" from "different set" without this explicit check |
+| `structural-type-difference` | 1,616 | genuinely different type shape — dominated by the 10 outlier components above, where this tool resolves far fewer props to begin with, so any prop it does share tends to also show as a residual `Named` reference rather than the fully-expanded structural type RDT prints |
+| `union-member-order` | 294 | same union members, different order — cosmetic, not a real disagreement, but counted as a mismatch since exact-string comparison can't tell "same set, different order" from "different set" without this explicit check |
 | `literal-narrowed-vs-widened` | 1 | one side kept a string-literal union, the other widened to `string` |
 | `optional-undefined-representation` | 0 | n/a for this pair |
 
@@ -124,16 +125,16 @@ See [Shortcomings and remediation plan](#shortcomings-and-remediation-plan) belo
 
 | Metric                                      |       Value |
 | ------------------------------------------- | ----------: |
-| Components compared                         |          19 |
-| **react-docgen returned zero props at all** | **8 of 19** |
-| Props in union                              |         217 |
+| Components compared                         |          20 |
+| **react-docgen returned zero props at all** | **9 of 20** |
+| Props in union                              |         225 |
 | Matched exactly                             |          51 |
 | Real mismatches                             |          61 |
 | Missing in ours                             |           7 |
-| Extra in ours                               |          98 |
-| **Agreement rate**                          |   **23.5%** |
+| Extra in ours                               |         106 |
+| **Agreement rate**                          |   **22.7%** |
 
-The single most important number in this table is **8 of 19 (42%) returning zero props.** `react-docgen` is a Babel-era tool built primarily for `PropTypes`-based components; its native TypeScript support is real but shallow — it frequently can't extract anything at all from an `interface`-typed function component, especially when the props type comes from a separate named interface rather than an inline object literal. A flat per-prop agreement rate is a weak signal when the comparator simply has no opinion on 42% of the corpus — the more honest framing is the coverage claim in the next section.
+The single most important number in this table is **9 of 20 (45%) returning zero props.** `react-docgen` is a Babel-era tool built primarily for `PropTypes`-based components; its native TypeScript support is real but shallow — it frequently can't extract anything at all from an `interface`-typed function component, especially when the props type comes from a separate named interface rather than an inline object literal. A flat per-prop agreement rate is a weak signal when the comparator simply has no opinion on 42% of the corpus — the more honest framing is the coverage claim in the next section.
 
 **Type-diff taxonomy** (61 real mismatches):
 
@@ -152,7 +153,7 @@ The single most important number in this table is **8 of 19 (42%) returning zero
 
 Direct answers to "what information do we have that RDT and react-docgen don't," each backed by a number above or a concrete check run against this corpus, not a claim:
 
-1. **Structured, typed degradation diagnostics.** Running this tool across all 21 fixture libraries produces **81 diagnostics** with typed codes (`OPAQUE_TYPE`: 29, `UNRESOLVABLE_IMPORT`: 29, `INDEXED_ACCESS_OPAQUE`: 19, `DISCRIMINATED_UNION`: 2, `TEMPLATE_LITERAL_OPAQUE`: 2), file/line context, and human-readable help text (e.g. _"Enable typescript-go to resolve indexed access types."_). Neither RDT nor react-docgen tell you _why_ a prop came out wrong or missing — they silently omit it or print a generic parse error. This tool's non-negotiable #6 ("always emit a Diagnostic when degrading, never fail silently," `CLAUDE.md`) makes every gap in the tables above something a consumer's tooling can actually detect and act on, not something they discover by manually diffing output.
+1. **Structured, typed degradation diagnostics.** Running this tool across all 21 fixture libraries produces **82 diagnostics** with typed codes (`UNRESOLVABLE_IMPORT`: 30, `OPAQUE_TYPE`: 29, `INDEXED_ACCESS_OPAQUE`: 19, `DISCRIMINATED_UNION`: 2, `TEMPLATE_LITERAL_OPAQUE`: 2), file/line context, and human-readable help text (e.g. _"Enable typescript-go to resolve indexed access types."_). Neither RDT nor react-docgen tell you _why_ a prop came out wrong or missing — they silently omit it or print a generic parse error. This tool's non-negotiable #6 ("always emit a Diagnostic when degrading, never fail silently," `CLAUDE.md`) makes every gap in the tables above something a consumer's tooling can actually detect and act on, not something they discover by manually diffing output.
 2. **`.d.ts`-only fixtures.** 8 of the 55 fixture files in this corpus (`mui`, `chakra`, `mantine`, `radix`, `react-aria`) are declaration-only — real published library type definitions with no accompanying `.tsx` source. **Neither RDT nor react-docgen can run on these at all** (both need a real component implementation to parse); this tool extracts full prop tables from them today, which is the entire reason it can validate against `node_modules`-vendored third-party types instead of only first-party source.
 3. **Incremental extraction with a real API** (see the perf section above) — `WatchSession::update_file` for editor/HMR integration. RDT and react-docgen have nothing playing this role; the comparison isn't "we're faster at the same operation," it's "this operation doesn't exist for them."
 4. **Cross-package monorepo import resolution** (`ImportResolutionMap`, barrel/re-export chain following, `extra_paths` workspace aliasing) — RDT resolves within a single `ts.Program`'s file set; getting it to follow a monorepo's package boundaries requires configuring that whole program correctly. This tool's import resolution is a first-class, independently-tested layer (`import_map.rs`, `resolver/import.rs`).
@@ -164,9 +165,12 @@ Direct answers to "what information do we have that RDT and react-docgen don't,"
 
 Honest accounting of what's actually wrong today, ordered by how directly actionable each one is — not by how bad it sounds.
 
-### Actionable now — no type checker required
+### Fixed during this report
 
-**Generic `SVGAttributes<T>`/`HTMLProps<T>` extends aren't element-mapped.** Root-caused during this report: `fixtures/rdt-compat/svg-icon.tsx`'s `IconProps extends React.SVGAttributes<SVGSVGElement>` resolves to only 2 own props even with `--html-attributes full`, because `resolver/named.rs`'s step-6 silent-no-op list treats `SVGAttributes`/`HTMLProps` as unconditionally opaque — unlike concrete `<Element>HTMLAttributes` types (`ButtonHTMLAttributes`, etc.), which do get mapped to a real element and structurally expanded. The fix is mechanical: when `SVGAttributes<T>`/`HTMLProps<T>` appears with a concrete element type argument (as it does in every real-world case observed in this corpus), map `T` to an element the same way the concrete forms already do, instead of falling into the opaque list. This is new-to-this-report; it wasn't in `docs/rdt-coverage.md`'s gap list before now.
+Two real, independently-verified bugs — one in the resolver, one in the pipeline itself — surfaced while root-causing the outliers above. Both are fixed, tested, and the numbers throughout this report already reflect the fix.
+
+- **Generic `SVGAttributes<T>`/`HTMLProps<T>` extends weren't element-mapped.** `fixtures/rdt-compat/svg-icon.tsx`'s `IconProps extends React.SVGAttributes<SVGSVGElement>` resolved to only 2 own props even with `--html-attributes full`, because `resolver/named.rs`'s step-6 silent-no-op list treated `SVGAttributes`/`HTMLProps` as unconditionally opaque — unlike concrete `<Element>HTMLAttributes` types (`ButtonHTMLAttributes`, etc.), which already map to a real element and expand structurally. `react_types::html_element_from_type_arg` now derives the element from the type argument for these three generic forms specifically. `Icon` went from 2 props to 487 (RDT: 488); `Box` from 2 to 381 (RDT: 382).
+- **Components silently collided across files sharing a basename.** `fluentui/Button` looked like an unexplained resolver gap — until a single-directory extraction of `fixtures/fluentui` alone found it fine, but it vanished the moment the whole `fixtures/` corpus was extracted in one call (the only realistic way this tool is ever actually invoked). Root cause: the pipeline's duplicate-display-name disambiguation used `"{name} ({file_stem})"`, and file stem isn't unique across directories — 5 of this repo's own fixture libraries (`chakra`, `fluentui`, `mantine`, `mui`, `panda`) each ship a component literally named `Button` in a file literally named `Button.tsx`/`Button.d.ts`/`button.tsx`. All 5 landed on the identical fallback key, silently overwriting one another with **zero diagnostic** — a real violation of this project's own "never fail silently" rule (`CLAUDE.md` non-negotiable #6), and the reason `fluentui/Button` was missing from every table in the first version of this report rather than merely inaccurate. Fixed by disambiguating with the full file path (always unique) instead of the bare stem. `extract --src fixtures` (all 21 libraries, one call) now finds 50 components instead of 45.
 
 ### Already tracked, deferred pending a real type checker (Corsa/`typescript-go`)
 
@@ -175,11 +179,7 @@ Confirmed still accurate against current code during this report — see `docs/t
 - **Generic type-parameter substitution through multi-level type-alias chains.** Root-caused here for the `ariakit`/`ark-ui` outliers above: Ariakit's own `Props<T, O> = O & Omit<ComponentPropsWithoutRef<T>, keyof O>` pattern requires substituting a generic param (`T = "button"`) through a nested `Omit`+`ComponentPropsWithoutRef` chain — exactly the "generic parameter substitution" item already listed as Corsa-deferred. This report adds concrete evidence (4+ real-world outlier components in one corpus) that this isn't a theoretical gap.
 - **`@emotion/styled`'s two-arg `styled(tag, options)<T>(fn)` overload** (`storybook-emotion/Button` — already `docs/rdt-coverage.md`'s open gap #2). RDT needs a type checker for this too — not a competitive gap.
 - **`styled.X.attrs<T>()` component detection** (`zendesk-garden` — already gap #1). Shared blind spot with RDT.
-- **Same-namespace sibling reference resolution** for select `@types/react` internals (`EventHandler`, `TrustedHTML` — already gap #3; visible in the 29 `UNRESOLVABLE_IMPORT` diagnostics above).
-
-### Not yet root-caused
-
-`fluentui/Button`, `base-ui/MenuTrigger`, and `headlessui/Listbox`'s 3 components remain unexplained outliers in the agreement table above — each resolves single digits to low teens of props against RDT's 234-303. Given this report's time budget, these were identified by evidence (the per-component table) but not individually traced to a root cause the way the Ariakit and SVG cases were. **Next step:** repeat the manual CLI-invocation trace used above for Icon/MenuButton on each of these three, starting with `base-ui/MenuTrigger` since Base UI shares Radix's composable-primitive architecture (a pattern this tool otherwise handles — see `radix` in the coverage table) and so is the most likely to share a single root cause with a small, targeted fix.
+- **Same-namespace sibling reference resolution** for select `@types/react` internals (`EventHandler`, `TrustedHTML` — already gap #3; visible in the 30 `UNRESOLVABLE_IMPORT` diagnostics above).
 
 ### Already tracked, real but not yet benchmarked (perf, not correctness)
 

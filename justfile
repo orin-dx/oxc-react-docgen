@@ -37,8 +37,8 @@ bench:
 coverage:
     cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --html --open
 
-ts_src := "'packages/vite-plugin/src/**/*.ts' 'packages/vite-plugin/tests/**/*.ts' 'packages/napi/index.d.ts' 'packages/cli/bin/cli.js' 'apps/validate/src/**/*.ts'"
-ts_src_only := "'packages/vite-plugin/src' 'packages/napi/index.d.ts' 'packages/cli/bin/cli.js' 'apps/validate/src'"
+ts_src := "'packages/vite-plugin/src/**/*.ts' 'packages/vite-plugin/tests/**/*.ts' 'packages/vite-plugin/vitest.config.ts' 'packages/napi/*.d.ts' 'packages/cli/bin/**/*.js' 'apps/validate/src/**/*.ts'"
+ts_src_only := "'packages/vite-plugin/src' 'packages/vite-plugin/vitest.config.ts' 'packages/napi/*.d.ts' 'packages/cli/bin/**/*.js' 'apps/validate/src'"
 ts_tests_only := "'packages/vite-plugin/tests'"
 
 # Lint and format check

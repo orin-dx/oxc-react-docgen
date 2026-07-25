@@ -132,17 +132,38 @@ function normalize(output: any): NormalizedOutput {
   return result
 }
 
+// RDT always fully expands the real HTMLAttributes/AriaAttributes/<Element>HTMLAttributes
+// interface chain (~250-300 attrs) — it has a real type checker to walk that chain. Our
+// default (`curated`) intentionally surfaces a hand-picked ~15-20 common attrs instead (see
+// ARCHITECTURE.md). Comparing curated-mode output against RDT's always-full output would
+// manufacture a huge "missing props" number that's actually just a default-mode mismatch, not
+// a real coverage gap — pass `--html-attributes full` here so this baseline is apples-to-apples
+// with what RDT itself always does.
+const HTML_ATTRIBUTES_MODE = process.env.HTML_ATTRIBUTES_MODE ?? 'full'
+
 const libraries = discoverLibraries()
 const results: ToolResult[] = []
 
-for (const lib of libraries) {
-  const libPath = resolve(FIXTURES_ROOT, lib)
+// One CLI invocation across every fixture library at once (`--src` takes a
+// comma-delimited list — see crates/cli/src/main.rs's `value_delimiter = ','`)
+// instead of one process per library. Spawning 21 separate processes measured
+// ~885ms dominated by process-startup overhead (~40ms/spawn), even though the
+// tool's own internal "durationMs" stat for the combined single-invocation
+// run is ~40-50ms — a single invocation is both the fair cold-extraction
+// number AND how anyone would actually run this CLI in practice; nobody
+// invokes it once per library directory in a real build.
+{
+  const srcDirs = libraries.map((lib) => resolve(FIXTURES_ROOT, lib)).join(',')
   const start = performance.now()
   try {
-    const raw = execSync(`${CLI} extract --src ${libPath} --format canonical`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
+    const raw = execSync(
+      `${CLI} extract --src ${srcDirs} --format canonical --html-attributes ${HTML_ATTRIBUTES_MODE}`,
+      {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        maxBuffer: 100 * 1024 * 1024,
+      },
+    )
     // CLI prints a spinner line then JSON — find the JSON start
     const jsonStart = raw.indexOf('{')
     const json = jsonStart === -1 ? raw : raw.slice(jsonStart)
@@ -153,7 +174,11 @@ for (const lib of libraries) {
       const c = comp as any
       const inheritedElements = (c.inheritance ?? []).map((l: any) => l.htmlElement).filter(Boolean)
       const notableInheritedNames = Object.keys(c.notableInherited ?? {})
-      // Key by displayName (not file path) to avoid collision when multiple components share a file.
+      // Derive the owning library dir from the absolute filePath (the fixtures/<lib>/
+      // segment) now that one invocation covers every library at once.
+      const fixturesIdx = c.filePath.indexOf('/fixtures/')
+      const relPath = fixturesIdx === -1 ? c.filePath : c.filePath.slice(fixturesIdx + '/fixtures/'.length)
+      const [lib] = relPath.split('/')
       const basename =
         c.filePath
           .split('/')
@@ -172,7 +197,7 @@ for (const lib of libraries) {
   } catch (error: any) {
     results.push({
       tool: 'oxc-react-docgen',
-      fixture: lib,
+      fixture: 'all-fixtures',
       durationMs: performance.now() - start,
       output: {},
       error: error.stderr ?? error.message,

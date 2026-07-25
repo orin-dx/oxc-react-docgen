@@ -9,8 +9,11 @@
     "run:rdt": "tsx src/run-react-docgen-typescript.ts",
     "run:ours": "tsx src/run-ours.ts",
     "compare": "tsx src/compare.ts",
+    "analyze": "tsx src/analyze.ts",
     "baseline": "tsx src/baseline.ts",
-    "compare:all": "tsx src/baseline.ts && tsx src/compare.ts"
+    "compare:all": "tsx src/baseline.ts && tsx src/compare.ts",
+    "analyze:all": "tsx src/baseline.ts && tsx src/analyze.ts",
+    "bench:cold": "./bench-cold.sh"
   },
   "dependencies": {
     "react-docgen": "^7.0.0",

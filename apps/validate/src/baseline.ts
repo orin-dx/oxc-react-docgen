@@ -27,8 +27,18 @@ console.log('Running react-docgen-typescript baseline...')
 writeFileSync('./baselines/react-docgen-typescript.json', runScript('run-react-docgen-typescript.ts'))
 console.log('✅ react-docgen-typescript baseline saved')
 
-console.log('Running oxc-react-docgen baseline...')
+console.log('Running oxc-react-docgen baseline (html-attributes=full, fair vs RDT)...')
 writeFileSync('./baselines/oxc-react-docgen.json', runScript('run-ours.ts'))
 console.log('✅ oxc-react-docgen baseline saved')
+
+// react-docgen resolves zero `extends`/inherited-interface props of its own — comparing
+// our html-attributes=full output (hundreds of synthesized inherited attrs per component)
+// against it would manufacture a huge "extra in ours" count that's really just a
+// no-inheritance-resolution-at-all vs some-resolution mismatch, not a real quality gap.
+// A separate html-attributes=none baseline is the fair apples-to-apples comparator here.
+console.log('Running oxc-react-docgen baseline (html-attributes=none, fair vs react-docgen)...')
+process.env.HTML_ATTRIBUTES_MODE = 'none'
+writeFileSync('./baselines/oxc-react-docgen-none.json', runScript('run-ours.ts'))
+console.log('✅ oxc-react-docgen (none) baseline saved')
 
 console.log('\nBaselines saved to ./baselines/')

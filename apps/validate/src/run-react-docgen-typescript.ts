@@ -18,6 +18,20 @@ function makeParser() {
   }
 }
 
+// react-docgen-typescript represents union/literal prop types as
+// `{ name: 'enum', value: [{ value: '"foo"' }, ...] }` (with
+// shouldExtractLiteralValuesFromEnum) instead of putting the real type string
+// in `.name` — reading `.name` alone for these props compares the literal
+// string "enum" against our real union string, which isn't a type
+// difference, it's reading the wrong field.
+function rdtTypeToString(type: { name?: string; value?: Array<{ value: string }> } | undefined): string {
+  if (!type) return 'unknown'
+  if (type.name === 'enum' && Array.isArray(type.value)) {
+    return type.value.map((v) => v.value).join(' | ')
+  }
+  return type.name ?? 'unknown'
+}
+
 const parser = makeParser()
 const fixtures = discoverFixtures().filter((f) => !f.isDts) // RDT needs real TS files
 const results: ToolResult[] = []
@@ -43,7 +57,7 @@ for (const fixture of fixtures) {
                 {
                   name: propName,
                   required: prop.required ?? false,
-                  type: prop.type?.name ?? 'unknown',
+                  type: rdtTypeToString(prop.type),
                   description: prop.description ?? '',
                   defaultValue: prop.defaultValue?.value,
                 },

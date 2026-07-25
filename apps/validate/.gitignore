@@ -1,2 +1,5 @@
 baselines/
 node_modules/
+analysis.json
+bench-cold*.json
+bench-cold*.md

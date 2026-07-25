@@ -717,6 +717,55 @@ Icon.displayName = "Icon";
         assert!(icon.props.contains_key("size"), "own prop 'size' should still be present");
     }
 
+    // ── test_unresolvable_intersection_member_records_raw_type_in_composes ────
+    //
+    // `resolve_base_as_chain`'s final match arm (conditional types, mapped types,
+    // indexed access, etc. used directly as a props base) already builds a real
+    // diagnostic naming the exact unresolvable expression — but returned a bare
+    // `ResolvedChain::default()` instead of `empty_with_compose`, so the props
+    // map ends up with zero trace of it. `composes` (`ComponentEntry.composes:
+    // Vec<String>`) is the react-docgen-native mechanism for exactly this case
+    // ("props come from this type, which we're listing by name/expression
+    // instead of flattening") — populating it here needs no new type inference,
+    // just recording the raw text this code path was already computing for the
+    // diagnostic message.
+
+    #[test]
+    fn test_unresolvable_intersection_member_records_raw_type_in_composes() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+        write_file(
+            &tmp,
+            "Comp.tsx",
+            r#"
+export type Weird<T> = T extends string ? { a: string } : { b: number };
+export type CompProps = Weird<'x'> & { c: boolean };
+export function Comp(props: CompProps) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let comp = output.components.get("Comp").expect("Comp component not found");
+        assert!(comp.props.contains_key("c"), "expected the resolvable intersection member's prop to survive");
+        assert!(
+            !comp.composes.is_empty(),
+            "expected the unresolvable Weird<'x'> member to be recorded in `composes` instead of silently vanishing"
+        );
+        assert!(
+            comp.composes[0].contains("extends") && comp.composes[0].contains("string"),
+            "expected composes to carry the actual conditional-type expression, got {:?}",
+            comp.composes
+        );
+    }
+
     // ── test_same_display_name_across_files_with_identical_stem_does_not_collide ─
     //
     // Phase 5's dedup key was `"{name} ({file_stem})"` for the 2nd+ occurrence

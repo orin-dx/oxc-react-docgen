@@ -121,6 +121,7 @@ pub fn serialize_rdt(output: &oxc_react_docgen_core::types::ExtractionOutput) ->
                 "description": entry.description,
                 "methods": [],
                 "tags": entry.tags,
+                "composes": entry.composes,
             }),
         );
     }
@@ -191,5 +192,41 @@ mod tests {
         let code = cmd_extract(args_for("/nonexistent/does-not-exist", false), true, None)
             .expect("cmd_extract itself should not error");
         assert_eq!(code, 2);
+    }
+
+    // ── rdt_output_includes_composes ──────────────────────────────────────────
+    //
+    // `ComponentEntry.composes` (react-docgen's own "props come from this type,
+    // listed by name instead of flattened" field) was populated by the resolver
+    // but silently dropped by serialize_rdt — this is the RDT-format half of
+    // that fix; the resolver half is
+    // pipeline::tests::test_unresolvable_intersection_member_records_raw_type_in_composes.
+
+    #[test]
+    fn rdt_output_includes_composes() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = tempfile::TempDir::new_in(manifest_dir).unwrap();
+        std::fs::write(
+            tmp.path().join("Comp.tsx"),
+            r#"
+export type Weird<T> = T extends string ? { a: string } : { b: number };
+export type CompProps = Weird<'x'> & { c: boolean };
+export function Comp(props: CompProps) { return null; }
+"#,
+        )
+        .unwrap();
+
+        let dir = camino::Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = oxc_react_docgen_core::pipeline::PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(camino::Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+        let output = oxc_react_docgen_core::pipeline::extract(&options);
+
+        let rdt_json = serialize_rdt(&output);
+        let parsed: serde_json::Value = serde_json::from_str(&rdt_json).unwrap();
+        let composes = parsed["Comp"]["composes"].as_array().expect("expected a composes array in RDT output");
+        assert!(!composes.is_empty(), "expected the unresolvable Weird<'x'> member to appear in RDT's composes field");
     }
 }

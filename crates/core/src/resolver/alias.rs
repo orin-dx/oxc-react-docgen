@@ -246,7 +246,10 @@ pub(super) fn resolve_base_as_chain(
                 help: Some("Check that this member of the props type resolves to an object-like shape.".into()),
                 code: DiagnosticCode::OpaqueType,
             });
-            ResolvedChain::default()
+            // `composes` (react-docgen's own mechanism for "props come from this type,
+            // named instead of flattened") records the raw expression we just diagnosed,
+            // instead of vanishing with only a diagnostic to show for it.
+            ResolvedChain::empty_with_compose(base.to_raw_string())
         }
     }
 }

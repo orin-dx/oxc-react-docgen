@@ -63,6 +63,25 @@ pub(super) fn max_depth_diagnostic(what: &str, file: &Utf8Path) -> Diagnostic {
     }
 }
 
+/// Import resolution may have redirected a name to a different name/file
+/// (re-exports, barrel files) — surface that resolved location in an
+/// "unresolvable type" diagnostic when it differs from the naive
+/// name/consuming-file, since "Cannot resolve X in file A" is confusing if X
+/// actually lives in file B. Returns an empty string when nothing to add.
+pub(super) fn unresolved_location_note(
+    original_name: &str,
+    consuming_file: &Utf8Path,
+    canonical_file: &Utf8Path,
+    canonical_name: &str,
+) -> String {
+    let resolved_elsewhere = canonical_file != consuming_file || canonical_name != original_name;
+    if resolved_elsewhere {
+        format!(" (resolved to '{canonical_name}' in '{canonical_file}')")
+    } else {
+        String::new()
+    }
+}
+
 /// TypeScript's own generic utility types — never prop providers, and expanding
 /// them structurally needs a type checker we don't have. `Omit`/`Pick`/`Partial`/
 /// `Readonly` get real structural handling as alias shapes (see resolver/alias.rs);

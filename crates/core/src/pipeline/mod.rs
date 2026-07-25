@@ -172,8 +172,8 @@ impl ReverseDeps {
 
 /// Serialize an [`ExtractionOutput`] to a JSON string.
 ///
-/// Defined in core (not in the NAPI crate) so the serde monomorphization for
-/// `PropType` (which requires `#![recursion_limit = "2048"]`) happens once here,
+/// Defined in core (not in the NAPI crate) so the JSON-building logic for
+/// `PropType`'s hand-written `Serialize` (see ADR 0002) happens once here,
 /// not in every downstream crate.
 pub fn extraction_output_to_json(output: &ExtractionOutput) -> Result<String, serde_json::Error> {
     serde_json::to_string(output)
@@ -926,6 +926,51 @@ export function Button(props: ButtonProps) { return null; }
             button.props.contains_key("label"),
             "expected 'label' prop from the re-exported ButtonProps, got {:?}",
             button.props.keys().collect::<Vec<_>>()
+        );
+    }
+
+    // ── test_unresolvable_named_type_reports_barrel_redirected_location ─────
+    //
+    // resolver/chain.rs's step-6 "Cannot resolve" diagnostic (component prop
+    // types) already noted where an import redirected to when it differed from
+    // the naive name/consuming-file; resolver/named.rs's step-7 diagnostic
+    // (nested/named type-level, not component-prop-level) never got the same
+    // treatment. `value` here is imported through a wildcard barrel that never
+    // actually declares it — a real broken/incomplete barrel — so it stays
+    // unresolvable, but the diagnostic should still say where the import
+    // redirected to, not just where it was written.
+    #[test]
+    fn test_unresolvable_named_type_reports_barrel_redirected_location() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+        write_file(&tmp, "empty.ts", "export const nothing = 1;\n");
+        write_file(&tmp, "barrel.ts", "export * from './empty';\n");
+        write_file(
+            &tmp,
+            "Component.tsx",
+            r#"
+import type { NeverDeclared } from './barrel';
+export function Component(props: { value: Array<NeverDeclared> }) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let unresolvable =
+            output.diagnostics.iter().find(|d| d.message.contains("Cannot resolve type 'NeverDeclared'"));
+        let unresolvable = unresolvable.expect("expected an unresolvable-type diagnostic for NeverDeclared");
+        assert!(
+            unresolvable.message.contains("(resolved to 'NeverDeclared' in")
+                && unresolvable.message.contains("barrel.ts"),
+            "expected the diagnostic to note the barrel-redirected location, got: {}",
+            unresolvable.message
         );
     }
 

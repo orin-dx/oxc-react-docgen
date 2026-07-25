@@ -146,11 +146,13 @@ pub(super) fn resolve_named(
     }
 
     // ── 7. Unresolvable — emit diagnostic, return Named ───────────────────────
+    let location_note =
+        super::unresolved_location_note(name.as_str(), consuming_file, &canonical_file, &canonical_name);
     state.diagnostics.push(Diagnostic {
         severity: DiagnosticSeverity::Warning,
         message: format!(
-            "Cannot resolve type '{}' in '{}' — it will appear as an unexpanded named reference",
-            name, consuming_file
+            "Cannot resolve type '{}' in '{}'{} — it will appear as an unexpanded named reference",
+            name, consuming_file, location_note
         ),
         file: Some(consuming_file.to_string()),
         line: None,

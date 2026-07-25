@@ -162,12 +162,7 @@ pub(super) fn resolve_props_chain(
     // Import resolution may have redirected `type_name` to a different name/file
     // (re-exports, barrel files) — surface that resolved location when it differs,
     // since "Cannot resolve X in file A" is confusing if X actually lives in file B.
-    let resolved_elsewhere = canonical_file.as_str() != consuming_file.as_str() || canonical_name != type_name;
-    let location_note = if resolved_elsewhere {
-        format!(" (resolved to '{}' in '{}')", canonical_name, canonical_file)
-    } else {
-        String::new()
-    };
+    let location_note = super::unresolved_location_note(type_name, consuming_file, &canonical_file, &canonical_name);
     state.diagnostics.push(Diagnostic {
         severity: DiagnosticSeverity::Warning,
         message: format!("Cannot resolve type '{}' in '{}'{}", type_name, consuming_file, location_note),

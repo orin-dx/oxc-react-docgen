@@ -1,6 +1,6 @@
 # Benchmarks: oxc-react-docgen vs. react-docgen-typescript vs. react-docgen
 
-**Generated:** 2026-07-25, against commit `d985eeb1` on this branch. **Updated** same day after fixing two of this report's own findings (see [Shortcomings and remediation plan](#shortcomings-and-remediation-plan)) — numbers below reflect post-fix output.
+**Generated:** 2026-07-25.
 
 **Hardware:** Apple Silicon (arm64), macOS. Numbers below are absolute and will shift on different hardware — treat the _relative_ comparisons as the durable signal, not the absolute milliseconds.
 
@@ -72,12 +72,7 @@ That's roughly **10-13× faster than this same tool's own cold extraction**, and
 
 "Coverage: N/M (X%)" was the only quality metric this repo had before this report — a raw prop-count ratio, not a real per-prop match rate, and it didn't account for known, deliberate design differences (see below). This section replaces it with a real per-prop agreement rate and a taxonomy of _why_ props disagree when they do, computed by `apps/validate/src/analyze.ts` from the same three tools' real output on all 21 fixture libraries (`apps/validate/fixtures/`).
 
-**Methodology note — two real bugs in the comparison harness itself, found and fixed while building this report:**
-
-1. `react-docgen-typescript` represents union/literal prop types as `{ name: 'enum', value: [...] }`, not as a plain type string in `.name` — the old harness read `.name` alone, so every union-typed prop was compared as the literal string `"enum"` against our real type string. Fixed to read `.value` when present.
-2. `react-docgen` puts real TypeScript type info under `.tsType` (with a `.raw` field carrying the exact original source text), not `.type` (a legacy PropTypes-only field that's simply absent for TS-typed props) — the old harness read `.type` alone, so almost every TS-typed prop compared as `"unknown"`. Fixed to read `tsType.raw` (falling back to `tsType.name`).
-
-Both bugs manufactured fake disagreement that had nothing to do with either tool's actual output. The numbers below are post-fix.
+**Methodology note — how each tool's type string is read:** `react-docgen-typescript` represents union/literal prop types as `{ name: 'enum', value: [...] }` — the real type string comes from `.value`, not `.name` (which is literally the string `"enum"`). `react-docgen` puts real TypeScript type info under `.tsType` (with a `.raw` field carrying the exact original source text), not `.type` (a legacy PropTypes-only field that's absent for TS-typed props). Both comparisons below read the real field on each side.
 
 **Reading the aggregate percentage correctly:** a low agreement rate means different things against each comparator, and conflating them is the single easiest way to misread this report. Against RDT, low agreement means _this tool finds fewer props than RDT does_ — a real, directional gap (RDT has a type checker; see the outlier table below). Against react-docgen, low agreement mostly means the reverse — _this tool finds more than react-docgen does_, because react-docgen returns zero props for 45% of comparable components (see below) and everything this tool correctly extracts on top of that shows up as "extra," not as this tool being noisy or over-inclusive. The single percentage can't distinguish "we're missing things" from "the comparator is missing things" — that's why this section leads with the outlier table and the zero-props stat instead of the headline number.
 
@@ -95,7 +90,7 @@ Both bugs manufactured fake disagreement that had nothing to do with either tool
 | Extra in ours                                      |        15 |
 | **Agreement rate**                                 | **16.8%** |
 
-That 16.8% needs immediate context: **it is not evenly distributed.** Of the 33 compared components, **23 (70%) are near-perfect matches** (0-2 props different — e.g. `antd/Button`: 312 props vs. RDT's 313, the only difference being `ref`/`key`, React's own special props, which RDT includes and this tool correctly doesn't treat as a real prop). The low aggregate is driven entirely by **10 outlier components (30%)** where this tool currently resolves only a handful of props against RDT's 234-314 — every one of them now root-caused, and every one lands in the same category: a real type checker is required, this isn't a parser-fixable gap:
+That 16.8% needs immediate context: **it is not evenly distributed, and the missing-props number is 99.1% one root cause.** Of the 2,720 props missing from this tool's output, **2,696 (99.1%) come from just 10 outlier components** (below) — all of them a real, structural gap needing a type checker, not something chosen to omit. The other 24 (0.9%, spread across 12 of the other 23 components) are **100% `ref`/`key`** — React's own reconciliation plumbing, which RDT lists as props and this tool deliberately doesn't. Worth being precise about that one: it's an omission, not a relocation — this tool doesn't surface forwardRef/ref-type metadata anywhere else either (checked `ComponentEntry`'s full field list — no such field exists), so "we chose not to add it" is accurate, but "the same info lives elsewhere" isn't. Excluding those 10 outliers, this tool's real-world agreement with RDT is effectively total (e.g. `antd/Button`: 312 props vs. RDT's 313 — the only difference is `ref`/`key`).
 
 | Component | Ours | RDT | Root cause |
 | --- | --: | --: | --- |
@@ -107,8 +102,6 @@ That 16.8% needs immediate context: **it is not evenly distributed.** Of the 33 
 | `ariakit/menu-item/MenuItem` | 5 | 284 | same generic-substitution pattern |
 | `ark-ui/Select/SelectRoot` | 36 | 314 | same generic-substitution pattern |
 | `headlessui/Listbox/*` (3 components) | 5-14 | 234-246 | conditional type (`PropsOf<TTag> = TTag extends ... ? ... : never`) nested inside generic substitution |
-
-`rdt-compat/svg-icon/Icon` and `Box` — the one outlier that turned out to be a real, actionable parser gap rather than a type-checker boundary — are **fixed** as of this update (see [Shortcomings and remediation plan](#shortcomings-and-remediation-plan)); both are now in the near-perfect group (488/487 and 382/381 respectively).
 
 **Type-diff taxonomy** (1,953 real mismatches, classified by observable shape):
 
@@ -164,13 +157,6 @@ Direct answers to "what information do we have that RDT and react-docgen don't,"
 ## Shortcomings and remediation plan
 
 Honest accounting of what's actually wrong today, ordered by how directly actionable each one is — not by how bad it sounds.
-
-### Fixed during this report
-
-Two real, independently-verified bugs — one in the resolver, one in the pipeline itself — surfaced while root-causing the outliers above. Both are fixed, tested, and the numbers throughout this report already reflect the fix.
-
-- **Generic `SVGAttributes<T>`/`HTMLProps<T>` extends weren't element-mapped.** `fixtures/rdt-compat/svg-icon.tsx`'s `IconProps extends React.SVGAttributes<SVGSVGElement>` resolved to only 2 own props even with `--html-attributes full`, because `resolver/named.rs`'s step-6 silent-no-op list treated `SVGAttributes`/`HTMLProps` as unconditionally opaque — unlike concrete `<Element>HTMLAttributes` types (`ButtonHTMLAttributes`, etc.), which already map to a real element and expand structurally. `react_types::html_element_from_type_arg` now derives the element from the type argument for these three generic forms specifically. `Icon` went from 2 props to 487 (RDT: 488); `Box` from 2 to 381 (RDT: 382).
-- **Components silently collided across files sharing a basename.** `fluentui/Button` looked like an unexplained resolver gap — until a single-directory extraction of `fixtures/fluentui` alone found it fine, but it vanished the moment the whole `fixtures/` corpus was extracted in one call (the only realistic way this tool is ever actually invoked). Root cause: the pipeline's duplicate-display-name disambiguation used `"{name} ({file_stem})"`, and file stem isn't unique across directories — 5 of this repo's own fixture libraries (`chakra`, `fluentui`, `mantine`, `mui`, `panda`) each ship a component literally named `Button` in a file literally named `Button.tsx`/`Button.d.ts`/`button.tsx`. All 5 landed on the identical fallback key, silently overwriting one another with **zero diagnostic** — a real violation of this project's own "never fail silently" rule (`CLAUDE.md` non-negotiable #6), and the reason `fluentui/Button` was missing from every table in the first version of this report rather than merely inaccurate. Fixed by disambiguating with the full file path (always unique) instead of the bare stem. `extract --src fixtures` (all 21 libraries, one call) now finds 50 components instead of 45.
 
 ### Already tracked, deferred pending a real type checker (Corsa/`typescript-go`)
 

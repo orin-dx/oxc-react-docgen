@@ -364,9 +364,17 @@ pub(crate) fn extract_with_global(
         let key = if *count == 1 {
             base_name
         } else {
-            // Suffix with file stem to make unique
-            let file_stem = entry.file_path.file_stem().unwrap_or("unknown");
-            format!("{} ({})", base_name, file_stem)
+            // File stem alone isn't unique across different src_dirs — two
+            // different libraries each shipping a same-named file (e.g.
+            // "Button.tsx" in one directory and "Button.d.ts" in another,
+            // ubiquitous across real component libraries) produced the
+            // identical disambiguated key too, silently overwriting one
+            // another in `components` with zero diagnostic. The full file
+            // path is always unique per file, so it can't repeat this failure
+            // mode for distinct files (only a genuine duplicate declaration of
+            // the same name in the very same file would still collide, a
+            // materially different and much rarer situation).
+            format!("{} ({})", base_name, entry.file_path)
         };
 
         components.insert(key, entry);
@@ -707,6 +715,58 @@ Icon.displayName = "Icon";
             icon.props.keys().collect::<Vec<_>>()
         );
         assert!(icon.props.contains_key("size"), "own prop 'size' should still be present");
+    }
+
+    // ── test_same_display_name_across_files_with_identical_stem_does_not_collide ─
+    //
+    // Phase 5's dedup key was `"{name} ({file_stem})"` for the 2nd+ occurrence
+    // of a display name — but file_stem alone isn't unique across different
+    // src_dirs: two different libraries each shipping a `Button.tsx`/`Button.d.ts`
+    // (extremely common — found for real across 5 of this repo's own fixture
+    // libraries: chakra, fluentui, mantine, mui, panda, all named literally
+    // "Button") produce the identical disambiguation key too, so the 3rd+
+    // colliding component silently overwrote the 2nd in the output BTreeMap
+    // with no diagnostic at all — a real violation of "never fail silently"
+    // for anyone pointing this tool at more than one directory in one call
+    // (the default and only way `apps/validate` and any real monorepo build
+    // would invoke it).
+
+    #[test]
+    fn test_same_display_name_across_files_with_identical_stem_does_not_collide() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let lib_a = TempDir::new_in(manifest_dir).unwrap();
+        let lib_b = TempDir::new_in(manifest_dir).unwrap();
+        let lib_c = TempDir::new_in(manifest_dir).unwrap();
+        write_file(&lib_a, "Button.tsx", "export function Button(props: { a?: string }) { return null; }\n");
+        write_file(&lib_b, "Button.tsx", "export function Button(props: { b?: string }) { return null; }\n");
+        write_file(&lib_c, "Button.tsx", "export function Button(props: { c?: string }) { return null; }\n");
+
+        let options = PipelineOptions {
+            src_dirs: vec![
+                Utf8PathBuf::from_path_buf(lib_a.path().to_owned()).unwrap(),
+                Utf8PathBuf::from_path_buf(lib_b.path().to_owned()).unwrap(),
+                Utf8PathBuf::from_path_buf(lib_c.path().to_owned()).unwrap(),
+            ],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(lib_a.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        assert_eq!(
+            output.components.len(),
+            3,
+            "expected all 3 same-named, same-stem components to survive under distinct keys, got {:?}",
+            output.components.keys().collect::<Vec<_>>()
+        );
+        let all_props: std::collections::BTreeSet<&str> =
+            output.components.values().flat_map(|c| c.props.keys().map(String::as_str)).collect();
+        assert_eq!(
+            all_props,
+            std::collections::BTreeSet::from(["a", "b", "c"]),
+            "expected each distinct component's own prop to survive, got {:?}",
+            all_props
+        );
     }
 
     // ── test_named_type_only_import_from_react_resolves_to_real_dts ──────────

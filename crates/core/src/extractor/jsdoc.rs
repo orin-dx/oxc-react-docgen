@@ -63,14 +63,12 @@ impl<'src> SourceDataCollector<'src> {
 // ─── JSDoc parsing ────────────────────────────────────────────────────────────
 
 pub(super) fn parse_jsdoc_text(raw: &str) -> String {
-    // Strip `/**` prefix and `*/` suffix
     let inner = raw.trim_start_matches("/**").trim_end_matches("*/");
 
     let desc_lines: Vec<&str> = inner
         .lines()
         .map(|l| {
             let l = l.trim();
-            // Strip leading `* ` or `*`
             let l = l.strip_prefix("* ").or_else(|| l.strip_prefix('*')).unwrap_or(l);
             l
         })
@@ -92,7 +90,6 @@ pub(super) fn extract_jsdoc_tags(raw: &str) -> BTreeMap<String, String> {
 
         if let Some(rest) = line.strip_prefix('@') {
             in_tags = true;
-            // Parse tag: `@tagname rest`
             let (tag, value) = if let Some(sp) = rest.find(char::is_whitespace) {
                 let tag = &rest[..sp];
                 let value = rest[sp..].trim();
@@ -103,12 +100,11 @@ pub(super) fn extract_jsdoc_tags(raw: &str) -> BTreeMap<String, String> {
 
             // Special handling for @param — store as `param:propName`
             if tag == "param" {
-                // `@param propName description` or `@param {type} propName description`
+                // Accepts both `@param propName description` and
+                // `@param {type} propName description`.
                 let value = value.trim_start_matches('{');
-                // Skip {type} if present
                 let value =
                     if value.contains('}') { value.split_once('}').map(|x| x.1).unwrap_or("").trim() } else { value };
-                // First word is the prop name
                 if let Some(space) = value.find(char::is_whitespace) {
                     let prop_name = &value[..space];
                     let desc = value[space..].trim();

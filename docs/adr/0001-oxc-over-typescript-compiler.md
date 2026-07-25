@@ -14,5 +14,5 @@ Parse TypeScript/TSX with OXC — a Rust parser with no type-checking pass — a
 
 - Parsing runs in parallel per file with no shared `Program` state to build or invalidate — this is most of the speed win, not just OXC being a fast parser.
 - We give up real type inference. Conditional types, mapped types over an unbound generic, and a few `@emotion/styled`-specific call shapes can't be resolved without one — see `docs/type-checker-integration.md` for the full list.
-- Every one of those gaps degrades to a `Diagnostic` plus an `Opaque` prop type, never a silent wrong answer (`crates/core/CLAUDE.md` non-negotiable #6) — the speed trade-off costs completeness, never correctness.
+- Every one of those gaps degrades to a `Diagnostic` plus an `Opaque` prop type, never a silent wrong answer (`CLAUDE.md` non-negotiable #6) — the speed trade-off costs completeness, never correctness.
 - `typescript-go`'s Corsa API may eventually let us add real type inference back in without giving up the parallel-parse architecture — tracked in `docs/type-checker-integration.md`.

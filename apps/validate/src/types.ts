@@ -2,7 +2,8 @@
 export interface NormalizedProp {
   name: string
   required: boolean
-  type: string // raw type string
+  /** Verbatim source text, not normalized — compared as-is across tools. */
+  type: string
   description: string
   defaultValue?: string
 }
@@ -25,18 +26,4 @@ export interface ToolResult {
   /** Notable inherited prop names surfaced from the HTML element (our tool only) */
   notableInheritedNames?: string[]
   error?: string
-}
-
-export interface ComparisonResult {
-  fixture: string
-  /** Props in rdt but not in rdg */
-  rdtOnly: string[]
-  /** Props in rdg but not in rdt */
-  rdgOnly: string[]
-  /** Props in both but with different types */
-  typeDiffs: Array<{ prop: string; rdt: string; rdg: string }>
-  /** Components detected by rdt but not rdg */
-  rdtOnlyComponents: string[]
-  /** Components detected by rdg but not rdt */
-  rdgOnlyComponents: string[]
 }

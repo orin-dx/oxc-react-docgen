@@ -10,14 +10,12 @@ const CLI = existsSync(resolve(__dirname, '../../../target/release/oxc-react-doc
   ? resolve(__dirname, '../../../target/release/oxc-react-docgen')
   : resolve(__dirname, '../../../target/debug/oxc-react-docgen')
 
-// Find library directories under fixtures/
 function discoverLibraries(): string[] {
   return readdirSync(FIXTURES_ROOT)
     .filter((d) => statSync(resolve(FIXTURES_ROOT, d)).isDirectory())
     .toSorted()
 }
 
-// Map our PropType to a human-readable string for comparison
 function propTypeToString(pt: any): string {
   if (!pt || typeof pt !== 'object') return 'unknown'
   switch (pt.kind) {

@@ -43,7 +43,6 @@ export interface ObjectField {
   description: string
 }
 
-/** PropType is a tagged union via the 'kind' discriminant */
 export type PropType =
   | { kind: 'string' }
   | { kind: 'number' }

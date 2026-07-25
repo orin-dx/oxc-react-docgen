@@ -92,7 +92,6 @@ impl<'src> SourceDataCollector<'src> {
             _ => return,
         };
 
-        // Check callee is a known variant function
         let callee_name = match &call.callee {
             Expression::Identifier(id) => id.name.as_str(),
             Expression::StaticMemberExpression(m) => m.property.name.as_str(),
@@ -118,7 +117,6 @@ impl<'src> SourceDataCollector<'src> {
             _ => return,
         };
 
-        // Find the "variants" property
         let variants_value = obj.properties.iter().find_map(|prop| {
             if let ObjectPropertyKind::ObjectProperty(p) = prop {
                 if let PropertyKey::StaticIdentifier(key) = &p.key {

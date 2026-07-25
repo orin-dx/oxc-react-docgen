@@ -71,7 +71,6 @@ impl<'src> SourceDataCollector<'src> {
         match ty {
             TSType::TSTypeReference(tr) => {
                 let type_name = self.extract_type_ref_name(tr);
-                // Strip React. prefix for matching
                 let bare_name = type_name.strip_prefix("React.").unwrap_or(&type_name);
                 if !matches!(
                     bare_name,
@@ -198,14 +197,13 @@ impl<'src> SourceDataCollector<'src> {
             _ => return None,
         };
 
-        // Must be PascalCase — not anonymous utility functions
+        // Rules out anonymous utility functions, which aren't components.
         if let Some(fn_name_str) = fn_name {
             if !is_pascal_case(fn_name_str) {
                 return None;
             }
         }
 
-        // Extract props type from first parameter annotation
         let first_param = params.items.first()?;
         let type_ann = first_param.type_annotation.as_ref()?;
         let (props_name, type_args) = self.extract_type_name_from_type(&type_ann.type_annotation)?;
@@ -237,8 +235,6 @@ impl<'src> SourceDataCollector<'src> {
         let type_ann = decl.type_annotation.as_ref()?;
         let ct = self.ts_type_to_collected(&type_ann.type_annotation);
 
-        // Look for ForwardRefExoticComponent<P & RefAttributes<E>>
-        // or ForwardRefExoticComponent<P>
         let (type_name, args) = match &ct {
             crate::types::CollectedType::Named { name, args } => (name.as_str(), args.as_slice()),
             _ => return None,
@@ -252,16 +248,13 @@ impl<'src> SourceDataCollector<'src> {
 
         // Extract P from P & RefAttributes<E>
         let props_type = match first_arg {
-            crate::types::CollectedType::Intersection(members) => {
-                // Find the member that is NOT RefAttributes/RefAttributes<E>
-                members
-                    .iter()
-                    .find(|m| {
-                        !matches!(m, crate::types::CollectedType::Named { name, .. }
+            crate::types::CollectedType::Intersection(members) => members
+                .iter()
+                .find(|m| {
+                    !matches!(m, crate::types::CollectedType::Named { name, .. }
                             if matches!(name.as_str(), "RefAttributes" | "React.RefAttributes"))
-                    })
-                    .unwrap_or(first_arg)
-            }
+                })
+                .unwrap_or(first_arg),
             other => other,
         };
 

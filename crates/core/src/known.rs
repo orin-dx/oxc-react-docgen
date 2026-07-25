@@ -95,8 +95,7 @@ pub fn resolve_known(
         // ── MUI-specific ─────────────────────────────────────────────────────
         // OverridableStringUnion requires type checker — degrade gracefully
         "OverridableStringUnion" => {
-            // First arg is the base union, second is the Overrides interface
-            // We can use the base union and note the extension is opaque
+            // First arg is the base union, second is the Overrides interface.
             if let Some(base) = args.first() {
                 Some(KnownPatternResult::Type(PropType::Union(vec![
                     base.clone(),

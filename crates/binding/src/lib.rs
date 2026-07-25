@@ -17,8 +17,7 @@ static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(0);
 fn next_session_id() -> u32 {
     let pid = std::process::id() as u64;
     let counter = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
-    // Combine pid (upper 16 bits) with counter (lower 16 bits) into u32.
-    // This avoids collisions across concurrent Vite dev server instances.
+    // Avoids session-ID collisions across concurrent Vite dev server instances.
     (((pid & 0xFFFF) << 16) | (counter & 0xFFFF)) as u32
 }
 
@@ -36,7 +35,6 @@ pub struct JsExtractOptions {
     pub variant_functions: Option<Vec<String>>,
     #[napi(ts_type = "'curated' | 'full' | 'none'")]
     pub html_attributes: Option<String>,
-    // Fields from architectural review:
     pub tsconfig_path: Option<String>,
     pub extra_builtins: Option<Vec<String>>,
     pub vanilla_extract: Option<bool>,
@@ -54,7 +52,7 @@ pub struct JsExtractOptions {
 impl TryFrom<JsExtractOptions> for PipelineOptions {
     /// Names the bad `reactVersion` value — a typo (or a caller bypassing the
     /// `'react18' | 'react19'` TS type, e.g. via `as any`) must not silently
-    /// fall back to react19 (crates/core/CLAUDE.md non-negotiable #6).
+    /// fall back to react19 (CLAUDE.md non-negotiable #6).
     type Error = String;
 
     fn try_from(js: JsExtractOptions) -> Result<Self, Self::Error> {

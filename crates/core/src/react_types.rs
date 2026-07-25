@@ -229,8 +229,8 @@ pub const REACT_19: ReactVersion = ReactVersion { implicit_children: false, ref_
 /// Parse a user-supplied react-version string ("react18"/"react19") into a
 /// `ReactVersion`. Returns `Err` (the original string, for a caller to build
 /// its own error message from) for anything else — a typo like "react20" or
-/// "React18" must not silently fall back to react19, the same "never fail
-/// silently" rule this crate's non-negotiables apply everywhere else. Shared
+/// "React18" must not silently fall back to react19 (CLAUDE.md non-negotiable
+/// #6: never fail silently). Shared
 /// by every caller that accepts this string (CLI flag, docgen.config.ts,
 /// NAPI options) so there's exactly one place this mapping can drift.
 pub fn parse_react_version(s: &str) -> Result<ReactVersion, &str> {

@@ -41,14 +41,12 @@ for (const fixture of [...allFixtures].toSorted()) {
   if (r_rdt?.error) console.log(`  ❌ react-docgen-typescript: ${r_rdt.error.slice(0, 100)}`)
   if (r_ours?.error) console.log(`  ❌ oxc-react-docgen: ${r_ours.error.slice(0, 100)}`)
 
-  // Timing
   const times: string[] = []
   if (r_rdg) times.push(`rdg: ${r_rdg.durationMs.toFixed(1)}ms`)
   if (r_rdt) times.push(`rdt: ${r_rdt.durationMs.toFixed(1)}ms`)
   if (r_ours) times.push(`ours: ${r_ours.durationMs.toFixed(1)}ms`)
   if (times.length > 0) console.log(`  ⏱  ${times.join('  |  ')}`)
 
-  // Components per tool
   const rdgComps = Object.keys(r_rdg?.output ?? {})
   const rdtComps = Object.keys(r_rdt?.output ?? {})
   const oursComps = Object.keys(r_ours?.output ?? {})

@@ -5,7 +5,7 @@ import type { ToolResult } from './types.ts'
 
 const tsconfigPath = path.resolve(FIXTURES_ROOT, '..', 'tsconfig.json')
 
-// Create parser — falls back gracefully if tsconfig not found
+// Falls back to a minimal option set if the extended options throw for this tsconfig.
 function makeParser() {
   try {
     return withCustomConfig(tsconfigPath, {

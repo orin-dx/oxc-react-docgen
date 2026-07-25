@@ -73,9 +73,7 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
       sessionId = napi.createSession(napiOptions())
     },
 
-    // `vite build` never calls configureServer — that hook only fires for
-    // the dev server — so the build path needs its own cold extraction here.
-    // Skipped for `serve`, where configureServer already handles it.
+    // Build-only counterpart to coldExtract() in configureServer; see that comment.
     async buildStart() {
       if (command !== 'build') return
       try {
@@ -107,8 +105,7 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
         })
       /* oxlint-enable promise/prefer-await-to-then, promise/always-return, promise/prefer-await-to-callbacks */
 
-      // Return a teardown function — Vite calls this on dev-server close.
-      // buildEnd is not called in dev mode, so this is the only reliable cleanup hook.
+      // buildEnd isn't called in dev mode — this is the only reliable cleanup hook.
       return () => {
         napi.closeSession(sessionId)
       }
@@ -126,7 +123,6 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
       if (!env || env.name !== 'client') return
       if (!isSrcFile(opts.file)) return
 
-      // Wait for cold extraction to finish before the first incremental call.
       if (initPromise) await initPromise
 
       const json = await napi.extractFileIncremental(opts.file, sessionId, napiOptions())

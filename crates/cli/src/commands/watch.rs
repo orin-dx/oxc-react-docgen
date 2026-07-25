@@ -50,7 +50,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
         print_diagnostics(&first.diagnostics);
     }
 
-    // Keyboard input thread (q=quit, r=re-extract)
+    // q=quit, r=re-extract
     let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
     let running_clone = running.clone();
     let session_clone = session.clone();
@@ -75,7 +75,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
         let _ = crossterm::terminal::disable_raw_mode();
     });
 
-    // File watcher using watchexec 8.x (synchronous constructor, async main)
+    // watchexec's constructor is synchronous even though its event loop is async.
     let src_dirs: Vec<std::path::PathBuf> = options.src_dirs.iter().map(|p| p.as_std_path().to_owned()).collect();
 
     let rt = tokio::runtime::Runtime::new().into_diagnostic()?;

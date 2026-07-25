@@ -106,7 +106,7 @@ pub fn load_config_file(start_dir: &std::path::Path) -> Result<Option<PipelineOp
 /// A config file that fails to evaluate, or evaluates to something that doesn't
 /// match [`DocgenConfigSchema`] (a typo'd key, wrong value type, or a field this
 /// module doesn't support yet), is a hard error rather than silently falling back
-/// to defaults — crates/core/CLAUDE.md non-negotiable #6: never fail silently. A
+/// to defaults — CLAUDE.md non-negotiable #6: never fail silently. A
 /// config a user explicitly wrote getting quietly ignored is a plausible-looking
 /// but wrong result forever.
 pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>> {
@@ -140,7 +140,7 @@ pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>
         .into_diagnostic()
         .wrap_err("Failed to spawn node to evaluate docgen.config.ts — is node installed and on PATH?")?;
 
-    // Write the script to stdin, then close stdin to signal EOF.
+    // drop(stdin) below signals EOF so node's read finishes.
     let mut stdin =
         child.stdin.take().ok_or_else(|| miette::miette!("failed to open stdin for the node subprocess"))?;
     stdin.write_all(script.as_bytes()).into_diagnostic()?;

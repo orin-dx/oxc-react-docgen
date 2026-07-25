@@ -93,8 +93,9 @@ fn rdt_type_json(prop_type: &oxc_react_docgen_core::types::PropType) -> serde_js
     serde_json::json!({ "name": prop_type.raw_string() })
 }
 
+/// `methods` is always `[]` — this tool doesn't extract class methods, and RDT
+/// consumers (Storybook's docgen addon) only ever read it for class components.
 pub fn serialize_rdt(output: &oxc_react_docgen_core::types::ExtractionOutput) -> String {
-    // RDT-compatible shape: flatten to Record<string, ComponentDoc>
     let mut map = serde_json::Map::new();
     for (name, entry) in &output.components {
         let props: serde_json::Map<String, serde_json::Value> = entry
@@ -127,7 +128,6 @@ pub fn serialize_rdt(output: &oxc_react_docgen_core::types::ExtractionOutput) ->
 }
 
 pub fn serialize_storybook(output: &oxc_react_docgen_core::types::ExtractionOutput) -> String {
-    // Storybook __docgenInfo shape
     let mut map = serde_json::Map::new();
     for (name, entry) in &output.components {
         let props: serde_json::Map<String, serde_json::Value> = entry

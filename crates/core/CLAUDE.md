@@ -1,4 +1,3 @@
-
 # crates/core
 
 Pure extraction logic — no terminal, no NAPI, no async. Everything here must be `Send + Sync` for rayon.

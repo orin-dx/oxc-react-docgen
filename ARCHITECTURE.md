@@ -131,6 +131,7 @@ The resolver transforms `CollectedType` into `PropType`. This is the discriminat
 ### `ResolveState`
 
 Created fresh for each `resolve_component()` call. Holds:
+
 - Visited-type set for cycle detection (`FxHashSet<CompactString>`)
 - Current recursion depth
 - Accumulated diagnostics
@@ -174,7 +175,7 @@ Component props and enums are serialized as `BTreeMap<String, …>` rather than 
 ## What is not yet implemented
 
 | Feature | Status |
-|---------|--------|
+| --- | --- |
 | Preset system (`@oxc-react-docgen/presets`) | Designed; no Rust changes needed — config-side only. |
 | LSP server | `lsp-types` dep present; nothing implemented. |
 | Conditional types (`T extends U ? X : Y`) | Emitted as `opaque` — needs a real type checker, see `docs/type-checker-integration.md`. |

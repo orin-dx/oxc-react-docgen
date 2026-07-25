@@ -1,6 +1,9 @@
 # Agent: NAPI (Phase 4a)
+
 # Model: claude-sonnet-4-6
+
 # Runs: After Phase 3 complete, parallel with Phase 4b (CLI)
+
 # Owns: crates/napi/src/lib.rs, packages/napi/index.d.ts
 
 ## Mission
@@ -94,7 +97,7 @@ impl From<JsExtractOptions> for PipelineOptions {
 //   let session_id = pid_part | counter;
 
 /// Cold extraction — no session state. Returns JSON string.
-/// 
+///
 /// Use this for: build-time extraction, CLI backing, one-off runs.
 #[napi]
 pub fn extract_all(options: JsExtractOptions) -> NapiResult<String> {
@@ -120,10 +123,10 @@ pub fn extract_file_incremental(
             Arc::new(WatchSession::new(PipelineOptions::from(options)))
         })
         .clone();
-    
+
     let path = Utf8Path::new(&file_path);
     let update = session.update_file(path);
-    
+
     serde_json::to_string(&update)
         .map_err(|e| napi::Error::from_reason(e.to_string()))
 }
@@ -228,11 +231,7 @@ export interface IncrementalUpdate {
 export declare function extractAll(options: ExtractOptions): string
 
 /** Incremental extraction for HMR */
-export declare function extractFileIncremental(
-  filePath: string,
-  sessionId: number,
-  options: ExtractOptions
-): string
+export declare function extractFileIncremental(filePath: string, sessionId: number, options: ExtractOptions): string
 
 /** Create a watch session, returns session ID */
 export declare function createSession(options: ExtractOptions): number
@@ -244,8 +243,11 @@ export declare function closeSession(sessionId: number): void
 ---
 
 # Agent: CLI (Phase 4b)
+
 # Model: claude-sonnet-4-6
+
 # Runs: After Phase 3 complete, parallel with Phase 4a
+
 # Owns: crates/cli/src/main.rs + sibling files
 
 ## Mission
@@ -271,15 +273,15 @@ use miette::{IntoDiagnostic, Result, WrapErr};
 struct Cli {
     #[command(subcommand)]
     command: Command,
-    
+
     /// Machine-readable JSON output (suppresses human-readable output)
     #[arg(global = true, long, short = 'j')]
     json: bool,
-    
+
     /// Verbose output (repeat for more: -v, -vv)
     #[arg(global = true, long, short, action = clap::ArgAction::Count)]
     verbose: u8,
-    
+
     /// Suppress all non-error output
     #[arg(global = true, long, short)]
     quiet: bool,
@@ -289,16 +291,16 @@ struct Cli {
 enum Command {
     /// Extract prop types and write to stdout or --out file
     Extract(ExtractArgs),
-    
+
     /// Watch for changes and re-extract (run in terminal alongside `storybook dev`)
     Watch(WatchArgs),
-    
+
     /// Validate extraction — exits 2 if any errors. For CI.
     Check(CheckArgs),
-    
+
     /// Show resolved props for a single component (debugging tool)
     Inspect(InspectArgs),
-    
+
     /// Generate shell completions
     Completions(CompletionsArgs),
 }
@@ -308,20 +310,20 @@ struct ExtractArgs {
     /// Source directories to scan [default: ./src]
     #[arg(long, short, value_delimiter = ',')]
     src: Vec<String>,
-    
+
     /// Output file [default: stdout]
     #[arg(long, short)]
     out: Option<String>,
-    
+
     /// Output format
     #[arg(long, short, default_value = "canonical")]
     #[arg(value_enum)]
     format: OutputFormat,
-    
+
     /// Disable cross-package type resolution
     #[arg(long)]
     no_cross_package: bool,
-    
+
     /// React version override [default: auto-detect]
     #[arg(long)]
     react_version: Option<String>,
@@ -341,7 +343,7 @@ enum OutputFormat {
 struct InspectArgs {
     /// Component name to inspect
     component: String,
-    
+
     /// Source directories to scan [default: ./src]
     #[arg(long, short, value_delimiter = ',')]
     src: Vec<String>,
@@ -352,7 +354,7 @@ struct WatchArgs {
     /// Source directories to watch [default: ./src]
     #[arg(long, short, value_delimiter = ',')]
     src: Vec<String>,
-    
+
     /// Output file to write on each change
     #[arg(long, short)]
     out: Option<String>,
@@ -363,7 +365,7 @@ struct CheckArgs {
     /// Source directories to scan [default: ./src]
     #[arg(long, short, value_delimiter = ',')]
     src: Vec<String>,
-    
+
     /// Fail on warnings in addition to errors
     #[arg(long)]
     strict: bool,
@@ -376,10 +378,10 @@ struct CompletionsArgs {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    
+
     // Set up tracing based on verbosity
     init_tracing(cli.verbose);
-    
+
     match cli.command {
         Command::Extract(args) => cmd_extract(args, cli.json, cli.quiet),
         Command::Watch(args) => cmd_watch(args, cli.quiet),
@@ -391,9 +393,9 @@ fn main() -> Result<()> {
 
 fn cmd_extract(args: ExtractArgs, json_mode: bool, quiet: bool) -> Result<()> {
     use indicatif::{ProgressBar, ProgressStyle};
-    
+
     let options = build_options(&args.src, args.no_cross_package, args.react_version);
-    
+
     let pb = if !quiet && !json_mode {
         let pb = ProgressBar::new_spinner();
         pb.set_style(ProgressStyle::default_spinner()
@@ -405,57 +407,57 @@ fn cmd_extract(args: ExtractArgs, json_mode: bool, quiet: bool) -> Result<()> {
     } else {
         None
     };
-    
+
     let output = oxc_react_docgen_core::pipeline::extract(&options);
-    
+
     if let Some(pb) = pb {
         pb.finish_and_clear();
     }
-    
+
     if json_mode {
         println!("{}", serde_json::to_string(&output).into_diagnostic()?);
         return Ok(());
     }
-    
+
     if !quiet {
         print_summary(&output);
         print_diagnostics(&output.diagnostics);
     }
-    
+
     let json = match args.format {
         OutputFormat::Canonical => serde_json::to_string_pretty(&output).into_diagnostic()?,
         OutputFormat::Rdt => serialize_rdt(&output),
         OutputFormat::Storybook => serialize_storybook(&output),
     };
-    
+
     match args.out {
         Some(path) => std::fs::write(&path, &json).into_diagnostic()
             .wrap_err(format!("Writing to {}", path))?,
         None => println!("{}", json),
     }
-    
+
     // Exit 2 if any errors
     if output.diagnostics.iter().any(|d| matches!(d.severity, DiagnosticSeverity::Error)) {
         std::process::exit(2);
     }
-    
+
     Ok(())
 }
 
 fn print_summary(output: &ExtractionOutput) {
     use owo_colors::OwoColorize;
-    
+
     println!();
     println!("  {}  oxc-react-docgen v{}", "⚡".yellow(), env!("CARGO_PKG_VERSION"));
     println!();
-    
+
     let errors = output.diagnostics.iter()
         .filter(|d| matches!(d.severity, DiagnosticSeverity::Error))
         .count();
     let warnings = output.diagnostics.iter()
         .filter(|d| matches!(d.severity, DiagnosticSeverity::Warning))
         .count();
-    
+
     println!("  {}  {} extracted  •  {} enums  •  {} warnings  •  {} errors",
         "Components".dimmed(),
         output.stats.components_extracted.to_string().bold(),
@@ -463,7 +465,7 @@ fn print_summary(output: &ExtractionOutput) {
         if warnings > 0 { warnings.to_string().yellow().to_string() } else { warnings.to_string() },
         if errors > 0 { errors.to_string().red().to_string() } else { errors.to_string() },
     );
-    
+
     println!("  {}    {}ms total",
         "Time".dimmed(),
         output.stats.duration_ms.to_string().bold(),
@@ -473,54 +475,54 @@ fn print_summary(output: &ExtractionOutput) {
 
 fn cmd_inspect(args: InspectArgs) -> Result<()> {
     use owo_colors::OwoColorize;
-    
+
     let options = build_options(&args.src, false, None);
     let output = oxc_react_docgen_core::pipeline::extract(&options);
-    
+
     let component = output.components.get(&args.component)
         .ok_or_else(|| miette::miette!(
             "Component '{}' not found. Available: {}",
             args.component,
             output.components.keys().cloned().collect::<Vec<_>>().join(", ")
         ))?;
-    
+
     println!();
     println!("  {}  {}", component.display_name.bold(), component.file_path.to_string().dimmed());
     println!("  {}", "─".repeat(60).dimmed());
     println!();
-    
+
     if !component.description.is_empty() {
         println!("  {}", component.description);
         println!();
     }
-    
+
     println!("  {} ({})", "Props".bold(), component.props.len());
     println!();
-    
+
     for (_, prop) in &component.props {
         let type_str = prop.prop_type.raw_string();
         let required_str = if prop.required { "required".red().to_string() } else { "optional".dimmed().to_string() };
         let parent_str = prop.parent.as_ref()
             .map(|p| p.name.dimmed().to_string())
             .unwrap_or_default();
-        
+
         println!("  {:<20} {:<40} {}  {}",
             prop.name.bold(),
             type_str.cyan(),
             required_str,
             parent_str,
         );
-        
+
         if !prop.description.is_empty() {
             println!("  {:<20} {}", "", prop.description.dimmed());
         }
     }
-    
+
     if let Some(element) = &component.html_element {
         println!();
         println!("  {}  <{}>", "HTML element".dimmed(), element.bold());
     }
-    
+
     println!();
     Ok(())
 }
@@ -540,12 +542,12 @@ Replace the manual column-aligned `println!` loop above with a proper table:
 ```rust
 fn cmd_inspect(args: InspectArgs) -> Result<()> {
     use comfy_table::{Table, Cell, Color, Attribute};
-    
+
     // ... (component lookup as above) ...
-    
+
     let mut table = Table::new();
     table.set_header(vec!["Prop", "Type", "Req", "Default", "From"]);
-    
+
     for (_, prop) in &component.props {
         table.add_row(vec![
             Cell::new(&prop.name).add_attribute(Attribute::Bold),
@@ -569,7 +571,7 @@ use watchexec::Watchexec;
 
 async fn cmd_watch(args: WatchArgs, quiet: bool) -> Result<()> {
     let src_dir = args.src.first().cloned().unwrap_or_else(|| "./src".into());
-    
+
     let wx = Watchexec::new_async(|mut action| async move {
         for event in action.events.iter() {
             for (path, _) in event.paths() {
@@ -595,12 +597,12 @@ async fn cmd_watch(args: WatchArgs, quiet: bool) -> Result<()> {
 /// Returns None if file not found or node not available.
 fn load_config_file(root: &Utf8Path) -> Option<PipelineOptions> {
     let config_path = find_config_file(root)?; // walks up to workspace root
-    
+
     let script = format!(
         "import cfg from '{}'; process.stdout.write(JSON.stringify(cfg.default ?? cfg))",
         config_path
     );
-    
+
     let output = std::process::Command::new("node")
         .args(["--input-type=module", "--import=tsx/esm"])
         .stdin(std::process::Stdio::piped())
@@ -611,7 +613,7 @@ fn load_config_file(root: &Utf8Path) -> Option<PipelineOptions> {
         .ok()?
         .wait_with_output()
         .ok()?;
-    
+
     if !output.status.success() { return None; }
     serde_json::from_slice(&output.stdout).ok()
 }
@@ -622,8 +624,11 @@ The `find_config_file` helper walks from `root` upward, stopping at a workspace 
 ---
 
 # Agent: Vite Plugin (Phase 5a)
+
 # Model: claude-sonnet-4-6
+
 # Runs: After Phase 4a (NAPI) complete
+
 # Owns: packages/vite-plugin/
 
 > **⚠️ SUPERSEDED** — The architecture below (Plugin[], transform hook, __docgenInfo injection, lazy NAPI load) was revised during implementation. The actual implementation uses a single `Plugin`, virtual module pattern, and `configureServer`+`hotUpdate` hooks. See `docs/10-PLUGIN-SPEC.md` for the canonical spec and `packages/vite-plugin/src/index.ts` for the implementation. The package name is `@oxc-react-docgen/vite-plugin` (not `@oxc-react-docgen/vite`).
@@ -713,29 +718,30 @@ export interface OxcReactDocgenOptions {
 export function oxcReactDocgen(inlineOptions: Options = {}): Plugin[] {
   const filter = createFilter(
     inlineOptions.include ?? /\.(tsx?|d\.ts)$/,
-    inlineOptions.exclude ?? [/node_modules/, /\.stories\./, /\.test\./, /\.spec\./]
+    inlineOptions.exclude ?? [/node_modules/, /\.stories\./, /\.test\./, /\.spec\./],
   )
-  
+
   let sessionId: number | null = null
   let extractionResult: Record<string, ComponentEntry> = {}
   let extractionComplete = false
   let napiOptions: ResolvedOptions
-  
+
   const extractionPlugin: Plugin = {
     name: 'oxc-react-docgen:extract',
     enforce: 'pre',
-    
+
     async configResolved(config) {
       const detected = await autoDetect(config.root)
       const configFile = await loadConfigFile(config.root)
       napiOptions = mergeOptions(DEFAULTS, detected, configFile, inlineOptions).rust
-      
+
       const api = await getNapi()
       sessionId = api.createSession(napiOptions)
-      
+
       // Start extraction async — don't block Vite startup
-      api.extractAll(napiOptions)
-        .then(json => {
+      api
+        .extractAll(napiOptions)
+        .then((json) => {
           const output: ExtractionOutput = JSON.parse(json)
           for (const [, entry] of Object.entries(output.components)) {
             extractionResult[entry.filePath] = entry
@@ -743,9 +749,9 @@ export function oxcReactDocgen(inlineOptions: Options = {}): Plugin[] {
           extractionComplete = true
           // Modules will pick up __docgenInfo on next HMR cycle or page reload
         })
-        .catch(err => config.logger.warn(`[oxc-react-docgen] extraction failed: ${err}`))
+        .catch((err) => config.logger.warn(`[oxc-react-docgen] extraction failed: ${err}`))
     },
-    
+
     // Vite 8 / Rolldown: declare filter for Rolldown perf (skips the hook for non-matching ids)
     transform: {
       filter: { id: /\.(tsx?|d\.ts)$/ },
@@ -753,27 +759,27 @@ export function oxcReactDocgen(inlineOptions: Options = {}): Plugin[] {
         // Skip SSR environment — __docgenInfo is client-only
         if (this.environment?.name === 'ssr') return null
         if (!filter(id)) return null
-        
+
         const component = extractionResult[id]
         if (!component) {
           // Extraction may still be in progress; return unchanged
           return null
         }
-        
+
         return {
           code: `${code}\n${buildDocgenBlock(component)}`,
           map: null,
-          moduleType: 'js',  // REQUIRED for Vite 8 / Rolldown
+          moduleType: 'js', // REQUIRED for Vite 8 / Rolldown
         }
-      }
+      },
     },
-    
+
     // Vite 8: hotUpdate (renamed from handleHotUpdate)
     hotUpdate({ file, environment }) {
       if (!filter(file) || sessionId === null) return
-      if (environment.name !== 'client') return  // skip SSR environment
-      
-      getNapi().then(api => {
+      if (environment.name !== 'client') return // skip SSR environment
+
+      getNapi().then((api) => {
         const json = api.extractFileIncremental(file, sessionId!, napiOptions)
         const update: IncrementalUpdate = JSON.parse(json)
         for (const entry of update.updatedComponents) {
@@ -781,31 +787,25 @@ export function oxcReactDocgen(inlineOptions: Options = {}): Plugin[] {
         }
         // Return invalidated modules to Vite for HMR
         return update.affectedFiles
-          .map(f => environment.moduleGraph.getModuleById(f))
+          .map((f) => environment.moduleGraph.getModuleById(f))
           .filter((m): m is NonNullable<typeof m> => m != null)
       })
     },
-    
+
     buildEnd() {
       if (sessionId !== null) {
-        getNapi().then(api => api.closeSession(sessionId!))
+        getNapi().then((api) => api.closeSession(sessionId!))
         sessionId = null
       }
     },
   }
-  
-  return [
-    extractionPlugin,
-    virtualModulePlugin(/* see virtual module plugin spec below */),
-  ]
+
+  return [extractionPlugin, virtualModulePlugin(/* see virtual module plugin spec below */)]
 }
 
 function buildDocgenBlock(component: ComponentEntry): string {
   // HTML-safe JSON escaping for __docgenInfo
-  const json = JSON.stringify(component)
-    .replace(/</g, '\\u003c')
-    .replace(/>/g, '\\u003e')
-    .replace(/&/g, '\\u0026')
+  const json = JSON.stringify(component).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
 
   return [
     `if (typeof ${component.displayName} !== 'undefined') {`,
@@ -856,8 +856,11 @@ export type { ComponentEntry, PropItem, ExtractionOutput } from '@oxc-react-docg
 ---
 
 # Agent: Rolldown Plugin (Phase 5b)
+
 # Model: claude-sonnet-4-6
+
 # Runs: After Phase 3 complete (no NAPI needed — uses core directly)
+
 # Owns: packages/rolldown-plugin/ (Rust crate)
 
 ## Mission
@@ -919,17 +922,17 @@ impl OxcReactDocgenPluginBuilder {
     pub fn new() -> Self {
         Self { options: PipelineOptions::default() }
     }
-    
+
     pub fn src_dirs(mut self, dirs: Vec<impl Into<camino::Utf8PathBuf>>) -> Self {
         self.options.src_dirs = dirs.into_iter().map(Into::into).collect();
         self
     }
-    
+
     pub fn react_version(mut self, v: oxc_react_docgen_core::react_types::ReactVersion) -> Self {
         self.options.react_version = v;
         self
     }
-    
+
     pub fn build(self) -> OxcReactDocgenPlugin {
         OxcReactDocgenPlugin::new(self.options)
     }

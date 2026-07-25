@@ -1,5 +1,7 @@
 # Agent: Repository Setup (Phase 0)
+
 # Model: claude-sonnet-4-6
+
 # Runs: First, blocks all other agents
 
 ## Mission
@@ -283,7 +285,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
       - run: cargo test --workspace
-      - run: cargo bench --workspace --no-run  # compile check only in CI
+      - run: cargo bench --workspace --no-run # compile check only in CI
 
   bench:
     runs-on: ubuntu-latest
@@ -373,6 +375,6 @@ msrv = "1.80"
 ## What NOT to Do
 
 - Do not implement any logic — only stubs and structure
-- Do not choose HashMap — leave FxHashMap setup for types agent  
+- Do not choose HashMap — leave FxHashMap setup for types agent
 - Do not add any terminal/display crates to `crates/core/`
 - Do not implement NAPI bindings — that is Phase 4a

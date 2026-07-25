@@ -33,10 +33,7 @@ import react from '@vitejs/plugin-react'
 import { oxcReactDocgen } from '@oxc-react-docgen/vite-plugin'
 
 export default defineConfig({
-  plugins: [
-    react(),
-    oxcReactDocgen({ srcDirs: ['src'] }),
-  ],
+  plugins: [react(), oxcReactDocgen({ srcDirs: ['src'] })],
 })
 ```
 
@@ -117,19 +114,19 @@ Settings can also live in `docgen.config.ts` (`srcDirs`, `htmlAttributes`, `reac
 
 ## Supported patterns
 
-| Pattern | Example |
-|---------|---------|
-| Function components | `function Button(props: ButtonProps)` |
-| Arrow components | `const Button = (props: ButtonProps) => ...` |
-| `React.forwardRef` | `forwardRef<HTMLButtonElement, ButtonProps>(...)` |
-| HOC-wrapped | `styled(Base)<ButtonProps>` |
-| Interface inheritance | `interface ButtonProps extends HTMLAttributes<HTMLButtonElement>` |
-| Intersection aliases | `type ButtonProps = BaseProps & { variant?: string }` |
-| `Omit` / `Pick` | `type ButtonProps = Omit<InputProps, 'value'>` |
-| `ComponentPropsWithoutRef` | `ComponentPropsWithoutRef<'button'>` |
-| `VariantProps` | `VariantProps<typeof buttonVariants>` (CVA / TV / PandaCSS) |
-| Discriminated unions | MUI-style `variant: 'filled' \| 'outlined' \| 'standard'` |
-| JSDoc tags | `@description`, `@default`, `@deprecated`, `@internal` |
+| Pattern                    | Example                                                           |
+| -------------------------- | ----------------------------------------------------------------- |
+| Function components        | `function Button(props: ButtonProps)`                             |
+| Arrow components           | `const Button = (props: ButtonProps) => ...`                      |
+| `React.forwardRef`         | `forwardRef<HTMLButtonElement, ButtonProps>(...)`                 |
+| HOC-wrapped                | `styled(Base)<ButtonProps>`                                       |
+| Interface inheritance      | `interface ButtonProps extends HTMLAttributes<HTMLButtonElement>` |
+| Intersection aliases       | `type ButtonProps = BaseProps & { variant?: string }`             |
+| `Omit` / `Pick`            | `type ButtonProps = Omit<InputProps, 'value'>`                    |
+| `ComponentPropsWithoutRef` | `ComponentPropsWithoutRef<'button'>`                              |
+| `VariantProps`             | `VariantProps<typeof buttonVariants>` (CVA / TV / PandaCSS)       |
+| Discriminated unions       | MUI-style `variant: 'filled' \| 'outlined' \| 'standard'`         |
+| JSDoc tags                 | `@description`, `@default`, `@deprecated`, `@internal`            |
 
 ## Repository
 

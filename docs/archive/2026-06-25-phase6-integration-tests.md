@@ -12,19 +12,20 @@
 
 ## File Map
 
-| Action | File | Purpose |
-|--------|------|---------|
-| Create | `crates/cli/moon.yml` | Exposes `cli:build` so validate can depend on it |
-| Modify | `apps/validate/src/baseline.ts` | Add ours runner (currently only rdg + rdt) |
-| Modify | `apps/validate/package.json` | Add `run:ours` and `compare:all` scripts |
-| Create | `apps/validate/moon.yml` | `compare` task: deps `cli:build`, runs full pipeline |
-| Modify | `docs/09-STATUS.md` | Mark Phase 6 complete, remove stale bug entry |
+| Action | File                            | Purpose                                              |
+| ------ | ------------------------------- | ---------------------------------------------------- |
+| Create | `crates/cli/moon.yml`           | Exposes `cli:build` so validate can depend on it     |
+| Modify | `apps/validate/src/baseline.ts` | Add ours runner (currently only rdg + rdt)           |
+| Modify | `apps/validate/package.json`    | Add `run:ours` and `compare:all` scripts             |
+| Create | `apps/validate/moon.yml`        | `compare` task: deps `cli:build`, runs full pipeline |
+| Modify | `docs/09-STATUS.md`             | Mark Phase 6 complete, remove stale bug entry        |
 
 ---
 
 ## Task 1: Create `crates/cli/moon.yml`
 
 **Files:**
+
 - Create: `crates/cli/moon.yml`
 
 The CLI crate package name in Cargo.toml is `oxc-react-docgen` (it's a binary). The workspace.yml already has `cli: "crates/cli"` registered, so `cli:build` becomes a valid moon task reference.
@@ -40,10 +41,10 @@ tasks:
     options:
       runFromWorkspaceRoot: true
     inputs:
-      - "src/**/*"
-      - "Cargo.toml"
-      - "../../crates/core/src/**/*"
-      - "../../crates/core/Cargo.toml"
+      - 'src/**/*'
+      - 'Cargo.toml'
+      - '../../crates/core/src/**/*'
+      - '../../crates/core/Cargo.toml'
 ```
 
 Note: no `outputs` block — `target/` is gitignored and cargo is already incremental; moon doesn't need output tracking here.
@@ -68,6 +69,7 @@ git commit -m "feat: add moon build task for CLI crate"
 ## Task 2: Update `apps/validate/src/baseline.ts` to include ours
 
 **Files:**
+
 - Modify: `apps/validate/src/baseline.ts`
 
 The current file runs `run-react-docgen.ts` and `run-react-docgen-typescript.ts`, then saves their JSON output to `./baselines/`. We add the same for `run-ours.ts`.
@@ -107,6 +109,7 @@ cd apps/validate && pnpm baseline
 ```
 
 Expected output:
+
 ```
 Running react-docgen baseline...
 ✅ react-docgen baseline saved
@@ -132,15 +135,18 @@ git commit -m "feat: include oxc-react-docgen in baseline generation"
 ## Task 3: Add scripts to `apps/validate/package.json`
 
 **Files:**
+
 - Modify: `apps/validate/package.json`
 
 Add two scripts:
+
 - `run:ours` — for manual one-off runs (outputs JSON to stdout)
 - `compare:all` — for the moon task: runs baseline + compare in sequence
 
 - [ ] **Step 1: Update scripts block**
 
 Current scripts:
+
 ```json
 "scripts": {
   "run:rdg": "tsx src/run-react-docgen.ts",
@@ -151,6 +157,7 @@ Current scripts:
 ```
 
 Replace with:
+
 ```json
 "scripts": {
   "run:rdg": "tsx src/run-react-docgen.ts",
@@ -169,6 +176,7 @@ cd apps/validate && pnpm compare:all 2>&1 | tail -10
 ```
 
 Expected last lines:
+
 ```
 ============================================================
 SUMMARY
@@ -193,6 +201,7 @@ git commit -m "feat: add run:ours and compare:all scripts to validate package"
 ## Task 4: Create `apps/validate/moon.yml`
 
 **Files:**
+
 - Create: `apps/validate/moon.yml`
 
 The `compare` task runs `pnpm compare:all` (baseline + compare) with a dep on `cli:build`. The `cache: false` option is required because baselines are gitignored — moon can't hash them as outputs for its cache system.
@@ -208,10 +217,10 @@ tasks:
   compare:
     command: pnpm compare:all
     deps:
-      - "cli:build"
+      - 'cli:build'
     inputs:
-      - "src/**/*"
-      - "../../../fixtures/**/*"
+      - 'src/**/*'
+      - '../../../fixtures/**/*'
     options:
       cache: false
 ```
@@ -223,6 +232,7 @@ moon run validate:compare
 ```
 
 Expected flow:
+
 1. Moon runs `cli:build` (cargo build, ~1s if cached)
 2. Moon runs `validate:compare` (generates baselines, prints diff)
 3. Final lines show the SUMMARY block
@@ -239,6 +249,7 @@ git commit -m "feat: add moon compare task for validate app"
 ## Task 5: Update `docs/09-STATUS.md`
 
 **Files:**
+
 - Modify: `docs/09-STATUS.md`
 
 Three changes: phase table row, remove stale bug entry, update Immediate Next Steps.
@@ -246,11 +257,13 @@ Three changes: phase table row, remove stale bug entry, update Immediate Next St
 - [ ] **Step 1: Update the Phase Completion table**
 
 Change:
+
 ```
 | 6 — Integration tests | 🟡 Partially ready | run-ours.ts exists in apps/validate/; needs compare.ts, baseline command, and moon wiring |
 ```
 
 To:
+
 ```
 | 6 — Integration tests | ✅ Complete | moon run validate:compare — rdg + rdt + ours baselines → prop-diff comparison |
 ```
@@ -258,6 +271,7 @@ To:
 - [ ] **Step 2: Remove the stale "run-ours.ts missing" bug entry**
 
 Remove this section from "Current Known Bugs":
+
 ```
 ### 🟢 Minor: `run-ours.ts` missing in apps/validate
 
@@ -269,6 +283,7 @@ The validation harness has `run-react-docgen.ts` and `run-react-docgen-typescrip
 - [ ] **Step 3: Update Immediate Next Steps**
 
 Change from:
+
 ```
 1. **Phase 6 — Integration tests** (`apps/validate/`) — `run-ours.ts` exists; need `compare.ts`, baseline snapshot, and `moon run validate:compare`
 2. **Config file loading** — `crates/cli/src/config.rs` parses `docgen.config.ts` but discards the result (returns `None`); wire the JSON → `PipelineOptions` mapping
@@ -276,6 +291,7 @@ Change from:
 ```
 
 To:
+
 ```
 1. **Config file loading** — `crates/cli/src/config.rs` parses `docgen.config.ts` but discards the result (returns `None`); wire the JSON → `PipelineOptions` mapping
 2. **Preset system** — named `OxcDocgenOptions` bundles in a `@oxc-react-docgen/presets` package (config-side only, no Rust changes)
@@ -293,6 +309,7 @@ git commit -m "docs: mark Phase 6 complete, remove stale run-ours.ts bug entry"
 ## Self-Review
 
 **Spec coverage:**
+
 - `compare.ts` ✅ already exists
 - `baseline` command ✅ updated in Task 2 to include ours
 - `moon run validate:compare` ✅ wired in Task 4

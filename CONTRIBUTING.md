@@ -2,11 +2,11 @@
 
 ## Prerequisites
 
-| Tool | Min version | Notes |
-|------|------------|-------|
-| Rust | 1.94 | `rustup update stable` |
-| proto | latest | manages Node/pnpm versions from `.prototools` |
-| pnpm | 9 | via proto, or `npm i -g pnpm` |
+| Tool  | Min version | Notes                                         |
+| ----- | ----------- | --------------------------------------------- |
+| Rust  | 1.94        | `rustup update stable`                        |
+| proto | latest      | manages Node/pnpm versions from `.prototools` |
+| pnpm  | 9           | via proto, or `npm i -g pnpm`                 |
 
 After installing proto, run `moon setup` once to pull the pinned Node version and any other tool versions declared in `.prototools`.
 

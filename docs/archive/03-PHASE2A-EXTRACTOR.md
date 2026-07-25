@@ -1,6 +1,9 @@
 # Agent: Extractor (Phase 2a)
+
 # Model: claude-sonnet-4-6
+
 # Runs: After Phase 1a (Types), parallel with Phase 2b (ImportMap) and 2c (Known)
+
 # Owns: crates/core/src/extractor.rs, crates/core/src/react_types.rs
 
 ## Mission
@@ -24,7 +27,7 @@ pub fn parse_file(path: &Utf8Path, source: &str) -> SourceData {
     let allocator = Allocator::default();  // created here
     let source_type = SourceType::from_path(path).unwrap_or_default();
     let ret = Parser::new(&allocator, source, source_type).parse();
-    
+
     let mut collector = SourceDataCollector::new(path, source);
     collector.visit_program(&ret.program);
     collector.finish()
@@ -77,13 +80,13 @@ struct SourceDataCollector<'src> {
 
 impl<'src> SourceDataCollector<'src> {
     fn new(path: &Utf8Path, source: &'src str, is_tsx: bool) -> Self { ... }
-    
+
     fn scoped_key(&self, name: &str) -> String {
         format!("{}:{}", self.file_path, name)
     }
-    
+
     fn finish(self) -> SourceData { self.data }
-    
+
     fn classify_extends(&self, name: &str, type_args: Vec<String>) -> ExtendsRef {
         // Check against baked-in React type names first
         if let Some(element) = crate::react_types::html_element_for(name) {
@@ -114,7 +117,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
         // Record all imported names into self.imported_names
         let specifier = node.source.value.as_str().to_owned();
         let is_type_only = node.import_kind.is_type();
-        
+
         if let Some(specifiers) = &node.specifiers {
             for spec in specifiers {
                 match spec {
@@ -135,7 +138,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
             }
         }
     }
-    
+
     fn visit_export_named_declaration(&mut self, node: &ExportNamedDeclaration<'a>) {
         if let Some(source) = &node.source {
             // Re-exports: export { X } from "./y" or export * from "./y"
@@ -159,7 +162,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
     fn visit_ts_interface_declaration(&mut self, node: &TSInterfaceDeclaration<'a>) {
         let name = node.id.name.as_str();
         let key = self.scoped_key(name);
-        
+
         let extends = node.extends.iter()
             .map(|ext| {
                 let ext_name = self.extract_extends_name(ext);
@@ -167,13 +170,13 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                 self.classify_extends(&ext_name, type_args)
             })
             .collect();
-        
+
         let props = node.body.body.iter()
             .filter_map(|sig| self.collect_property_signature(sig))
             .collect();
-        
+
         let description = self.find_jsdoc(node.span.start);
-        
+
         self.data.interfaces.insert(key.clone(), CollectedInterface {
             scoped_key: key,
             name: name.into(),
@@ -184,20 +187,20 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
             tags: self.extract_jsdoc_tags(node.span.start),
         });
     }
-    
+
     fn visit_ts_type_alias_declaration(&mut self, node: &TSTypeAliasDeclaration<'a>) {
         let name = node.id.name.as_str();
         let key = self.scoped_key(name);
-        
+
         if let Some(alias) = self.classify_type_alias(name, &node.type_annotation) {
             self.data.type_aliases.insert(key, alias);
         }
     }
-    
+
     fn visit_ts_enum_declaration(&mut self, node: &TSEnumDeclaration<'a>) {
         // Collect enum members as EnumEntry vec
     }
-    
+
     fn visit_variable_declaration(&mut self, node: &VariableDeclaration<'a>) {
         for declarator in &node.declarations {
             // Check for: as const enums, cva() calls, component mappings
@@ -216,30 +219,30 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
 impl<'src> SourceDataCollector<'src> {
     fn try_collect_component(&mut self, decl: &VariableDeclarator<'a>) {
         let name = self.extract_pascal_name(decl)?;
-        
+
         // Pattern 1: const Button: FC<ButtonProps> = ...
         if let Some(mapping) = self.try_fc_annotation(decl, &name) {
             self.data.component_mappings.push(mapping);
             return;
         }
-        
+
         // Pattern 2: const Button = forwardRef<HTMLButtonElement, ButtonProps>(...)
         if let Some(mapping) = self.try_forward_ref(decl, &name) {
             self.data.component_mappings.push(mapping);
             return;
         }
-        
+
         // Pattern 3: const Button = anyHOC(function Button(props: ButtonProps) {...})
         // or: const Button = anyHOC(function Button(props: ButtonProps, ref: R) {...})
         if let Some(mapping) = self.try_hoc_wrapped(decl, &name) {
             self.data.component_mappings.push(mapping);
             return;
         }
-        
+
         // Pattern 4: function Button(props: ButtonProps) { ... }  [arrow not needed]
         // Handled in visit_function_declaration
     }
-    
+
     fn try_fc_annotation(
         &self,
         decl: &VariableDeclarator<'a>,
@@ -249,7 +252,7 @@ impl<'src> SourceDataCollector<'src> {
         let type_ann = decl.id.type_annotation.as_ref()?;
         self.extract_props_from_type_annotation(&type_ann.type_annotation, name)
     }
-    
+
     fn extract_props_from_type_annotation(
         &self,
         ty: &TSType<'a>,
@@ -283,7 +286,7 @@ impl<'src> SourceDataCollector<'src> {
             _ => None,
         }
     }
-    
+
     fn try_forward_ref(
         &self,
         decl: &VariableDeclarator<'a>,
@@ -292,11 +295,11 @@ impl<'src> SourceDataCollector<'src> {
         let init = decl.init.as_ref()?;
         let call = init.as_call_expression()?;
         let callee_name = self.extract_callee_name(call)?;
-        
+
         if !matches!(callee_name.as_str(), "forwardRef" | "React.forwardRef") {
             return None;
         }
-        
+
         // forwardRef<RefType, PropsType>(fn)
         // PropsType is the second type parameter
         let type_params = call.type_parameters.as_ref()?;
@@ -305,7 +308,7 @@ impl<'src> SourceDataCollector<'src> {
         }
         let props_type = &type_params.params[1];
         let (props_name, type_args) = self.extract_type_name_from_type(props_type)?;
-        
+
         Some(ComponentMapping {
             component_name: name.to_owned(),
             props_type_name: props_name,
@@ -317,7 +320,7 @@ impl<'src> SourceDataCollector<'src> {
             span_end: decl.span.end,
         })
     }
-    
+
     fn try_hoc_wrapped(
         &self,
         decl: &VariableDeclarator<'a>,
@@ -325,23 +328,23 @@ impl<'src> SourceDataCollector<'src> {
     ) -> Option<ComponentMapping> {
         let init = decl.init.as_ref()?;
         let call = init.as_call_expression()?;
-        
+
         // First arg should be a function with a typed props param
         let first_arg = call.arguments.first()?;
         let fn_expr = self.extract_function_from_arg(first_arg)?;
-        
+
         // Must be PascalCase — not anonymous utility functions
         if let Some(fn_name) = fn_expr.name {
             if !is_pascal_case(fn_name.name.as_str()) {
                 return None;
             }
         }
-        
+
         // Extract props type from first parameter annotation
         let first_param = fn_expr.params.items.first()?;
         let type_ann = first_param.pattern.type_annotation.as_ref()?;
         let (props_name, type_args) = self.extract_type_name_from_type(&type_ann.type_annotation)?;
-        
+
         Some(ComponentMapping {
             component_name: name.to_owned(),
             props_type_name: props_name,
@@ -427,7 +430,7 @@ pub const REACT_19: ReactVersion = ReactVersion { implicit_children: false, ref_
 /// Returns empty string if none found.
 fn find_jsdoc(comments: &[Comment], source: &str, span_start: u32) -> String {
     const PROXIMITY_THRESHOLD: u32 = 50; // bytes
-    
+
     let comment = comments.iter()
         .rev()  // search backwards
         .find(|c| {
@@ -435,7 +438,7 @@ fn find_jsdoc(comments: &[Comment], source: &str, span_start: u32) -> String {
             && c.span.end <= span_start
             && span_start - c.span.end <= PROXIMITY_THRESHOLD
         })?;
-    
+
     parse_jsdoc_text(&source[comment.span.start as usize..comment.span.end as usize])
 }
 
@@ -469,7 +472,7 @@ mod tests {
         let source = fs::read_to_string("../../fixtures/shadcn/button.tsx").unwrap();
         let path = Utf8Path::new("/fixtures/shadcn/button.tsx");
         let data = parse_file(path, &source);
-        
+
         assert!(data.component_mappings.iter().any(|m| m.component_name == "Button"));
         // Button should have props_type_name "ButtonProps"
         let btn = data.component_mappings.iter().find(|m| m.component_name == "Button").unwrap();

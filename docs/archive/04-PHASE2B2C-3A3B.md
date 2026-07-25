@@ -1,6 +1,9 @@
 # Agent: Import Map (Phase 2b)
+
 # Model: claude-sonnet-4-6
+
 # Runs: After Phase 1a, parallel with Phase 2a + 2c
+
 # Owns: crates/core/src/import_map.rs
 
 ## Mission
@@ -43,7 +46,7 @@ impl ImportResolutionMap {
     pub fn build(global: &GlobalSourceData) -> Self {
         let mut bindings = FxHashMap::default();
         let mut wildcard_sources = FxHashMap::default();
-        
+
         for (file_path, imports) in &global.import_map {
             for binding in imports {
                 // For each import binding, record the local_name → specifier mapping.
@@ -61,7 +64,7 @@ impl ImportResolutionMap {
                 });
             }
         }
-        
+
         for (file_path, exports) in &global.re_export_map {
             for export in exports {
                 if let LexedExport::ReExportAll { .. } = export {
@@ -69,16 +72,16 @@ impl ImportResolutionMap {
                 }
             }
         }
-        
+
         Self { bindings, wildcard_sources }
     }
-    
+
     /// Given a file and a local type name, find where it was imported from.
     /// Returns None if it's a local declaration (not imported).
     pub fn find_import(&self, file: &Utf8Path, local_name: &str) -> Option<&CanonicalRef> {
         self.bindings.get(&(file.to_owned(), local_name.into()))
     }
-    
+
     /// Resolve a re-export chain to the canonical declaration.
     /// Handles: `export { Foo as Bar } from "./types"`
     pub fn resolve_reexport(
@@ -88,7 +91,7 @@ impl ImportResolutionMap {
         global: &GlobalSourceData,
     ) -> Option<CanonicalRef> {
         let exports = global.re_export_map.get(barrel_file)?;
-        
+
         for export in exports {
             match export {
                 LexedExport::ReExportNamed { local_name, source_name, source_specifier, .. } => {
@@ -122,14 +125,14 @@ impl ImportResolutionMap {
 mod tests {
     // Test that barrel file re-exports resolve correctly
     // Use fixture: packages that re-export through index.ts
-    
+
     #[test]
     fn test_named_reexport() {
         // export { Foo as Bar } from "./foo"
         // import { Bar } from "package"
         // → should resolve Bar to Foo in ./foo
     }
-    
+
     #[test]
     fn test_wildcard_reexport() {
         // export * from "./types"
@@ -141,8 +144,11 @@ mod tests {
 ---
 
 # Agent: Known Patterns (Phase 2c)
+
 # Model: claude-sonnet-4-6
+
 # Runs: After Phase 1a, parallel with Phase 2a + 2b
+
 # Owns: crates/core/src/known.rs
 
 ## Mission
@@ -191,45 +197,45 @@ pub fn resolve_known(
         "VariantProps" | "RecipeVariantProps" => {
             resolve_cva_variant_props(args, global)
         }
-        
+
         // ── MUI styling ──────────────────────────────────────────────────────
         // SxProps is a massive conditional type — surface as opaque
         "SxProps" | "SystemStyleObject" | "SystemCssProperties" => {
             Some(KnownPatternResult::Type(PropType::SxProps))
         }
-        
+
         // ── React Aria ───────────────────────────────────────────────────────
         // RenderProps<ButtonRenderProps> → simplify to scalar className/style/children
         "RenderProps" => Some(KnownPatternResult::Props(render_props())),
         // SlotProps → { slot?: string | null }
         "SlotProps" => Some(KnownPatternResult::Props(vec![slot_prop()])),
-        
+
         // ── Chakra / Ark ─────────────────────────────────────────────────────
         // HTMLChakraProps<'button'> → same as ComponentPropsWithoutRef<'button'>
         "HTMLChakraProps" | "HTMLArkProps" | "HTMLStyledProps" => {
             html_attrs_from_first_arg(args)
         }
-        
+
         // ── React standard ───────────────────────────────────────────────────
         "PropsWithChildren" => props_with_children(args),
         "PropsWithRef" => props_with_ref(args),
-        
+
         // ComponentPropsWithoutRef<'button'> or ComponentPropsWithoutRef<typeof X>
         "ComponentPropsWithoutRef" | "ComponentProps" => component_props(args, false),
         "ComponentPropsWithRef" => component_props(args, true),
-        
+
         // ElementRef<typeof X> → opaque Ref
         "ElementRef" => {
             Some(KnownPatternResult::Type(PropType::Ref { element: None }))
         }
-        
+
         // ── Transparent utility types (handled by resolver, but shortcircuit here)
         // These are already handled in the resolver's Omit/Pick logic,
         // but if seen as standalone names, pass through:
         "Partial" | "Required" | "Readonly" | "NonNullable" => {
             None // let resolver handle
         }
-        
+
         // ── MUI-specific ─────────────────────────────────────────────────────
         // OverridableStringUnion requires type checker — degrade gracefully
         "OverridableStringUnion" => {
@@ -250,7 +256,7 @@ pub fn resolve_known(
                 }))
             }
         }
-        
+
         _ => None,
     }
 }
@@ -262,7 +268,7 @@ fn resolve_cva_variant_props(args: &[PropType], global: &GlobalSourceData) -> Op
     //
     // If we can't find the variants (e.g. they're imported from elsewhere),
     // return an Opaque rather than failing.
-    
+
     match args.first() {
         Some(PropType::Named { name, .. }) => {
             // Look for "${scoped_key}:${name}" in global enums
@@ -369,8 +375,11 @@ fn simple_prop(name: &str, prop_type: PropType, required: bool, description: &st
 ---
 
 # Agent: Resolver (Phase 3a)
+
 # Model: claude-sonnet-4-6
+
 # Runs: After Phase 2 complete
+
 # Owns: crates/core/src/resolver.rs, crates/core/src/cache.rs
 
 ## Mission
@@ -413,7 +422,7 @@ impl ResolutionContext {
             extensions: vec![".ts".into(), ".tsx".into(), ".d.ts".into(), ".js".into()],
             ..ResolveOptions::default()
         };
-        
+
         Self {
             import_map: Arc::new(ImportResolutionMap::build(&global)),
             global,
@@ -431,7 +440,7 @@ pub fn resolve_component(
 ) -> (ComponentEntry, Vec<Diagnostic>) {
     let mut diagnostics = Vec::new();
     let mut visited = FxHashSet::default();
-    
+
     let chain = resolve_props_chain(
         &mapping.props_type_name,
         &mapping.props_type_args,
@@ -441,12 +450,12 @@ pub fn resolve_component(
         0,
         &mut diagnostics,
     );
-    
+
     let props: BTreeMap<String, ParsedProp> = chain.props
         .into_iter()
         .map(|p| (p.name.clone(), p))
         .collect();
-    
+
     (
         ComponentEntry {
             display_name: mapping.component_name.clone(),
@@ -491,13 +500,13 @@ fn resolve_props_chain(
         });
         return ResolvedChain::empty_with_compose(type_name.to_owned());
     }
-    
+
     // Dedup — prevent infinite recursion on circular extends
     let visit_key = format!("{}:{}", consuming_file, type_name);
     if !visited.insert(visit_key) {
         return ResolvedChain::default();
     }
-    
+
     // Step 1: Try known pattern resolution (cva, SxProps, RenderProps, etc.)
     let prop_type = parse_raw_type(type_name, type_args);
     if let PropType::Named { name, args } = &prop_type {
@@ -512,24 +521,24 @@ fn resolve_props_chain(
             };
         }
     }
-    
+
     // Step 2: Resolve import to find the canonical file
     let (canonical_file, canonical_name) = resolve_to_canonical(
         type_name, consuming_file, ctx, diagnostics
     ).unwrap_or_else(|| (consuming_file.to_owned(), type_name.to_owned()));
-    
+
     let scoped_key = format!("{}:{}", canonical_file, canonical_name);
-    
+
     // Step 3: Handle type aliases (Omit, Pick, Partial, etc.)
     if let Some(alias) = ctx.global.type_aliases.get(&scoped_key) {
         return resolve_type_alias(alias, consuming_file, ctx, visited, depth, diagnostics);
     }
-    
+
     // Step 4: Handle interfaces (primary case)
     if let Some(iface) = ctx.global.interfaces.get(&scoped_key) {
         return resolve_interface(iface, type_args, consuming_file, ctx, visited, depth, diagnostics);
     }
-    
+
     // Step 5: Unresolvable — degrade gracefully
     diagnostics.push(Diagnostic {
         severity: DiagnosticSeverity::Warning,
@@ -552,7 +561,7 @@ fn resolve_interface(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ResolvedChain {
     let mut chain = ResolvedChain::default();
-    
+
     // Resolve extends first (parent props come before own props)
     for extends_ref in &iface.extends {
         let extends_chain = resolve_extends_ref(
@@ -561,7 +570,7 @@ fn resolve_interface(
         // Smart merge: if same prop name exists, own prop wins
         chain.merge_parent(extends_chain, &iface.name, &iface.file_path);
     }
-    
+
     // Resolve own props
     for raw_prop in &iface.props {
         let prop_type = resolve_raw_type(&raw_prop.raw_type, type_args, &iface.file_path, ctx, visited, depth, diagnostics);
@@ -582,7 +591,7 @@ fn resolve_interface(
             }],
         });
     }
-    
+
     chain
 }
 
@@ -657,7 +666,7 @@ The resolver receives `RawProp.collected_type: CollectedType` (a structured enum
 Key mapping:
 
 | CollectedType variant | PropType result |
-|---|---|
+| --- | --- |
 | `Named { name, args }` | Look up in `known.rs` first, then resolve imports, then check interfaces/aliases |
 | `Union(members)` | Resolve each member → `PropType::Union` |
 | `Intersection(members)` | Resolve each, merge props for interface intersections → `PropType::Intersection` |
@@ -698,6 +707,7 @@ fn resolve_indexed_access(obj: &CollectedType, key: &CollectedType) -> Option<Pr
 ```
 
 If `resolve_indexed_access` returns `None`, the caller degrades to:
+
 ```rust
 PropType::Opaque { reason: OpaqueReason::IndexedAccess { expression } }
 ```
@@ -714,6 +724,7 @@ fn expand_template_literal(parts: &[CollectedType], ctx: &ResolutionContext) -> 
 ```
 
 Callers that receive `None` produce:
+
 ```rust
 PropType::Opaque { reason: OpaqueReason::TemplateLiteral { expression } }
 ```
@@ -797,6 +808,7 @@ Add `read_tsconfig_paths(tsconfig: Option<&Utf8Path>) -> Vec<(String, Vec<PathBu
 ## 10. `declare const X: ForwardRefExoticComponent<P>` component detection
 
 The extractor (Phase 2a follow-up) adds detection of the pattern:
+
 ```ts
 declare const Button: React.ForwardRefExoticComponent<ButtonProps & React.RefAttributes<HTMLButtonElement>>
 ```
@@ -806,8 +818,11 @@ The resolver needs no changes for this — it just handles `ComponentMapping` en
 ---
 
 # Agent: Pipeline (Phase 3b)
+
 # Model: claude-sonnet-4-6
+
 # Runs: After Phase 2 complete, parallel with Phase 3a
+
 # Owns: crates/core/src/pipeline.rs
 
 ## Mission
@@ -873,10 +888,10 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
     let start = Instant::now();
     let mut diagnostics = Vec::new();
     let cache = DtsCache::load_from_disk();
-    
+
     // ── Phase 1: Discover all files
     let src_files = discover_files(&options.src_dirs, &options.exclude_patterns);
-    
+
     // ── Phase 2: Parse all source files in parallel
     let source_data_vec: Vec<(Utf8PathBuf, SourceData)> = src_files
         .par_iter()
@@ -886,22 +901,22 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
             (path.clone(), parse_file(path, &source))
         })
         .collect();
-    
+
     // ── Phase 3: Parse cross-package .d.ts files (demand-driven, cached)
     // Uses the import specifiers from Phase 2 + oxc_resolver
     // Handled lazily during resolution — not a separate phase
-    
+
     // ── Phase 4: Merge into GlobalSourceData (sequential, fast)
     let mut global = GlobalSourceData::default();
     for (path, data) in source_data_vec {
         global.merge(&path, data);
     }
     let global = Arc::new(global);
-    
+
     // ── Phase 5: Build resolution context
     let ctx = ResolutionContext::new(global.clone(), options);
     let ctx = Arc::new(ctx);
-    
+
     // ── Phase 6: Resolve all components in parallel
     let results: Vec<(ComponentEntry, Vec<Diagnostic>)> = global
         .component_mappings
@@ -909,17 +924,17 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
         .filter(|m| !should_skip_component(&m.component_name, &options.exclude_prefixes))
         .map(|mapping| resolve_component(mapping, &ctx))
         .collect();
-    
+
     // ── Phase 7: Collect output
     let mut components = std::collections::BTreeMap::new();
     for (entry, diags) in results {
         components.insert(entry.display_name.clone(), entry);
         diagnostics.extend(diags);
     }
-    
+
     // Save cache for next run
     cache.save_to_disk();
-    
+
     ExtractionOutput {
         components,
         enums: collect_public_enums(&global),
@@ -935,23 +950,23 @@ pub fn extract(options: &PipelineOptions) -> ExtractionOutput {
 
 fn discover_files(src_dirs: &[Utf8PathBuf], extra_excludes: &[String]) -> Vec<Utf8PathBuf> {
     let mut files = Vec::new();
-    
+
     for dir in src_dirs {
         let walk = WalkBuilder::new(dir.as_std_path())
             .hidden(false)
             .git_ignore(true)
             .build();
-        
+
         for entry in walk.flatten() {
             let path = entry.path();
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            
+
             if !matches!(ext, "ts" | "tsx") {
                 continue;
             }
-            
+
             let path_str = path.to_str().unwrap_or("");
-            
+
             // Built-in excludes
             if path_str.contains(".stories.")
                 || path_str.contains(".test.")
@@ -961,18 +976,18 @@ fn discover_files(src_dirs: &[Utf8PathBuf], extra_excludes: &[String]) -> Vec<Ut
             {
                 continue;
             }
-            
+
             // User excludes
             if extra_excludes.iter().any(|p| path_str.contains(p.as_str())) {
                 continue;
             }
-            
+
             if let Ok(utf8) = Utf8PathBuf::from_path_buf(path.to_owned()) {
                 files.push(utf8);
             }
         }
     }
-    
+
     files.sort(); // deterministic ordering
     files
 }
@@ -1005,7 +1020,7 @@ impl WatchSession {
             component_cache: DashMap::new(),
         }
     }
-    
+
     /// Handle a single file change — re-extract only affected components.
     pub fn update_file(&self, changed_file: &Utf8Path) -> IncrementalUpdate {
         // 1. Re-parse changed file

@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Short, dated records of *architectural* decisions — ones that shape system structure, boundaries, or contracts other code depends on. Not a changelog, not a design doc, not a place to explain what the code does — comments and `ARCHITECTURE.md` already do that.
+Short, dated records of _architectural_ decisions — ones that shape system structure, boundaries, or contracts other code depends on. Not a changelog, not a design doc, not a place to explain what the code does — comments and `ARCHITECTURE.md` already do that.
 
 ## When to write one
 
@@ -40,13 +40,13 @@ Write like you're explaining it to the next engineer over their shoulder, not pr
 **Cut the filler.** If a sentence still means the same thing without a word, delete the word.
 
 | Instead of | Write |
-|---|---|
+| --- | --- |
 | "It's worth noting that this decision was made in order to leverage OXC's robust parsing capabilities" | "OXC parses in parallel with no type-checking pass" |
 | "This represents a significant improvement in performance" | "32ms instead of several seconds" |
 | "We decided to essentially utilize a positional encoding approach" | "We use positional encoding" |
 | "In conclusion, this architecture provides a solid foundation going forward" | (delete — you already said the thing) |
 
-**Banned by default:** *leverage, utilize, robust, seamless, cutting-edge, essentially, basically, in order to, it's worth noting, it is important to note, at the end of the day.* If one is genuinely the precise technical word for something, fine — but check first.
+**Banned by default:** _leverage, utilize, robust, seamless, cutting-edge, essentially, basically, in order to, it's worth noting, it is important to note, at the end of the day._ If one is genuinely the precise technical word for something, fine — but check first.
 
 **Concrete beats vague.** Name the file, the number, the benchmark. "Slow" is not a fact; "several seconds on a mid-size design system" is.
 

@@ -1,4 +1,3 @@
-
 # oxc-react-docgen
 
 10-100x faster drop-in replacement for react-docgen-typescript. OXC parses TypeScript/TSX; we extract React component props and emit RDT-compatible JSON. See `docs/STATUS.md` for current state and known gaps.

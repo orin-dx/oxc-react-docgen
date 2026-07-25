@@ -1,4 +1,3 @@
-
 # crates/cli
 
 Thin command layer — no extraction logic. Each command parses args and delegates to `oxc-react-docgen-core::pipeline`.

@@ -40,12 +40,14 @@ coverage:
 ts_src := "'packages/vite-plugin/src/**/*.ts' 'packages/vite-plugin/tests/**/*.ts' 'packages/vite-plugin/vitest.config.ts' 'packages/napi/*.d.ts' 'packages/cli/bin/**/*.js' 'apps/validate/src/**/*.ts'"
 ts_src_only := "'packages/vite-plugin/src' 'packages/vite-plugin/vitest.config.ts' 'packages/napi/*.d.ts' 'packages/cli/bin/**/*.js' 'apps/validate/src'"
 ts_tests_only := "'packages/vite-plugin/tests'"
+md_src := "'**/*.md' '!node_modules/**' '!target/**' '!dist/**'"
 
 # Lint and format check
 lint:
     cargo fmt --check
     cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings
     pnpm exec oxfmt --check {{ts_src}}
+    pnpm exec oxfmt --check {{md_src}}
     pnpm exec oxlint {{ts_src_only}}
     pnpm exec oxlint -A pedantic -A perf -A style -A unicorn/consistent-function-scoping -A vitest/require-mock-type-parameters --vitest-plugin {{ts_tests_only}}
 
@@ -53,6 +55,7 @@ lint:
 fmt:
     cargo fmt
     pnpm exec oxfmt {{ts_src}}
+    pnpm exec oxfmt {{md_src}}
 
 # Check licenses, advisories, and banned crates
 deny:

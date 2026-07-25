@@ -6,12 +6,12 @@ Testing methodology: fresh `react-docgen-typescript` baseline vs our tool across
 
 ## Executive summary
 
-| Severity | Count | Summary |
-|----------|-------|---------|
-| Critical | 3 | Silent data loss, wrong comparison baseline |
-| Important | 9 | Logic bugs producing wrong or missing props |
-| Minor | 5 | Wrong metadata, misleading errors |
-| Design differences | 6 | Intentional divergences from RDT |
+| Severity           | Count | Summary                                     |
+| ------------------ | ----- | ------------------------------------------- |
+| Critical           | 3     | Silent data loss, wrong comparison baseline |
+| Important          | 9     | Logic bugs producing wrong or missing props |
+| Minor              | 5     | Wrong metadata, misleading errors           |
+| Design differences | 6     | Intentional divergences from RDT            |
 
 Coverage on shared TSX fixtures (rdt-compat + shadcn): **Avatar: ✅ perfect match**. All others have documented gaps. DTS fixtures (chakra, mantine, mui, radix, react-aria) cannot be compared to RDT because RDT requires real TypeScript source, not declaration files.
 
@@ -29,11 +29,10 @@ Confirmed: `rdt-compat/discriminated-union.tsx` — `Accordion` is completely in
 
 The same failure occurs for inline intersection as props type: `forwardRef<E, PropsA & PropsB>`.
 
-**Impact:** Any component using an inline union or intersection as its props type arg to
-`forwardRef` is silently dropped. Radix Accordion, all tab/dialog components with per-variant
-props, any component with `Props & RefAttributes<E>` will be missing.
+**Impact:** Any component using an inline union or intersection as its props type arg to `forwardRef` is silently dropped. Radix Accordion, all tab/dialog components with per-variant props, any component with `Props & RefAttributes<E>` will be missing.
 
 **Root cause confirmation:**
+
 ```rust
 // component.rs:120-122
 let type_params = inner.type_arguments.as_ref()?;
@@ -42,9 +41,7 @@ if type_params.params.len() >= 2 {
     // ↑ Returns None for TSUnionType → whole function returns None → no ComponentMapping
 ```
 
-**Fix:** Handle `TSUnionType` and `TSIntersectionType` in `extract_type_name_from_type` by
-generating a synthetic anonymous alias in `source_data.type_aliases` and returning its key. At
-minimum emit an `UnresolvableProps` diagnostic and increment `componentsSkipped`.
+**Fix:** Handle `TSUnionType` and `TSIntersectionType` in `extract_type_name_from_type` by generating a synthetic anonymous alias in `source_data.type_aliases` and returning its key. At minimum emit an `UnresolvableProps` diagnostic and increment `componentsSkipped`.
 
 ---
 
@@ -64,6 +61,7 @@ chain.merge_parent(parent_chain);           // merge_parent prepends parent_chai
 ```
 
 `merge_parent` at `mod.rs:198-200` prepends `parent.inheritance` (which also has the layer):
+
 ```rust
 let mut new_inheritance = parent.inheritance;   // layer is here (copy 2)
 new_inheritance.append(&mut self.inheritance);  // copy 1 is here
@@ -72,10 +70,7 @@ self.inheritance = new_inheritance;             // both end up in output
 
 Any component using `interface ButtonProps extends React.ComponentPropsWithoutRef<"button">` emits two identical `InheritedLayer` entries in `ComponentEntry.inheritance`.
 
-**Impact:** Consumers iterating `inheritance` to build attribute tables will process the
-button attrs twice. The `notable_inherited` rendering is guarded by `contains_key` so display
-is fine, but the serialized JSON has duplicate layers which breaks any downstream comparison or
-tooling that relies on `inheritance` being a set.
+**Impact:** Consumers iterating `inheritance` to build attribute tables will process the button attrs twice. The `notable_inherited` rendering is guarded by `contains_key` so display is fine, but the serialized JSON has duplicate layers which breaks any downstream comparison or tooling that relies on `inheritance` being a set.
 
 ---
 
@@ -90,14 +85,12 @@ fixture: `${lib}/${c.filePath.split('/').pop()?.replace(/\.tsx?$/, '').replace(/
 Every component extracted from the same file gets the same fixture key. The baseline loader in `compare.ts` builds a `Map` with these keys:
 
 ```typescript
-return new Map(results.map(r => [r.fixture, r]))
+return new Map(results.map((r) => [r.fixture, r]))
 ```
 
 `Map` construction silently overwrites duplicate keys. For `chakra/Input.d.ts` (6 components: Input, InputGroup, InputLeftAddon, InputLeftElement, InputRightAddon, InputRightElement), only `InputRightElement` survives. The comparison then runs against `InputRightElement` data and labels it as representing the whole `chakra/Input` fixture.
 
-**Impact:** All multi-component files show fabricated comparison data. Any coverage analysis
-based on this harness is wrong for Chakra UI, Ant Design, and any library that co-locates
-multiple components per file.
+**Impact:** All multi-component files show fabricated comparison data. Any coverage analysis based on this harness is wrong for Chakra UI, Ant Design, and any library that co-locates multiple components per file.
 
 **Fix:** Key by `${lib}/${basename}/${comp.displayName}` and update compare.ts accordingly.
 
@@ -116,12 +109,9 @@ let first_props = &members[0].1;
 
 Discriminant detection requires the candidate prop to exist in ALL members with distinct string literal values. But candidates are only pulled from `members[0]`. For a union like `ButtonProps | FilledButtonProps | OutlinedButtonProps` where `ButtonProps` has no string literal props and the discriminant `variant: "filled"` / `variant: "outlined"` only appears in members 1 and 2, no discriminant is found and the union is flat-merged.
 
-**Impact:** Discriminated union detection depends on member ordering — a fragile invariant
-invisible to callers. Any union type where a shared base interface (no literals) is listed
-first will fail discriminant detection even when one clearly exists.
+**Impact:** Discriminated union detection depends on member ordering — a fragile invariant invisible to callers. Any union type where a shared base interface (no literals) is listed first will fail discriminant detection even when one clearly exists.
 
-**Fix:** Collect discriminant candidates from the **intersection** of all members' prop names
-that have string literal types in at least one member.
+**Fix:** Collect discriminant candidates from the **intersection** of all members' prop names that have string literal types in at least one member.
 
 ---
 
@@ -145,12 +135,12 @@ for (_, member_props) in &named_members { ... }
 ```
 
 For `type Props = ButtonProps | IconButtonProps | { extraInline: string }`:
+
 - `ButtonProps` and `IconButtonProps` → `named_members.len() == 2` → discriminated-union path
 - `{ extraInline: string }` → never reaches the merge loop
 - `extraInline` is silently absent from output with no diagnostic
 
-**Impact:** Mixed unions (named interfaces + inline objects) lose all inline members.
-Somewhat common in Radix UI composable components.
+**Impact:** Mixed unions (named interfaces + inline objects) lose all inline members. Somewhat common in Radix UI composable components.
 
 ---
 
@@ -178,7 +168,7 @@ _ => ResolvedChain::default(),
 `resolve_base_as_chain` is the base resolver for `Omit`, `Pick`, `Partial`, `Required`. It handles `Named`, `Intersection`, `Object` — but NOT `Union`. For:
 
 ```typescript
-type Props = Omit<ButtonProps | IconButtonProps, "onClick">;
+type Props = Omit<ButtonProps | IconButtonProps, 'onClick'>
 ```
 
 The `base` is `CollectedType::Union(...)` which falls to `_ =>` returning empty. Zero props, no diagnostic.
@@ -228,12 +218,12 @@ let comment = self.comments.iter().rev()
 The same block comment can be returned by multiple calls. When a component has no JSDoc but its props interface has one, the interface JSDoc (within 120 bytes of the component binding) is assigned as the component description. When an interface has its own JSDoc but the first prop's span is within 120 bytes, that JSDoc is also assigned to the first prop.
 
 Confirmed observations from snapshots:
+
 - `Avatar.description = "Avatar diameter in pixels. @default 40"` — the `size` prop's JSDoc
 - `Select.description = "Whether the select is disabled."` — the `disabled` prop's JSDoc
 - `IconButton.description = "Accessible label for screen readers."` — the `label` prop's JSDoc
 
-**Impact:** Every component without an explicit JSDoc leaks a nearby prop's description.
-First props of documented interfaces get duplicate descriptions.
+**Impact:** Every component without an explicit JSDoc leaks a nearby prop's description. First props of documented interfaces get duplicate descriptions.
 
 ---
 
@@ -247,9 +237,7 @@ const htmlPropPattern = /^(on[A-Z]|aria-|data-|class|style|id|tab|ref|key$|role$
 
 This covers event handlers, ARIA/data attrs, `className`, `style`, `id`, `tabIndex`, `ref`, `key`, `role`. It misses: `disabled`, `hidden`, `type`, `value`, `placeholder`, `checked`, `name`, `form`, `autoFocus`, `readOnly`, `required`, `src`, `href`, `alt`, `width`, `height`, `draggable`, `spellCheck`, `lang`, `dir`, `accept`, `pattern`, `maxLength`, `min`, `max`, and ~180 others.
 
-**Impact:** When a component has no detected inherited element (`ourInheritedElements.length
-=== 0`), standard HTML attrs like `disabled` and `type` are counted as `❗ REAL MISSES`.
-The `misses` counter in the summary is systematically inflated.
+**Impact:** When a component has no detected inherited element (`ourInheritedElements.length === 0`), standard HTML attrs like `disabled` and `type` are counted as `❗ REAL MISSES`. The `misses` counter in the summary is systematically inflated.
 
 ---
 
@@ -259,8 +247,7 @@ The `misses` counter in the summary is systematically inflated.
 
 When our tool reports ANY HTML element inheritance, every rdt-only prop is classified as "covered by inheritance" regardless of whether it actually appears in `notableInherited`. `shadcn/Input` shows `wins++` even though we expose 15 notable inherited attrs vs RDT's 309. The `notableInherited` field is never included in `NormalizedOutput` and never compared.
 
-**Impact:** The final coverage percentage is meaningless. `wins` counts zero-own-prop
-components as full matches purely because we detected an inherited HTML element.
+**Impact:** The final coverage percentage is meaningless. `wins` counts zero-own-prop components as full matches purely because we detected an inherited HTML element.
 
 ---
 
@@ -308,6 +295,7 @@ Complex raw strings that can't be parsed as identifiers emit `OpaqueReason::Dept
 **File:** `crates/core/src/resolver/alias.rs:153-177`
 
 For `type Props = ButtonProps | { extra: string }`:
+
 1. `named_members` collects and resolves `ButtonProps` via `branch_state`
 2. `named_members.len() == 1 < 2` → fallback resolves ALL members again via `resolve_base_as_chain`
 
@@ -330,7 +318,7 @@ For `type Props = ButtonProps | { extra: string }`:
 These are intentional architectural choices, not bugs. Documented here to explain comparison deltas.
 
 | # | Behavior | Ours | RDT | Notes |
-|---|---------|------|-----|-------|
+| --- | --- | --- | --- | --- |
 | D1 | HTML attribute expansion | `notableInherited` (15-20 key attrs) | Inline as props (250-300 attrs) | Our approach is better for design systems; RDT is required for strict RDT compatibility |
 | D2 | Literal union type format | `"sm" \| "md" \| "lg"` as actual values | `enum` kind with values as `enumValues` | Our format is better for Storybook controls |
 | D3 | `VariantProps` null modifier | `union([literalUnion([...]), null])` | Implementation-dependent | CVA/PandaCSS semantics: null opts out of variant; intentional |
@@ -342,9 +330,8 @@ These are intentional architectural choices, not bugs. Documented here to explai
 
 ## What RDT does better (areas to match)
 
-1. **Discriminated union at root props level** — RDT correctly handles `forwardRef<E, A | B>`
-   by merging props and detecting the discriminant. We drop the component. RDT output for
-   `discriminated-union.tsx`:
+1. **Discriminated union at root props level** — RDT correctly handles `forwardRef<E, A | B>` by merging props and detecting the discriminant. We drop the component. RDT output for `discriminated-union.tsx`:
+
    ```
    type: enum (required)
    value: string | string[]
@@ -352,37 +339,30 @@ These are intentional architectural choices, not bugs. Documented here to explai
    collapsible: boolean
    ```
 
-2. **Inline Pick in extends** — RDT resolves `Pick<ButtonBaseProps, 'disabled' | 'type' | 'form'>`
-   in an extends clause. We don't (planned fix: chain.rs step 0.5).
+2. **Inline Pick in extends** — RDT resolves `Pick<ButtonBaseProps, 'disabled' | 'type' | 'form'>` in an extends clause. We don't (planned fix: chain.rs step 0.5).
 
-3. **Conditional type evaluation** — `string extends "a" ? "yes" : "no"` → RDT emits `enum`;
-   we emit opaque. Requires Corsa API.
+3. **Conditional type evaluation** — `string extends "a" ? "yes" : "no"` → RDT emits `enum`; we emit opaque. Requires Corsa API.
 
 ---
 
 ## What we do better than RDT
 
-1. **SxProps recognition** — `sx: SxProps` (ours) vs `sx: any` (RDT). We use the known-pattern
-   shortcut from `known.rs`; RDT can't resolve the MUI-specific type without its tsconfig.
+1. **SxProps recognition** — `sx: SxProps` (ours) vs `sx: any` (RDT). We use the known-pattern shortcut from `known.rs`; RDT can't resolve the MUI-specific type without its tsconfig.
 
-2. **Literal union values** — `step: 1 | 2 | 4 | 8` with actual values (ours) vs `enum` kind
-   (RDT) where you need to inspect `enumValues`. Better for programmatic prop generation.
+2. **Literal union values** — `step: 1 | 2 | 4 | 8` with actual values (ours) vs `enum` kind (RDT) where you need to inspect `enumValues`. Better for programmatic prop generation.
 
-3. **DTS file support** — We process 9+ libraries that RDT can't touch (chakra, mantine, mui,
-   radix, react-aria). RDT requires full TypeScript source with compiler access.
+3. **DTS file support** — We process 9+ libraries that RDT can't touch (chakra, mantine, mui, radix, react-aria). RDT requires full TypeScript source with compiler access.
 
-4. **Speed** — 5ms for all shadcn components vs ~200ms+ for RDT on the same files. The 10-100×
-   claim holds in practice.
+4. **Speed** — 5ms for all shadcn components vs ~200ms+ for RDT on the same files. The 10-100× claim holds in practice.
 
-5. **No TS 7.0 breakage** — RDT depends on Strada API which is dropped in TypeScript 7.0.
-   We're unaffected.
+5. **No TS 7.0 breakage** — RDT depends on Strada API which is dropped in TypeScript 7.0. We're unaffected.
 
 ---
 
 ## Priority fix order
 
 | # | Bug | Effort | Impact |
-|---|-----|--------|--------|
+| --- | --- | --- | --- |
 | C1 | Inline union props type drops component | Medium | Accordion, all discriminated-union components |
 | C3 | Compare harness fixture key collision | Trivial | Accurate comparison data |
 | C2 | Duplicate InheritedLayer | Small | Clean inheritance output |

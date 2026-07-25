@@ -3,6 +3,7 @@
 ## What We're Building
 
 A Rust-powered React prop extraction tool that replaces `react-docgen-typescript`.
+
 - **10-100x faster** via OXC (no TypeScript compiler program)
 - **Cross-package monorepo support** via import graph + .d.ts parsing
 - **Drop-in RDT output** for existing Storybook setups
@@ -48,20 +49,20 @@ Phase 0: Repository Setup (1 agent, must finish first)
 
 ## Phase Summary
 
-| Phase | Agents | Depends On | Deliverable |
-|-------|--------|------------|-------------|
-| 0 | Repo Setup | — | Workspace, CI, tooling |
-| 1a | Types | Phase 0 | `types.rs` — the shared contract |
-| 1b | Fixtures | Phase 0 | Real library .d.ts + component files |
-| 2a | Extractor | Phase 1 | OXC parse loop → SourceData |
-| 2b | Import Map | Phase 1 | ImportMap + ReExportMap |
-| 2c | Known Patterns | Phase 1 | known.rs match function |
-| 3a | Resolver | Phase 2 | PropResolver → ComponentEntry |
-| 3b | Pipeline | Phase 2 | Rayon orchestration + GlobalSourceData |
-| 4a | NAPI | Phase 3 | napi crate + TS types |
-| 4b | CLI | Phase 3 | clap/miette CLI |
-| 5 | Vite Plugin | Phase 4a | @oxc-react-docgen/vite |
-| 6 | Integration | Phase 5 | E2E tests, benchmarks, docs |
+| Phase | Agents         | Depends On | Deliverable                            |
+| ----- | -------------- | ---------- | -------------------------------------- |
+| 0     | Repo Setup     | —          | Workspace, CI, tooling                 |
+| 1a    | Types          | Phase 0    | `types.rs` — the shared contract       |
+| 1b    | Fixtures       | Phase 0    | Real library .d.ts + component files   |
+| 2a    | Extractor      | Phase 1    | OXC parse loop → SourceData            |
+| 2b    | Import Map     | Phase 1    | ImportMap + ReExportMap                |
+| 2c    | Known Patterns | Phase 1    | known.rs match function                |
+| 3a    | Resolver       | Phase 2    | PropResolver → ComponentEntry          |
+| 3b    | Pipeline       | Phase 2    | Rayon orchestration + GlobalSourceData |
+| 4a    | NAPI           | Phase 3    | napi crate + TS types                  |
+| 4b    | CLI            | Phase 3    | clap/miette CLI                        |
+| 5     | Vite Plugin    | Phase 4a   | @oxc-react-docgen/vite                 |
+| 6     | Integration    | Phase 5    | E2E tests, benchmarks, docs            |
 
 ## Non-Negotiable Constraints (All Agents Must Respect)
 

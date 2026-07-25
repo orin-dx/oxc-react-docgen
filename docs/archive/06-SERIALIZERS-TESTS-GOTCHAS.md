@@ -3,7 +3,9 @@
 ---
 
 # Agent: Serializers (Phase 3b extension)
+
 # Model: claude-sonnet-4-6
+
 # Add to: crates/core/src/pipeline.rs or crates/core/src/serializer.rs
 
 ## The Three Output Formats
@@ -32,7 +34,7 @@ fn component_to_rdt(entry: &ComponentEntry, output: &ExtractionOutput) -> Value 
     let props: serde_json::Map<String, Value> = entry.props.iter()
         .map(|(name, prop)| (name.clone(), prop_to_rdt(prop, output)))
         .collect();
-    
+
     json!({
         "displayName": entry.display_name,
         "filePath": entry.file_path,
@@ -88,14 +90,14 @@ fn prop_type_to_rdt(pt: &PropType, output: &ExtractionOutput) -> Value {
         PropType::StringLiteral(s) => json!({ "name": "enum", "value": [{"value": s, "description": ""}] }),
         PropType::NumberLiteral(n) => json!({ "name": "number", "raw": n.to_string() }),
         PropType::BoolLiteral(b) => json!({ "name": "boolean", "raw": b.to_string() }),
-        
+
         // Pure literal unions → RDT "enum"
         PropType::LiteralUnion { members, .. } => json!({
             "name": "enum",
             "raw": members.join(" | "),
             "value": members.iter().map(|m| json!({"value": m, "description": ""})).collect::<Vec<_>>(),
         }),
-        
+
         PropType::Union(members) if pt.is_literal_union() => {
             let values: Vec<_> = members.iter()
                 .map(|m| json!({"value": m.raw_string(), "description": ""}))
@@ -106,30 +108,30 @@ fn prop_type_to_rdt(pt: &PropType, output: &ExtractionOutput) -> Value {
                 "value": values,
             })
         }
-        
+
         PropType::Union(members) => json!({
             "name": "union",
             "raw": members.iter().map(|m| m.raw_string()).collect::<Vec<_>>().join(" | "),
             "value": members.iter().map(|m| prop_type_to_rdt(m, output)).collect::<Vec<_>>(),
         }),
-        
+
         PropType::Array(inner) => json!({
             "name": "Array",
             "raw": format!("{}[]", inner.raw_string()),
         }),
-        
+
         PropType::HtmlAttributes { element, .. } => json!({
             "name": "HTMLAttributes",
             "raw": format!("{}HTMLAttributes<HTML{}Element>", capitalize(element), capitalize(element)),
         }),
-        
+
         PropType::Named { name, args } => json!({
             "name": name.as_str(),
             "raw": pt.raw_string(),
         }),
-        
+
         PropType::Opaque { raw, .. } => json!({ "name": raw.as_str() }),
-        
+
         _ => json!({ "name": pt.raw_string() }),
     }
 }
@@ -151,7 +153,7 @@ pub fn to_storybook_block(entry: &ComponentEntry) -> String {
         .replace('<', "\\u003c")
         .replace('>', "\\u003e")
         .replace('&', "\\u0026");
-    
+
     format!(
         "if (typeof {} !== 'undefined') {{\n  {}.__docgenInfo = {}\n}}",
         entry.display_name, entry.display_name, json
@@ -162,8 +164,11 @@ pub fn to_storybook_block(entry: &ComponentEntry) -> String {
 ---
 
 # Agent: Integration Tests (Phase 6)
+
 # Model: claude-sonnet-4-6
+
 # Runs: After Phase 5 complete
+
 # Owns: tests/ directory at workspace root
 
 ## The Differential Test Suite
@@ -186,10 +191,10 @@ fn shadcn_button_rdt_compat() {
     };
     let output = extract(&options);
     let rdt = to_rdt(&output);
-    
+
     // Snapshot test — any change to RDT output requires explicit review
     assert_json_snapshot!("shadcn_button_rdt", rdt);
-    
+
     // The canonical RDT propFilter pattern must work
     let button = &rdt["Button"]["props"];
     let html_props_in_node_modules: Vec<_> = button.as_object().unwrap()
@@ -201,7 +206,7 @@ fn shadcn_button_rdt_compat() {
                 .unwrap_or(false)
         })
         .collect();
-    
+
     // HTML props should have node_modules in their parent.fileName
     // This is what RDT users filter on
     assert!(!html_props_in_node_modules.is_empty(),
@@ -249,7 +254,7 @@ fn parse_single_file(bencher: divan::Bencher, fixture: &str) {
         format!("../../{}", fixture)
     ).unwrap();
     let path = camino::Utf8Path::new(fixture);
-    
+
     bencher.bench(|| {
         oxc_react_docgen_core::extractor::parse_file(path, divan::black_box(&source))
     });
@@ -262,7 +267,7 @@ fn full_pipeline_shadcn(bencher: divan::Bencher) {
         cross_package: false,
         ..Default::default()
     };
-    
+
     bencher.bench(|| {
         oxc_react_docgen_core::pipeline::extract(divan::black_box(&options))
     });

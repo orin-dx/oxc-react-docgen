@@ -1,7 +1,6 @@
 # 0002. Hand-write Serialize/Deserialize for PropType instead of deriving it
 
-**Status:** Accepted
-**Date:** 2026-07-22 (retroactive)
+**Status:** Accepted **Date:** 2026-07-22 (retroactive)
 
 ## Context
 
@@ -14,7 +13,7 @@
 ## Consequences
 
 - Adding a new variant means updating the manual match in both directions by hand — the compiler won't remind you the way a derive would. `resolver/mod.rs`'s "no wildcard matches" convention is what catches a missed arm here instead.
-- `CollectedObjectField` (a struct nested inside `CollectedType::Object`, not an enum) still derives normally — the recursion problem is specific to the recursive *enums*, not every type that touches them.
+- `CollectedObjectField` (a struct nested inside `CollectedType::Object`, not an enum) still derives normally — the recursion problem is specific to the recursive _enums_, not every type that touches them.
 - The `#![recursion_limit = "2048"]` attribute in `crates/core/src/lib.rs` is left over from the old derive-based design. Verified 2026-07-22: the full workspace builds and every test passes with it removed — nothing in the current manual-impl code path needs it. Worth deleting as a follow-up; left as-is here since confirming that wasn't the point of this decision.
 
 ## Alternatives considered

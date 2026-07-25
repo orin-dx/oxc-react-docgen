@@ -11,7 +11,7 @@ The six fundamental gap patterns discovered during the RDT compatibility audit b
 **Fixable now — pure AST/structural:**
 
 | Gap | Root cause | Fix location |
-|-----|-----------|-------------|
+| --- | --- | --- |
 | TSMethodSignature param loss | Hardcoded `vec![Raw("...")]` instead of reading `ms.params.items` | `extractor/mod.rs:359-374`, `476-492` |
 | React namespace recognition (SVGAttributes, etc.) | Missing entries in `is_react_builtin` and `html_element_for` | `react_types.rs`, `resolver/named.rs` |
 | `Readonly<T>` transparent wrapper | Missing arm in `extractor/alias.rs` | `extractor/alias.rs` |
@@ -23,7 +23,7 @@ The six fundamental gap patterns discovered during the RDT compatibility audit b
 **Deferred — require type inference:**
 
 | Gap | Why it needs a type checker |
-|-----|----------------------------|
+| --- | --- |
 | Generic parameter substitution (`List<T>` where T flows from call-site) | OXC gives us the AST node `T`, but to know T's concrete value we need the checker's `getTypeAtLocation` or its tsgo equivalent |
 | Conditional types (`T extends U ? A : B`) | Already emitted as `opaque` — correct behavior. Full evaluation requires the checker |
 | Mapped types (`{ [K in keyof T]: ... }`) | Already emitted as `opaque` — correct behavior |
@@ -54,6 +54,7 @@ The tsgo team is building "Corsa" as the replacement public API. Status:
 ### tsgolint precedent (OXC team)
 
 The OXC team already tackled cross-language integration with `tsgolint`:
+
 - Spawns `tsgo` as a subprocess
 - Communicates via JSON IPC using tsgo's internal (unstable) shims
 - This pattern works but depends on internal APIs that will break when Corsa lands
@@ -93,20 +94,18 @@ The integration should be **opt-in**, not always-on. Most projects need only the
                   ───────────────────
 ```
 
-**CLI flag:** `--with-type-checker` (default: off)
-**Config key:** `docgen.config.ts → typeChecker: true | { path: string }`
-**Node requirement:** Node 22+ (tsgo ships as npm package)
+**CLI flag:** `--with-type-checker` (default: off) **Config key:** `docgen.config.ts → typeChecker: true | { path: string }` **Node requirement:** Node 22+ (tsgo ships as npm package)
 
 ### Specific Corsa operations needed
 
 When the Corsa API is available, the following operations unblock the deferred gaps:
 
-| Operation | Corsa API (expected) | Gap resolved |
-|-----------|---------------------|--------------|
-| Resolve generic type argument at call site | `checker.getTypeArguments(typeRef)` | Generic param substitution |
-| Evaluate conditional type | `checker.resolveConditionalType(node)` | Conditional opaque |
-| Expand mapped type | `checker.getIndexedAccessType(type, key)` | Mapped opaque |
-| Follow `typeof expr` | `checker.getTypeOfExpression(expr)` | typeof depth |
+| Operation                                  | Corsa API (expected)                      | Gap resolved               |
+| ------------------------------------------ | ----------------------------------------- | -------------------------- |
+| Resolve generic type argument at call site | `checker.getTypeArguments(typeRef)`       | Generic param substitution |
+| Evaluate conditional type                  | `checker.resolveConditionalType(node)`    | Conditional opaque         |
+| Expand mapped type                         | `checker.getIndexedAccessType(type, key)` | Mapped opaque              |
+| Follow `typeof expr`                       | `checker.getTypeOfExpression(expr)`       | typeof depth               |
 
 The integration point is `resolver/chain.rs:resolve_props_chain` — after step 5 fails to find the interface in our global map, step 6 currently emits an `UnresolvableImport` diagnostic. With Corsa, a step 5.5 would ask the type checker for the props instead.
 
@@ -125,11 +124,11 @@ Feature gate: `cargo build --features=type-checker` — keeps the no-Node-depend
 
 ## Timeline
 
-| Milestone | When | What it unlocks |
-|-----------|------|----------------|
-| TS 7.0 RC | 2026-06-18 (done) | Confirms Strada is dropped; competitive window opens |
-| TS 7.1 release candidate | ~Q4 2026 | Corsa API draft; begin bridge prototype |
-| TS 7.1 stable + Corsa stable | ~Q1 2027 | Implement generic substitution, `typeof` depth |
-| Public release of `--with-type-checker` | ~Q1 2027 | Feature-complete RDT replacement |
+| Milestone                               | When              | What it unlocks                                      |
+| --------------------------------------- | ----------------- | ---------------------------------------------------- |
+| TS 7.0 RC                               | 2026-06-18 (done) | Confirms Strada is dropped; competitive window opens |
+| TS 7.1 release candidate                | ~Q4 2026          | Corsa API draft; begin bridge prototype              |
+| TS 7.1 stable + Corsa stable            | ~Q1 2027          | Implement generic substitution, `typeof` depth       |
+| Public release of `--with-type-checker` | ~Q1 2027          | Feature-complete RDT replacement                     |
 
 Until then: fix the 5 structural gaps (see implementation plan), ship, and let users migrate to oxc-react-docgen during the TS 7 disruption window.

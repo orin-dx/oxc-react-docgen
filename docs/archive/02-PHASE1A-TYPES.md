@@ -1,6 +1,9 @@
 # Agent: Types (Phase 1a)
+
 # Model: claude-sonnet-4-6
+
 # Runs: After Phase 0, parallel with Phase 1b (Fixtures)
+
 # Owns: crates/core/src/types.rs ONLY
 
 ## Mission

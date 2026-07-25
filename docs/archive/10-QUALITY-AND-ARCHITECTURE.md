@@ -10,12 +10,12 @@
 
 Before prescribing solutions, the actual problems:
 
-| File | Lines | Fns | Problem |
-|------|-------|-----|---------|
-| `resolver.rs` | 2,482 | 55 | Six unrelated concerns in one file |
-| `extractor.rs` | 1,867 | 62 | One 1,800-line `impl` block |
-| `types.rs` | 1,305 | 20 | Two abstraction layers + diagnostics all mixed |
-| `cli/main.rs` | 760 | 14 | Five commands + config + output in `main.rs` |
+| File           | Lines | Fns | Problem                                        |
+| -------------- | ----- | --- | ---------------------------------------------- |
+| `resolver.rs`  | 2,482 | 55  | Six unrelated concerns in one file             |
+| `extractor.rs` | 1,867 | 62  | One 1,800-line `impl` block                    |
+| `types.rs`     | 1,305 | 20  | Two abstraction layers + diagnostics all mixed |
+| `cli/main.rs`  | 760   | 14  | Five commands + config + output in `main.rs`   |
 
 Beyond size, the specific code-level problems:
 
@@ -148,15 +148,15 @@ pub(crate) struct NeededSpecifier {
 
 impl ResolveState {
     pub fn new() -> Self { ... }
-    
+
     /// Returns false if already visited (cycle detected).
     pub fn visit(&mut self, key: &str) -> bool {
         self.visited.insert(CompactString::from(key))
     }
-    
+
     /// Returns None if depth limit exceeded (emits diagnostic automatically).
     pub fn descend(&mut self) -> Option<DepthGuard<'_>> { ... }
-    
+
     pub fn note_needed(&mut self, package: String, from_file: Utf8PathBuf) {
         self.needed_specifiers.push(NeededSpecifier { package, from_file });
     }
@@ -284,6 +284,7 @@ After a resolution pass, `pipeline/resolve.rs` drains `state.needed_specifiers`,
 **Nothing new to add to the workspace.** `oxc_resolver` is already wired into `ResolutionContext`. `DtsCache` already caches `.d.ts` parse results. `GlobalSourceData::merge()` already accepts new files. `parse_file()` already handles `.d.ts`. The loop in `pipeline/resolve.rs` is ~40 lines of wiring, not new machinery.
 
 **Stopping conditions:**
+
 - Frontier is empty (all needed types resolved)
 - Package already in `GlobalSourceData` (cycle / duplicate)
 - Depth > 3 hops from original source files
@@ -291,6 +292,7 @@ After a resolution pass, `pipeline/resolve.rs` drains `state.needed_specifiers`,
 - Package is in the known-React-types set (handled by `known.rs`, no file needed)
 
 **Opt-in config:**
+
 ```json
 { "followDeps": true }   // default: true when node_modules/ is accessible
 { "followDeps": false }  // explicit opt-out, strict single-package mode
@@ -304,6 +306,7 @@ After a resolution pass, `pipeline/resolve.rs` drains `state.needed_specifiers`,
 What actually matters for THIS codebase:
 
 **`.clippy.toml` — tighten thresholds to catch regressions:**
+
 ```toml
 msrv = "1.94"
 too-many-arguments-threshold = 5
@@ -312,6 +315,7 @@ cognitive-complexity-threshold = 20
 ```
 
 **`lib.rs` — promote key lints:**
+
 ```rust
 #![warn(clippy::pedantic)]
 #![warn(clippy::too_many_lines)]
@@ -331,6 +335,7 @@ cognitive-complexity-threshold = 20
 **`cargo-deny`** — add `deny.toml` for license policy (MIT/Apache-2.0 only) and to ban duplicate major versions of OXC crates (they must all be 0.135.x). OXC version skew causes subtle bugs.
 
 **What we are NOT doing:**
+
 - `cargo-modules` — visualization only, doesn't enforce anything
 - `phf` for `known.rs` — LLVM optimizes our 50-arm match; phf adds overhead
 - Custom shell scripts for file length — the module split is the enforcement
@@ -343,36 +348,47 @@ cognitive-complexity-threshold = 20
 Each phase keeps tests green. No skipping.
 
 ### R1 — Add snapshot tests (before touching anything)
+
 Add `insta` snapshot tests for every fixture's extraction output. These are the safety net for the entire refactor. ~1 day.
 
 ### R2 — `types/` split
+
 Split `types.rs` into `types/collected.rs`, `types/output.rs`, `types/diagnostic.rs`, `types/global.rs`. Introduce `ScopedKey`. Update all imports across the codebase. Pure structural — zero behavior change. Tests must stay green. ~1 day.
 
 ### R3 — `ResolveState`
+
 Introduce `resolver/state.rs`. Thread `ResolveState` through `resolve_component` and all callee functions, replacing `visited`, `depth`, `diagnostics` parameters. Change `FxHashSet<String>` to `FxHashSet<CompactString>` in the same pass. Tests must stay green. ~1 day.
 
 ### R4 — `resolver/` module split
+
 With `ResolveState` in place and cleaner function signatures, split `resolver.rs` into the module directory. Move `strip_json_comments` out (use a crate). Tests must stay green. ~1 day.
 
 ### R5 — `extractor/` module split
+
 Split `extractor.rs` into the module directory. Tests must stay green. ~half day.
 
 ### R6 — `pipeline/` split + IO error propagation
+
 Split `pipeline.rs`. Fix the `unwrap_or_default()` IO failures to emit diagnostics. ~half day.
 
 ### R7 — CLI split
+
 Split `cli/main.rs` into commands/. No behavioral change. ~half day.
 
 ### R8 — Visibility cleanup
+
 Change internal modules to `pub(crate)`. Establish the real public API in `lib.rs`. Add `cargo-semver-checks` to CI. ~half day.
 
 ### R9 — `PropType` serde
+
 Attempt `#[derive(Serialize, Deserialize)]` — if it works cleanly, remove the hand-rolled impl. If not, document why and move on. ~half day, possibly faster.
 
 ### R10 — Cross-package resolution
+
 With clean module structure and `ResolveState.needed_specifiers` in place, implement the multi-pass loop in `pipeline/resolve.rs`. ~1-2 days.
 
 ### R11 — Tooling
+
 `.clippy.toml` thresholds, `cargo-deny`, `cargo-semver-checks`, `proptest` for the parser. ~half day.
 
 ---

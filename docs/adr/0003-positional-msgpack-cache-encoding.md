@@ -1,11 +1,10 @@
 # 0003. Cache the DTS parse cache with positional (not named) MessagePack
 
-**Status:** Accepted
-**Date:** 2026-07-22 (retroactive)
+**Status:** Accepted **Date:** 2026-07-22 (retroactive)
 
 ## Context
 
-The DTS parse cache persists `SourceData` across runs so unchanged `.d.ts` files don't get re-parsed. `rmp_serde::to_vec`/`from_slice` — the default, and what this project uses — encode structs *positionally*: as an array of field values in declaration order, not a map of field names. A `_named` variant encodes as a map instead, at a size and speed cost we haven't needed to pay.
+The DTS parse cache persists `SourceData` across runs so unchanged `.d.ts` files don't get re-parsed. `rmp_serde::to_vec`/`from_slice` — the default, and what this project uses — encode structs _positionally_: as an array of field values in declaration order, not a map of field names. A `_named` variant encodes as a map instead, at a size and speed cost we haven't needed to pay.
 
 ## Decision
 

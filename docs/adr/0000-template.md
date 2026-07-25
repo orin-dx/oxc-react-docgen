@@ -1,7 +1,6 @@
 # NNNN. Short, decision-shaped title
 
-**Status:** Accepted
-**Date:** YYYY-MM-DD
+**Status:** Accepted **Date:** YYYY-MM-DD
 
 ## Context
 

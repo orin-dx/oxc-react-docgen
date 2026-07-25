@@ -9,7 +9,7 @@ Maps each react-docgen-typescript (RDT) output field and component pattern to th
 Each `PropType` variant the resolver can emit; whether any fixture produces it.
 
 | Kind | Covered by |
-|------|-----------|
+| --- | --- |
 | `string` | all fixtures |
 | `number` | all fixtures |
 | `boolean` | all fixtures |
@@ -45,7 +45,7 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it.
 ## ComponentEntry fields
 
 | Field | Status | Covered by |
-|-------|--------|-----------|
+| --- | --- | --- |
 | `displayName` | ✅ | all fixtures |
 | `filePath` | ✅ | all fixtures |
 | `description` (non-empty) | ✅ | mui Button, panda button |
@@ -53,7 +53,7 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it.
 | `props` | ✅ | all fixtures |
 | `inheritance` (non-empty) | ✅ | all fixtures |
 | `notableInherited` | ✅ (curated mode only) | all fixtures — see [HtmlAttributeMode](#htmlattributemode-curated--full--none) |
-| `discriminantProp: null` | ✅ | all fixtures; also correctly `null` for a *double*-discriminated union where no single field disambiguates every variant — **day-picker** (`mode` repeats across `PropsSingle`/`PropsSingleRequired`, only jointly unique with `required`) |
+| `discriminantProp: null` | ✅ | all fixtures; also correctly `null` for a _double_-discriminated union where no single field disambiguates every variant — **day-picker** (`mode` repeats across `PropsSingle`/`PropsSingleRequired`, only jointly unique with `required`) |
 | `discriminantProp: "variant"` | ✅ | mui TextField |
 | `discriminantProp` through an intersection-wrapped union (`Base & (A\|B\|C)`) | ✅ | **day-picker** — see [Fixed: intersection-wrapped discriminated unions](#fixed-discriminated-unions-wrapped-in-an-intersection) |
 | `composes` (non-empty) | ✅ | mantine, shadcn, chakra, react-aria |
@@ -65,7 +65,7 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it.
 ## ParsedProp fields
 
 | Field | Status | Covered by |
-|-------|--------|-----------|
+| --- | --- | --- |
 | `name` | ✅ | all fixtures |
 | `type` | ✅ | all fixtures |
 | `required: true` | ✅ | all fixtures |
@@ -91,7 +91,7 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it.
 ## Component patterns
 
 | Pattern | Status | Covered by |
-|---------|--------|-----------|
+| --- | --- | --- |
 | `React.forwardRef` | ✅ | shadcn, panda, mantine, react-aria |
 | `React.forwardRef(...) as X` (trailing cast) | ✅ | **fluentui**, **ark-ui** — see [Fixed: forwardRef as-cast](#fixed-forwardref-wrapped-in-an-as-cast) |
 | Same-file custom wrapper + bare identifier (`customWrapper(NamedFn) as X`) | ✅ | **headlessui** — see [Fixed: identifier-wrapped naming](#fixed-identifier-wrapped-components-renamed-to-export-binding) |
@@ -133,15 +133,15 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it.
 
 ## ExtractionOutput top-level fields
 
-| Field | Status | Covered by |
-|-------|--------|-----------|
-| `components` (non-empty) | ✅ | all fixtures |
-| `enums` (non-empty) | ✅ | shadcn, **panda** (after defineRecipe fix) |
-| `diagnostics` (non-empty) | ✅ | mantine, mui (UNRESOLVABLE_IMPORT warnings) |
-| `stats.componentsExtracted` | ✅ | all fixtures |
-| `stats.componentsSkipped` | ✅ | all fixtures |
-| `stats.filesParsed` | ✅ | all fixtures |
-| `stats.opaqueCount` | ❌ | never non-zero in any snapshot |
+| Field                       | Status | Covered by                                  |
+| --------------------------- | ------ | ------------------------------------------- |
+| `components` (non-empty)    | ✅     | all fixtures                                |
+| `enums` (non-empty)         | ✅     | shadcn, **panda** (after defineRecipe fix)  |
+| `diagnostics` (non-empty)   | ✅     | mantine, mui (UNRESOLVABLE_IMPORT warnings) |
+| `stats.componentsExtracted` | ✅     | all fixtures                                |
+| `stats.componentsSkipped`   | ✅     | all fixtures                                |
+| `stats.filesParsed`         | ✅     | all fixtures                                |
+| `stats.opaqueCount`         | ❌     | never non-zero in any snapshot              |
 
 ---
 
@@ -153,14 +153,14 @@ Each `PropType` variant the resolver can emit; whether any fixture produces it.
 - **Full** — actually resolves `@types/react`'s real `HTMLAttributes`/`AriaAttributes`/`DOMAttributes`/`<Element>HTMLAttributes` interface chain (merged into `GlobalSourceData` by the pipeline, looked up by the resolver like any other interface) and merges the real fields directly into `props` — matching how RDT flattens everything into one props map. Verified against a real button: 238 of ~250 real attributes resolve (the remainder is a narrower, separate gap — see below). Costs ~16ms once per `@types/react` version (cached the same way any other `.d.ts` is), not per extraction run.
 - **None** — no inherited HTML attributes synthesized at all; own props only.
 
-**Known residual gap, not fixed:** a handful of fields inside `@types/react`'s own interface chain (`AriaAttributes` referenced bare from within the same enclosing `declare namespace React {}` block, not through an explicit `React.` qualifier) don't resolve — same-namespace *sibling* reference resolution is narrower than the namespace-*qualified* reference resolution fixed for cross-file/explicit cases. Degrades gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash or component loss).
+**Known residual gap, not fixed:** a handful of fields inside `@types/react`'s own interface chain (`AriaAttributes` referenced bare from within the same enclosing `declare namespace React {}` block, not through an explicit `React.` qualifier) don't resolve — same-namespace _sibling_ reference resolution is narrower than the namespace-_qualified_ reference resolution fixed for cross-file/explicit cases. Degrades gracefully (an `UNRESOLVABLE_IMPORT` diagnostic on that one field, not a crash or component loss).
 
 ---
 
 ## Known gaps summary
 
 | Priority | Gap | Path to cover |
-|----------|-----|--------------|
+| --- | --- | --- |
 | ✅ done | `opaque` kind | `fixtures/rdt-compat/types.tsx` (inline conditional) |
 | ✅ done | `array` kind | `fixtures/rdt-compat/types.tsx` (`string[]`) |
 | ✅ done | `tuple` kind | `fixtures/rdt-compat/types.tsx` (`[number, number]`) |
@@ -289,7 +289,7 @@ Base UI's real pattern is `namespace MenuRoot { export type Props<Payload> = ...
 
 **Fixture:** `fixtures/day-picker/DayPicker.tsx`
 
-Discriminant detection only ran when a type alias's RHS was *directly* a union (`type X = A | B`). Real Day Picker's `DayPickerProps = PropsBase & (7-way union)` — an intersection whose union member fell into a naive per-member merge instead, keeping only whichever branch's type was seen first per prop instead of unioning across all branches. Fixed by having the intersection-nested-union case delegate to the same discriminant-merge logic a direct union alias uses. Confirmed: `selected`'s type now correctly merges `Date | Date[] | DateRange` across all 7 branches (previously collapsed to bare `Date`). Also confirmed (and this is *correct*, not a remaining bug): `discriminantProp` stays `null` for Day Picker's real union, because `mode` repeats the same value across `PropsSingle`/`PropsSingleRequired` — it's only jointly unique with a second field (`required`), so no single field actually identifies the variant.
+Discriminant detection only ran when a type alias's RHS was _directly_ a union (`type X = A | B`). Real Day Picker's `DayPickerProps = PropsBase & (7-way union)` — an intersection whose union member fell into a naive per-member merge instead, keeping only whichever branch's type was seen first per prop instead of unioning across all branches. Fixed by having the intersection-nested-union case delegate to the same discriminant-merge logic a direct union alias uses. Confirmed: `selected`'s type now correctly merges `Date | Date[] | DateRange` across all 7 branches (previously collapsed to bare `Date`). Also confirmed (and this is _correct_, not a remaining bug): `discriminantProp` stays `null` for Day Picker's real union, because `mode` repeats the same value across `PropsSingle`/`PropsSingleRequired` — it's only jointly unique with a second field (`required`), so no single field actually identifies the variant.
 
 ---
 
@@ -313,7 +313,7 @@ Headless UI's real Listbox family: standalone top-level function declarations (`
 
 **Fixture:** `fixtures/tanstack-table/types.ts`
 
-`ColumnDef<TData, TValue> = DisplayColumnDef<...> | GroupColumnDef<...> | AccessorColumnDef<...>` — a union whose members are same-file siblings of the alias, imported cross-file into `data-table.tsx` as just `ColumnDef`. `resolve_type_alias_type` forwarded the *caller's* `consuming_file` into the recursive member resolution instead of the alias's own declaring file, so `DisplayColumnDef` etc. were looked up relative to `data-table.tsx` (which never imports them directly) and spuriously flagged as unresolvable, even though the actual `PropType::Named` output was already correct. Fixed by giving `CollectedTypeAlias` a `file_path()` accessor and using it instead of the passed-in file for every recursive call.
+`ColumnDef<TData, TValue> = DisplayColumnDef<...> | GroupColumnDef<...> | AccessorColumnDef<...>` — a union whose members are same-file siblings of the alias, imported cross-file into `data-table.tsx` as just `ColumnDef`. `resolve_type_alias_type` forwarded the _caller's_ `consuming_file` into the recursive member resolution instead of the alias's own declaring file, so `DisplayColumnDef` etc. were looked up relative to `data-table.tsx` (which never imports them directly) and spuriously flagged as unresolvable, even though the actual `PropType::Named` output was already correct. Fixed by giving `CollectedTypeAlias` a `file_path()` accessor and using it instead of the passed-in file for every recursive call.
 
 ### Fixed: generic interface/alias's own type parameters flagged as unresolvable
 
@@ -356,8 +356,8 @@ Headless UI's real Listbox family: standalone top-level function declarations (`
 **Fixture:** `fixtures/antd/buttonHelpers.tsx`
 
 ```ts
-const _ButtonTypes = ['default', 'primary', 'dashed', 'link', 'text'] as const;
-export type ButtonType = (typeof _ButtonTypes)[number];
+const _ButtonTypes = ['default', 'primary', 'dashed', 'link', 'text'] as const
+export type ButtonType = (typeof _ButtonTypes)[number]
 ```
 
 Two gaps, neither previously covered: nothing captured a plain array-literal `const` (only cva/tv's `variants` object shape and const-object enums), and indexed access never handled a `[number]` key — `key` there is `CollectedType::Number` (the `number` keyword type), not a string literal, so the existing string-literal-keyed lookup always missed it. Added `SourceData::const_arrays` (deliberately separate from `enums`, which has per-entry variant names and is surfaced directly in the public output — a plain array has neither), populated by a new `try_collect_const_array` mirroring `try_collect_const_enum`'s shape but for `ArrayExpression`. Added a matching `const_array_bare_index` on `ResolutionContext` (same O(1) pattern as `enum_bare_index`) and a new branch in `resolve_indexed_access` that builds a `LiteralUnion` from the array's values when `obj` is `TypeOf` and `key` is `Number`. All 5 exported unions in the fixture (`ButtonType`, `ButtonShape`, `ButtonHTMLType`, `ButtonVariantType`, `ButtonColorType`) now resolve correctly; the 10 associated diagnostics are gone.
@@ -375,7 +375,7 @@ Button.defaultProps = { size: 'md' };
 
 Added `try_scan_default_props`, mirroring the existing `try_scan_display_name`'s shape (same "find the `ExpressionStatement` assigning to `X.<prop>`, look up the matching `ComponentMapping`" pattern) — extracts each object property via `eval_expr_as_default`, now parameterized with a `DefaultSource` instead of hardcoding `Destructuring`, so both call sites tag their defaults correctly. The resolver's consumption side (`resolver/chain.rs`'s `mapping.param_defaults.get(&raw_prop.name)`) needed no changes — it was already source-agnostic, just never had anything to read from this path.
 
-No fixture ships a real static `defaultProps` assignment today — `fixtures/blueprint/Table.tsx` had in fact been deliberately written *around* this exact gap (its header comment said so explicitly). Comment updated; fixture coverage stays as destructured defaults since upstream Blueprint's `Table` is a class component and this fixture uses a function component by design (a separate, unrelated tradeoff — see the fixture's own comment). Covered instead by a dedicated extractor unit test and a pipeline end-to-end test proving the value reaches `ParsedProp.default_value`.
+No fixture ships a real static `defaultProps` assignment today — `fixtures/blueprint/Table.tsx` had in fact been deliberately written _around_ this exact gap (its header comment said so explicitly). Comment updated; fixture coverage stays as destructured defaults since upstream Blueprint's `Table` is a class component and this fixture uses a function component by design (a separate, unrelated tradeoff — see the fixture's own comment). Covered instead by a dedicated extractor unit test and a pipeline end-to-end test proving the value reaches `ParsedProp.default_value`.
 
 ---
 
@@ -412,13 +412,13 @@ Button.displayName = 'Button';
 export default Button;
 ```
 
-`try_scan_display_name` couldn't help here — it matches the assignment's left-hand object name (`"Button"`) against an existing mapping's name, but the mapping was still `"InternalCompoundedButton"`, so the match never fired. The actual gap was one level earlier: `try_rename_identifier_wrapped_component` (added for Headless UI's `forwardRefWithAs(ButtonFn) as X` — an *unrecognized wrapper call* around an already-detected component) only matched a `CallExpression` init. antd's shape has no wrapper call at all — just a bare `const NewName = OldName;` passthrough, optionally `as`-cast. Added a second match arm for a bare `Expression::Identifier` init, reusing the same rename logic. `Button` now surfaces with all 23 real props under its actual export name.
+`try_scan_display_name` couldn't help here — it matches the assignment's left-hand object name (`"Button"`) against an existing mapping's name, but the mapping was still `"InternalCompoundedButton"`, so the match never fired. The actual gap was one level earlier: `try_rename_identifier_wrapped_component` (added for Headless UI's `forwardRefWithAs(ButtonFn) as X` — an _unrecognized wrapper call_ around an already-detected component) only matched a `CallExpression` init. antd's shape has no wrapper call at all — just a bare `const NewName = OldName;` passthrough, optionally `as`-cast. Added a second match arm for a bare `Expression::Identifier` init, reusing the same rename logic. `Button` now surfaces with all 23 real props under its actual export name.
 
 ## Note: compound components (`Dialog.Trigger`) — investigated, not a real gap
 
 The original worry: `Dialog.Trigger`, `Select.Item` — sub-components hung off a parent via dot access — aren't detected as separate components at all.
 
-Checked every fixture with a multi-component "family" shape. None uses the actual `<Namespace.Member>` dot-access pattern. `fixtures/ariakit`'s `Menu`/`MenuButton`/`MenuItem`/`MenuProvider` are just independently exported, independently named components — nothing to detect beyond what already works. `fixtures/headlessui/Listbox.tsx` gets closest — real Ark UI/Headless UI code does `Object.assign(ListboxRoot, { Button: ListboxButton, ... })` to expose `Listbox.Button` as a deprecated convenience alias — but `ListboxButton` is *also* independently exported (`export let ListboxButton = forwardRefWithAs(ButtonFn) as _internal_ComponentListboxButton`) as the primary, non-deprecated API, and that already gets detected and extracted correctly today (confirmed: `Listbox`, `ListboxButton`, `ListboxOption` all present in the output, each with accurate props).
+Checked every fixture with a multi-component "family" shape. None uses the actual `<Namespace.Member>` dot-access pattern. `fixtures/ariakit`'s `Menu`/`MenuButton`/`MenuItem`/`MenuProvider` are just independently exported, independently named components — nothing to detect beyond what already works. `fixtures/headlessui/Listbox.tsx` gets closest — real Ark UI/Headless UI code does `Object.assign(ListboxRoot, { Button: ListboxButton, ... })` to expose `Listbox.Button` as a deprecated convenience alias — but `ListboxButton` is _also_ independently exported (`export let ListboxButton = forwardRefWithAs(ButtonFn) as _internal_ComponentListboxButton`) as the primary, non-deprecated API, and that already gets detected and extracted correctly today (confirmed: `Listbox`, `ListboxButton`, `ListboxOption` all present in the output, each with accurate props).
 
 What's actually missing, if anything, is purely cosmetic: no dot-qualified display name (`"Listbox.Button"` instead of `"ListboxButton"`) and no parent/child grouping metadata for doc tools that want to nest sub-components under their parent. There's no fixture or test demonstrating this as broken, and no evidence for which of several plausible designs (rename the display name vs. add a separate grouping field) real consumers would actually want — building either now would be speculative, not a fix. Left alone.
 

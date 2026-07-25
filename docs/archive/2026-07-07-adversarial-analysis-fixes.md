@@ -25,6 +25,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 ## Task A: Parser safety + extractor silent-drops (Critical)
 
 **Files:**
+
 - Modify: `crates/core/src/extractor/mod.rs`
 - Modify: `crates/core/src/types/diagnostic.rs`
 
@@ -95,18 +96,20 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 - [ ] **Step 5: Test**
 
   Write a fixture (or extend `fixtures/rdt-compat/` with a new file, e.g. `fixtures/rdt-compat/inline-object-props.tsx`) with:
+
   ```tsx
-  import * as React from 'react';
+  import * as React from 'react'
 
   export const Toast = React.forwardRef<HTMLDivElement, { message: string; duration?: number }>(
-    ({ message, duration }, ref) => <div ref={ref}>{message}</div>
-  );
-  Toast.displayName = 'Toast';
+    ({ message, duration }, ref) => <div ref={ref}>{message}</div>,
+  )
+  Toast.displayName = 'Toast'
 
   export const Badge: React.FC<{ label: string; variant?: 'info' | 'warning' }> = ({ label, variant }) => (
     <span>{label}</span>
-  );
+  )
   ```
+
   Run `cargo test -p oxc-react-docgen-core snapshot_rdt_compat` — expect a new snapshot diff showing `Toast` and `Badge` now extracted with their inline-object props. Accept the new snapshot with `INSTA_UPDATE=always cargo test -p oxc-react-docgen-core`.
 
   Also write a standalone unit test (in `extractor/mod.rs`'s own `#[cfg(test)] mod tests` or wherever similar extractor unit tests live) asserting `parse_file` on a source string with >2000 nested parens produces exactly one `ExcessiveNesting` diagnostic and zero components, and does NOT crash. Also add a `.tsx` with a deliberate syntax error (e.g. unclosed brace) and assert the resulting `SourceData.diagnostics` contains a `ParseError` entry.
@@ -117,6 +120,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
   cargo clippy -p oxc-react-docgen-core -- -D warnings
   cargo test -p oxc-react-docgen-core
   ```
+
   Commit as: `fix(extractor): guard against unbounded parser recursion; surface parse errors; extract inline object props`
 
 ---
@@ -124,6 +128,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 ## Task B: JSDoc correctness + performance (High)
 
 **Files:**
+
 - Modify: `crates/core/src/extractor/jsdoc.rs`
 - Modify: `crates/core/src/extractor/visit.rs`
 
@@ -142,12 +147,14 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 - [ ] **Step 3: Test**
 
   Add a fixture or unit test: an interface with a leading doc comment and a first property with NO comment of its own, both within 120 bytes of each other:
+
   ```ts
   /** Props for Button. */
   interface ButtonProps {
-    variant: string;
+    variant: string
   }
   ```
+
   Assert the resulting `CollectedInterface.description` is `"Props for Button."` and the `variant` prop's description is empty — currently (before this fix) it's the reverse.
 
   For the performance fix, no snapshot changes are expected (behavior is unchanged, only traversal strategy) — running the full existing snapshot suite should show zero diffs. If you want to verify the complexity fix empirically, generate a large synthetic `.d.ts` (in `/private/tmp` or a scratch dir, NOT committed) with thousands of JSDoc'd props and confirm `stats.durationMs` scales roughly linearly, not quadratically, but this is optional verification, not a committed test.
@@ -158,6 +165,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
   cargo clippy -p oxc-react-docgen-core -- -D warnings
   cargo test -p oxc-react-docgen-core
   ```
+
   Commit as: `perf(extractor): replace O(n²) JSDoc comment scan with monotonic cursor; fix interface description ordering`
 
 ---
@@ -165,6 +173,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 ## Task C: Component prop defaults for forwardRef/FC patterns (High)
 
 **Files:**
+
 - Modify: `crates/core/src/extractor/component.rs`
 
 **Context:** `try_forward_ref` (~line 76) and `try_fc_annotation` (~line 30) both hardcode `param_defaults: Default::default()` and never call `extract_param_defaults` — only `try_hoc_wrapped`'s plain-function branch does. This means destructured defaults (`({ variant = 'primary' }, ref) => ...`) are never captured for the two most common real-world authoring patterns (shadcn/Radix-style `forwardRef` components, and plain `FC`-typed arrow functions with destructured defaults) — confirmed on the real `fixtures/shadcn/button.tsx` fixture, where `asChild`'s `defaultValue` is `null` despite `asChild = false` in the source.
@@ -180,13 +189,15 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 - [ ] **Step 3: Test**
 
   Extend `fixtures/rdt-compat/` (or add a new fixture) with:
-  ```tsx
-  export const Toggle = React.forwardRef<HTMLButtonElement, ToggleProps>(
-    ({ pressed = false, size = 'md' }, ref) => <button ref={ref} />
-  );
 
-  export const Chip: React.FC<ChipProps> = ({ label, closable = true }) => <span>{label}</span>;
+  ```tsx
+  export const Toggle = React.forwardRef<HTMLButtonElement, ToggleProps>(({ pressed = false, size = 'md' }, ref) => (
+    <button ref={ref} />
+  ))
+
+  export const Chip: React.FC<ChipProps> = ({ label, closable = true }) => <span>{label}</span>
   ```
+
   Run the snapshot suite, confirm `pressed`, `size`, `closable` now show real `defaultValue` entries (RDT-shaped: `{"value": "false", "computed": false}` etc. — match whatever format `extract_param_defaults` already produces for the working `try_hoc_wrapped` path, confirmed via a synthetic `React.memo(function Widget({size='md'}: Props){...})` test in the adversarial analysis).
 
 - [ ] **Step 4: Verify and commit**
@@ -195,6 +206,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
   cargo clippy -p oxc-react-docgen-core -- -D warnings
   cargo test -p oxc-react-docgen-core
   ```
+
   Commit as: `fix(extractor): capture destructured param defaults in forwardRef and FC-typed components`
 
 ---
@@ -202,6 +214,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 ## Task D: Resolver correctness + cva/variant-props performance (High/Medium)
 
 **Files:**
+
 - Modify: `crates/core/src/resolver/alias.rs`
 - Modify: `crates/core/src/resolver/func.rs`
 - Modify: `crates/core/src/known.rs`
@@ -210,7 +223,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 
 - [ ] **Step 1: Fix union-member prop merging to union conflicting types**
 
-  In `resolve_union_alias`, when merging a prop that already exists in `merged_props` with a different type than the incoming member's version of that prop, combine them into a `PropType::Union` (or whatever the existing union-representation convention is — check how the discriminant prop's own union-of-literals is already built a few lines below, at ~line 212-221, and reuse the same mechanism) rather than keeping only the first. Two members contributing the *same* type for a prop should NOT wrap in a redundant single-element union — only actually-differing types get unioned. Also make non-discriminant required/optional flags correct: if a prop is required in one member and optional in another, the merged result should be optional (since the union type doesn't always require it).
+  In `resolve_union_alias`, when merging a prop that already exists in `merged_props` with a different type than the incoming member's version of that prop, combine them into a `PropType::Union` (or whatever the existing union-representation convention is — check how the discriminant prop's own union-of-literals is already built a few lines below, at ~line 212-221, and reuse the same mechanism) rather than keeping only the first. Two members contributing the _same_ type for a prop should NOT wrap in a redundant single-element union — only actually-differing types get unioned. Also make non-discriminant required/optional flags correct: if a prop is required in one member and optional in another, the merged result should be optional (since the union type doesn't always require it).
 
   Be careful: this needs to correctly handle N-way unions (not just 2), and needs to distinguish "prop present in this member with type X" from "prop absent from this member" (RDT's real behavior when a prop is entirely absent from one union branch is presumably to make it optional in the merged result — verify against the compare harness's real-RDT output for Accordion, which is the canonical test case here).
 
@@ -232,6 +245,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
   cargo clippy -p oxc-react-docgen-core -- -D warnings
   cargo test -p oxc-react-docgen-core
   ```
+
   Commit as: `fix(resolver): union conflicting prop types across discriminated-union members; precompute enum lookup for typeof/variant-props`
 
 ---
@@ -239,6 +253,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 ## Task E: CLI validation & config honesty (Critical)
 
 **Files:**
+
 - Modify: `crates/cli/src/config.rs`
 - Modify: `crates/cli/src/commands/check.rs`
 - Modify: `crates/cli/src/commands/extract.rs`
@@ -278,6 +293,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
   cargo clippy --workspace --all-targets -- -D warnings
   cargo test --workspace
   ```
+
   Commit as: `fix(cli): hard-error on unsupported config files; validate --src exists; keep stdout pure JSON by default`
 
 ---
@@ -285,6 +301,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 ## Task F: Watch-mode diagnostics + type-alias silent-drop (Medium/High)
 
 **Files:**
+
 - Modify: `crates/core/src/pipeline/watch.rs`
 - Modify: `crates/cli/src/commands/watch.rs`
 - Modify: `crates/core/src/extractor/alias.rs`
@@ -319,6 +336,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
   cargo clippy --workspace --all-targets -- -D warnings
   cargo test --workspace
   ```
+
   Commit as: `fix(pipeline): surface watch-mode diagnostics; extract inline object type aliases`
 
 ---
@@ -326,6 +344,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 ## Task G: Output format fidelity (Medium)
 
 **Files:**
+
 - Modify: `crates/cli/src/commands/extract.rs` (the `serialize_rdt` function)
 - Modify: `crates/core/src/types/output.rs`
 
@@ -353,6 +372,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
   cargo clippy --workspace --all-targets -- -D warnings
   cargo test --workspace
   ```
+
   Commit as: `fix(output): match RDT's methods/tags/enum conventions; name tuple PropType JSON fields`
 
 ---
@@ -360,6 +380,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 ## Task H: Path normalization + low-hanging safety/perf (Medium/Low)
 
 **Files:**
+
 - Modify: `crates/core/src/pipeline/discover.rs` (or wherever `Utf8PathBuf` is first constructed from a `--src` argument — read `pipeline/mod.rs` first to confirm the right insertion point)
 - Modify: `crates/core/src/resolver/chain.rs`
 - Modify: `crates/core/src/resolver/template.rs`
@@ -395,6 +416,7 @@ For Step 1: run the full snapshot suite, update snapshots if the `[ROOT]` redact
   cargo clippy --workspace --all-targets -- -D warnings
   cargo test --workspace
   ```
+
   Commit as: `fix(core): canonicalize discovered file paths; remove non-test unwrap() calls; avoid per-lookup path clone in import_map`
 
 ---

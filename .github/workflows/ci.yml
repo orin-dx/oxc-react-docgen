@@ -27,6 +27,7 @@ jobs:
     outputs:
       rust: ${{ steps.detect.outputs.rust }}
       typescript: ${{ steps.detect.outputs.typescript }}
+      docs: ${{ steps.detect.outputs.docs }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,8 +46,18 @@ jobs:
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
             echo "typescript=true" >> "$GITHUB_OUTPUT"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
             echo "No usable base ref — running everything."
             exit 0
+          fi
+
+          # Markdown isn't a moon project — moon's affected-project graph below has
+          # no way to flag a docs-only change, so it's detected separately here with
+          # a plain path diff instead of folding it into the rust/typescript logic.
+          if git diff --name-only "$BASE" -- '*.md' | grep -q .; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs=false" >> "$GITHUB_OUTPUT"
           fi
 
           # moon 2.3.3's `query projects` has no --base/--head flags (confirmed against
@@ -156,7 +167,7 @@ jobs:
   format:
     name: Format & lint check
     needs: detect-changes
-    if: needs.detect-changes.outputs.typescript == 'true'
+    if: needs.detect-changes.outputs.typescript == 'true' || needs.detect-changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -168,19 +179,24 @@ jobs:
           node-version: "26"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: >-
+      - if: needs.detect-changes.outputs.typescript == 'true'
+        run: >-
           pnpm exec oxfmt --check
           'packages/vite-plugin/src/**/*.ts' 'packages/vite-plugin/tests/**/*.ts'
           'packages/vite-plugin/vitest.config.ts' 'packages/napi/*.d.ts' 'packages/cli/bin/**/*.js'
           'apps/validate/src/**/*.ts'
-      - run: >-
+      - if: needs.detect-changes.outputs.typescript == 'true'
+        run: >-
           pnpm exec oxlint
           'packages/vite-plugin/src' 'packages/vite-plugin/vitest.config.ts' 'packages/napi/*.d.ts'
           'packages/cli/bin/**/*.js' 'apps/validate/src'
-      - run: >-
+      - if: needs.detect-changes.outputs.typescript == 'true'
+        run: >-
           pnpm exec oxlint -A pedantic -A perf -A style
           -A unicorn/consistent-function-scoping -A vitest/require-mock-type-parameters
           --vitest-plugin 'packages/vite-plugin/tests'
+      - if: needs.detect-changes.outputs.docs == 'true'
+        run: pnpm exec oxfmt --check '**/*.md' '!node_modules/**' '!target/**' '!dist/**'
 
   typescript:
     name: TypeScript / Node ${{ matrix.node }}

@@ -25,12 +25,12 @@ Link types by name, not just backticks:
 
 Add sections only when they carry information: `# Examples`, `# Panics`, `# Errors`, `# Safety`. Every public `fn` gets at least one example. Hide boilerplate with `# `:
 
-```rust
+````rust
 /// # Examples
 /// ```
 /// # use oxc_react_docgen_core::pipeline::PipelineOptions;
 /// let opts = PipelineOptions::default();
 /// ```
-```
+````
 
 American English spelling.

@@ -44,6 +44,7 @@ packages/vite-plugin/tests/unit/plugin.test.ts
 ## Task 1: Delete rolldown-plugin and clean workspace config
 
 **Files:**
+
 - Delete: `packages/rolldown-plugin/` (whole directory)
 - Modify: `Cargo.toml`
 - Modify: `.moon/workspace.yml`
@@ -57,6 +58,7 @@ rm -rf packages/rolldown-plugin
 - [ ] **Step 2: Remove from Cargo workspace**
 
 In `Cargo.toml`, change:
+
 ```toml
 [workspace]
 members = [
@@ -66,7 +68,9 @@ members = [
     "packages/rolldown-plugin",
 ]
 ```
+
 To:
+
 ```toml
 [workspace]
 members = [
@@ -79,14 +83,15 @@ members = [
 - [ ] **Step 3: Remove from Moon workspace**
 
 In `.moon/workspace.yml`, remove the `rolldown-plugin` line:
+
 ```yaml
 projects:
-  core: "crates/core"
-  cli: "crates/cli"
-  crates-napi: "crates/napi"
-  napi: "packages/napi"
-  validate: "packages/validate"
-  vite-plugin: "packages/vite-plugin"
+  core: 'crates/core'
+  cli: 'crates/cli'
+  crates-napi: 'crates/napi'
+  napi: 'packages/napi'
+  validate: 'packages/validate'
+  vite-plugin: 'packages/vite-plugin'
 ```
 
 - [ ] **Step 4: Verify build still passes**
@@ -111,6 +116,7 @@ git commit -m "chore: delete packages/rolldown-plugin — Rolldown native Rust p
 The directory name `crates/napi/` was misleading — it's a binding crate, not the npm package. The Rust package name (`oxc-react-docgen-napi`) stays the same so the `.node` binary filename doesn't change.
 
 **Files:**
+
 - Rename: `crates/napi/` → `crates/binding/`
 - Modify: `Cargo.toml` (workspace member path)
 - Modify: `.moon/workspace.yml` (project path)
@@ -124,6 +130,7 @@ mv crates/napi crates/binding
 - [ ] **Step 2: Update workspace member path in Cargo.toml**
 
 Change:
+
 ```toml
 members = [
     "crates/core",
@@ -131,7 +138,9 @@ members = [
     "crates/cli",
 ]
 ```
+
 To:
+
 ```toml
 members = [
     "crates/core",
@@ -145,12 +154,15 @@ The path inside `crates/binding/Cargo.toml` has `oxc-react-docgen-core = { path 
 - [ ] **Step 3: Update Moon workspace**
 
 In `.moon/workspace.yml`, change:
+
 ```yaml
-  crates-napi: "crates/napi"
+crates-napi: 'crates/napi'
 ```
+
 To:
+
 ```yaml
-  crates-binding: "crates/binding"
+crates-binding: 'crates/binding'
 ```
 
 - [ ] **Step 4: Verify build**
@@ -176,6 +188,7 @@ git commit -m "chore: rename crates/napi → crates/binding (Rust package name u
 `pnpm-workspace.yaml` already includes `apps/*`, so pnpm picks this up automatically.
 
 **Files:**
+
 - Create: `apps/` directory
 - Move: `packages/validate/` → `apps/validate/`
 - Modify: `.moon/workspace.yml`
@@ -190,12 +203,15 @@ mv packages/validate apps/validate
 - [ ] **Step 2: Update Moon workspace**
 
 In `.moon/workspace.yml`, change:
+
 ```yaml
-  validate: "packages/validate"
+validate: 'packages/validate'
 ```
+
 To:
+
 ```yaml
-  validate: "apps/validate"
+validate: 'apps/validate'
 ```
 
 - [ ] **Step 3: Verify pnpm still resolves the workspace**
@@ -221,6 +237,7 @@ git commit -m "chore: move packages/validate → apps/validate"
 `packages/napi/` currently has only `index.d.ts`. It needs a `package.json`, a dev `index.js` loader that finds the native binary from the Cargo build output, and a `tsconfig.json`.
 
 **Files:**
+
 - Create: `packages/napi/package.json`
 - Create: `packages/napi/index.js`
 - Create: `packages/napi/tsconfig.json`
@@ -228,6 +245,7 @@ git commit -m "chore: move packages/validate → apps/validate"
 - [ ] **Step 1: Write package.json**
 
 Create `packages/napi/package.json`:
+
 ```json
 {
   "name": "@oxc-react-docgen/napi",
@@ -254,6 +272,7 @@ Create `packages/napi/package.json`:
 - [ ] **Step 2: Write the dev binary loader**
 
 Create `packages/napi/index.js`:
+
 ```js
 'use strict'
 
@@ -269,12 +288,12 @@ if (process.env.NAPI_RS_NATIVE_LIBRARY_PATH) {
     join(__dirname, '../../target/release', `${binaryName}.node`),
     join(__dirname, '../../target/debug', `${binaryName}.node`),
   ]
-  const found = candidates.find(p => existsSync(p))
+  const found = candidates.find((p) => existsSync(p))
   if (!found) {
     throw new Error(
       `@oxc-react-docgen/napi: native binary not found.\n` +
-      `Run: cargo build -p oxc-react-docgen-napi\n` +
-      `Searched:\n${candidates.map(p => `  ${p}`).join('\n')}`
+        `Run: cargo build -p oxc-react-docgen-napi\n` +
+        `Searched:\n${candidates.map((p) => `  ${p}`).join('\n')}`,
     )
   }
   module.exports = require(found)
@@ -284,6 +303,7 @@ if (process.env.NAPI_RS_NATIVE_LIBRARY_PATH) {
 - [ ] **Step 3: Write tsconfig.json**
 
 Create `packages/napi/tsconfig.json`:
+
 ```json
 {
   "compilerOptions": {
@@ -304,10 +324,12 @@ node -e "require('@oxc-react-docgen/napi')" 2>&1
 ```
 
 Expected output (binary not built yet):
+
 ```
 Error: @oxc-react-docgen/napi: native binary not found.
 Run: cargo build -p oxc-react-docgen-napi
 ```
+
 This error is correct — it means the loader ran and gave a clear message.
 
 - [ ] **Step 5: Commit**
@@ -322,6 +344,7 @@ git commit -m "feat: set up packages/napi as npm package with dev binary loader"
 ## Task 5: Scaffold packages/vite-plugin
 
 **Files:**
+
 - Create: `packages/vite-plugin/package.json`
 - Create: `packages/vite-plugin/tsconfig.json`
 - Create: `packages/vite-plugin/vitest.config.ts`
@@ -330,6 +353,7 @@ git commit -m "feat: set up packages/napi as npm package with dev binary loader"
 - [ ] **Step 1: Write package.json**
 
 Create `packages/vite-plugin/package.json`:
+
 ```json
 {
   "name": "@oxc-react-docgen/vite-plugin",
@@ -367,6 +391,7 @@ Create `packages/vite-plugin/package.json`:
 - [ ] **Step 2: Write tsconfig.json**
 
 Create `packages/vite-plugin/tsconfig.json`:
+
 ```json
 {
   "compilerOptions": {
@@ -386,6 +411,7 @@ Create `packages/vite-plugin/tsconfig.json`:
 - [ ] **Step 3: Write vitest.config.ts**
 
 Create `packages/vite-plugin/vitest.config.ts`:
+
 ```typescript
 import { defineConfig } from 'vitest/config'
 
@@ -400,6 +426,7 @@ export default defineConfig({
 - [ ] **Step 4: Write the stub src/index.ts**
 
 Create `packages/vite-plugin/src/index.ts`:
+
 ```typescript
 import type { Plugin } from 'vite'
 
@@ -437,27 +464,42 @@ git commit -m "chore: scaffold packages/vite-plugin with package.json, tsconfig,
 TDD: write all tests against the stub — they should fail. The tests use `vi.mock` so no native binary is needed.
 
 **Files:**
+
 - Create: `packages/vite-plugin/tests/unit/plugin.test.ts`
 
 - [ ] **Step 1: Create the test file**
 
 Create `packages/vite-plugin/tests/unit/plugin.test.ts`:
+
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock BEFORE importing plugin — vi.mock is hoisted by Vitest
 vi.mock('@oxc-react-docgen/napi', () => ({
   createSession: vi.fn().mockReturnValue(42),
-  initializeSession: vi.fn().mockResolvedValue(
-    JSON.stringify({ components: {}, enums: {}, diagnostics: [], stats: {} })
-  ),
+  initializeSession: vi
+    .fn()
+    .mockResolvedValue(JSON.stringify({ components: {}, enums: {}, diagnostics: [], stats: {} })),
   extractFileIncremental: vi.fn().mockResolvedValue(
     JSON.stringify({
-      updatedComponents: [{ displayName: 'Button', filePath: '/project/src/Button.tsx', props: {}, inheritance: [], notableInherited: {}, description: '', discriminantProp: null, composes: [], tags: {}, methods: [] }],
+      updatedComponents: [
+        {
+          displayName: 'Button',
+          filePath: '/project/src/Button.tsx',
+          props: {},
+          inheritance: [],
+          notableInherited: {},
+          description: '',
+          discriminantProp: null,
+          composes: [],
+          tags: {},
+          methods: [],
+        },
+      ],
       affectedFiles: ['/project/src/Button.tsx'],
       diagnostics: [],
       durationMs: 5,
-    })
+    }),
   ),
   closeSession: vi.fn(),
 }))
@@ -508,9 +550,7 @@ describe('oxcReactDocgen', () => {
 
   describe('configResolved', () => {
     it('creates a NAPI session with resolved absolute src dirs', () => {
-      expect(napi.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ srcDirs: ['/project/src'] })
-      )
+      expect(napi.createSession).toHaveBeenCalledWith(expect.objectContaining({ srcDirs: ['/project/src'] }))
     })
   })
 
@@ -536,7 +576,7 @@ describe('oxcReactDocgen', () => {
       expect(napi.extractFileIncremental).toHaveBeenCalledWith(
         '/project/src/Button.tsx',
         42,
-        expect.objectContaining({ srcDirs: ['/project/src'] })
+        expect.objectContaining({ srcDirs: ['/project/src'] }),
       )
     })
 
@@ -545,7 +585,7 @@ describe('oxcReactDocgen', () => {
       await (plugin.hotUpdate as Function).call(ctx, makeOpts('/project/src/Button.tsx'))
       expect(ctx.environment.hot.send).toHaveBeenCalledWith(
         'oxc-react-docgen:update',
-        expect.objectContaining({ file: '/project/src/Button.tsx' })
+        expect.objectContaining({ file: '/project/src/Button.tsx' }),
       )
     })
 
@@ -608,11 +648,13 @@ git commit -m "test: add failing unit tests for vite plugin hooks"
 Replace the stub with the full implementation. Run the tests after each hook group to verify incrementally.
 
 **Files:**
+
 - Modify: `packages/vite-plugin/src/index.ts`
 
 - [ ] **Step 1: Write the full implementation**
 
 Replace all of `packages/vite-plugin/src/index.ts`:
+
 ```typescript
 import type { Plugin, ResolvedConfig, ViteDevServer, HotUpdateOptions } from 'vite'
 import * as napi from '@oxc-react-docgen/napi'
@@ -635,14 +677,23 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
     components: {},
     enums: {},
     diagnostics: [],
-    stats: { componentsExtracted: 0, componentsSkipped: 0, filesParsed: 0, dtsCacheHits: 0, durationMs: 0, tier1Count: 0, tier3Count: 0, opaqueCount: 0 },
+    stats: {
+      componentsExtracted: 0,
+      componentsSkipped: 0,
+      filesParsed: 0,
+      dtsCacheHits: 0,
+      durationMs: 0,
+      tier1Count: 0,
+      tier3Count: 0,
+      opaqueCount: 0,
+    },
   }
   // Holds the in-flight init promise so hotUpdate can await it before first incremental call.
   let initPromise: Promise<void> | null = null
 
   function napiOptions() {
     return {
-      srcDirs: options.srcDirs.map(d => (d.startsWith('/') ? d : `${root}/${d}`)),
+      srcDirs: options.srcDirs.map((d) => (d.startsWith('/') ? d : `${root}/${d}`)),
       exclude: options.exclude,
       reactVersion: options.reactVersion,
       skipHtmlProps: options.skipHtmlProps,
@@ -651,10 +702,7 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
 
   function isSrcFile(file: string): boolean {
     const dirs = napiOptions().srcDirs
-    return (
-      (file.endsWith('.tsx') || file.endsWith('.ts')) &&
-      dirs.some(dir => file.startsWith(dir))
-    )
+    return (file.endsWith('.tsx') || file.endsWith('.ts')) && dirs.some((dir) => file.startsWith(dir))
   }
 
   return {
@@ -666,15 +714,13 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
     },
 
     configureServer(server: ViteDevServer) {
-      initPromise = napi
-        .initializeSession(sessionId, napiOptions())
-        .then(json => {
-          currentOutput = JSON.parse(json) as ExtractionOutput
-          // Notify client that initial extraction is ready
-          ;(server as any).environments?.client?.hot?.send('oxc-react-docgen:ready', {
-            components: currentOutput.components,
-          })
+      initPromise = napi.initializeSession(sessionId, napiOptions()).then((json) => {
+        currentOutput = JSON.parse(json) as ExtractionOutput
+        // Notify client that initial extraction is ready
+        ;(server as any).environments?.client?.hot?.send('oxc-react-docgen:ready', {
+          components: currentOutput.components,
         })
+      })
     },
 
     async hotUpdate(opts: HotUpdateOptions) {
@@ -683,8 +729,7 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
       // declared this-type across different Vite patch versions.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const env = (this as any).environment as
-        | { name: string; hot: { send(event: string, data?: unknown): void } }
-        | undefined
+        { name: string; hot: { send(event: string, data?: unknown): void } } | undefined
 
       if (!env || env.name !== 'client') return
       if (!isSrcFile(opts.file)) return
@@ -732,6 +777,7 @@ cd packages/vite-plugin && pnpm test
 ```
 
 Expected:
+
 ```
 ✓ resolveId > resolves the virtual module id
 ✓ resolveId > returns undefined for unrelated ids
@@ -770,12 +816,14 @@ git commit -m "feat: implement @oxc-react-docgen/vite-plugin"
 Add `moon.yml` to each new package so `moon run :test` and `moon run :build` work workspace-wide.
 
 **Files:**
+
 - Create: `packages/napi/moon.yml`
 - Create: `packages/vite-plugin/moon.yml`
 
 - [ ] **Step 1: Write packages/napi/moon.yml**
 
 Create `packages/napi/moon.yml`:
+
 ```yaml
 language: typescript
 
@@ -785,15 +833,16 @@ tasks:
     options:
       runFromWorkspaceRoot: true
     inputs:
-      - "../../crates/binding/src/**/*"
-      - "../../crates/binding/Cargo.toml"
+      - '../../crates/binding/src/**/*'
+      - '../../crates/binding/Cargo.toml'
     outputs:
-      - "../../target/debug/oxc_react_docgen_napi.node"
+      - '../../target/debug/oxc_react_docgen_napi.node'
 ```
 
 - [ ] **Step 2: Write packages/vite-plugin/moon.yml**
 
 Create `packages/vite-plugin/moon.yml`:
+
 ```yaml
 language: typescript
 
@@ -801,19 +850,19 @@ tasks:
   build:
     command: pnpm build
     inputs:
-      - "src/**/*"
-      - "tsconfig.json"
+      - 'src/**/*'
+      - 'tsconfig.json'
     outputs:
-      - "dist"
+      - 'dist'
 
   test:
     command: pnpm test
     inputs:
-      - "src/**/*"
-      - "tests/**/*"
-      - "vitest.config.ts"
+      - 'src/**/*'
+      - 'tests/**/*'
+      - 'vitest.config.ts'
     deps:
-      - "~:build"
+      - '~:build'
 ```
 
 - [ ] **Step 3: Verify Moon can run tests**
@@ -852,6 +901,7 @@ node -e "const m = require('@oxc-react-docgen/napi'); console.log(Object.keys(m)
 ```
 
 Expected:
+
 ```
 [ 'extractAll', 'createSession', 'initializeSession', 'extractFileIncremental', 'closeSession' ]
 ```
@@ -875,15 +925,19 @@ Expected: 12 tests pass.
 - [ ] **Step 5: Update docs/09-STATUS.md**
 
 In the Phase table, change:
+
 ```
 | 5a — Vite plugin | ❌ Not started | ...
 ```
+
 To:
+
 ```
 | 5a — Vite plugin | ✅ Complete | @oxc-react-docgen/vite-plugin, 12 unit tests, crates/binding rename, apps/validate move |
 ```
 
 Also update **Tests** line in the header:
+
 ```
 **Tests:** 112 passing, 0 failing (100 unit/snapshot Rust + 12 TS)
 ```

@@ -3,5 +3,10 @@
   "printWidth": 120,
   "semi": false,
   "singleQuote": true,
-  "ignorePatterns": ["dist/**", "**/binding.d.ts", "packages/napi/index.js"]
+  "ignorePatterns": [
+    "dist/**",
+    "**/binding.d.ts",
+    "packages/napi/index.js"
+  ],
+  "proseWrap": "never"
 }

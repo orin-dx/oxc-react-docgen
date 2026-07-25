@@ -17,6 +17,7 @@ Five gaps found in `docs/rdt-coverage.md` and `docs/type-checker-integration.md`
 Run tests with: `cargo test -p oxc-react-docgen-core` Snapshot test specifically: `cargo test -p oxc-react-docgen-core --test snapshots` Regenerate snapshots: `INSTA_UPDATE=always cargo test -p oxc-react-docgen-core --test snapshots`
 
 Non-negotiables from CLAUDE.md:
+
 - No `unwrap()` outside `#[cfg(test)]` — use `?`
 - `FxHashMap` for internal maps; `BTreeMap` for JSON-output maps
 - `CompactString` for type/prop names in hot paths
@@ -28,7 +29,7 @@ Non-negotiables from CLAUDE.md:
 ## File Map
 
 | File | What changes |
-|------|-------------|
+| --- | --- |
 | `crates/core/src/extractor/mod.rs` | Fix TSMethodSignature at lines 359-374 (object field) and 476-492 (RawProp) |
 | `crates/core/src/react_types.rs` | Add SVGAttributes, SVGProps, HTMLProps, ComponentRef, JSXElementConstructor to `html_element_for` + `is_react_builtin` |
 | `crates/core/src/resolver/named.rs` | Add SVGAttributes, SVGProps, HTMLProps, ComponentRef, JSXElementConstructor to step-6 silent list |
@@ -48,10 +49,12 @@ Non-negotiables from CLAUDE.md:
 **Root cause:** Two sites in `extractor/mod.rs` hardcode params as `vec![CollectedType::Raw("...".into())]` instead of reading `ms.params.items`. The correct pattern is the TSFunctionType arm at lines 220-236, which maps over `f.params.items`.
 
 The difference between TSFunctionType and TSMethodSignature return type:
+
 - `TSFunctionType`: `f.return_type` is `Box<TSTypeAnnotation>` (not optional) → `self.ts_type_to_collected(&f.return_type.type_annotation)`
 - `TSMethodSignature`: `ms.return_type` is `Option<Box<TSTypeAnnotation>>` → `.as_ref().map(...).unwrap_or(CollectedType::Void)`
 
 **Files:**
+
 - Modify: `crates/core/src/extractor/mod.rs:359-374` (ts_signature_to_object_field)
 - Modify: `crates/core/src/extractor/mod.rs:476-492` (collect_property_signature)
 - Test: `cargo test -p oxc-react-docgen-core --test snapshots`
@@ -142,6 +145,7 @@ cargo build -p oxc-react-docgen-core 2>&1 | head -40
 ```
 
 Expected: no errors. If OXC's `FormalParameter` field for method params is named differently than `params`, check with:
+
 ```bash
 grep -n "TSMethodSignature\|FormalParameter" crates/core/src/extractor/mod.rs | head -20
 ```
@@ -168,11 +172,13 @@ git commit -m "fix: extract TSMethodSignature params instead of hardcoding ellip
 **Goal:** `SVGAttributes`, `SVGProps`, `HTMLProps`, `ComponentRef`, `JSXElementConstructor` should not produce UnresolvableImport warnings. `SVGAttributes` and `HTMLProps` should map to HTML elements for `notableInherited`.
 
 **Root cause (three sites):**
+
 1. `react_types.rs:html_element_for()` — maps `HTMLAttributes<T>` → element string. Missing: `SVGAttributes`, `HTMLProps`
 2. `react_types.rs:is_react_builtin()` — terminal React types. Missing: `ComponentRef`, `JSXElementConstructor`, `SVGAttributes`, `SVGProps`, `HTMLProps`
 3. `resolver/named.rs` step-6 silent list — suppresses UnresolvableImport for known harmless types. Missing: same 5 names.
 
 **Files:**
+
 - Modify: `crates/core/src/react_types.rs` (two functions)
 - Modify: `crates/core/src/resolver/named.rs` (step-6 suffix/name list)
 - Create: `fixtures/rdt-compat/svg-icon.tsx`
@@ -188,13 +194,13 @@ git commit -m "fix: extract TSMethodSignature params instead of hardcoding ellip
  * UnresolvableImport warnings, and SVGAttributes should map an HTML element
  * for notableInherited.
  */
-import * as React from 'react';
+import * as React from 'react'
 
 export interface IconProps extends React.SVGAttributes<SVGSVGElement> {
   /** Icon size in pixels. */
-  size?: number;
+  size?: number
   /** Icon color. */
-  color?: string;
+  color?: string
 }
 
 /**
@@ -204,28 +210,30 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
   ({ size = 24, color = 'currentColor', ...props }, ref) => (
     <svg ref={ref} width={size} height={size} fill={color} {...props} />
   ),
-);
-Icon.displayName = 'Icon';
+)
+Icon.displayName = 'Icon'
 
 export interface BoxProps extends React.HTMLProps<HTMLDivElement> {
   /** Apply padding. */
-  padded?: boolean;
+  padded?: boolean
 }
 
-export const Box = React.forwardRef<HTMLDivElement, BoxProps>(
-  ({ padded, ...props }, ref) => <div ref={ref} {...props} />,
-);
-Box.displayName = 'Box';
+export const Box = React.forwardRef<HTMLDivElement, BoxProps>(({ padded, ...props }, ref) => (
+  <div ref={ref} {...props} />
+))
+Box.displayName = 'Box'
 ```
 
 - [ ] **Step 2: Read `react_types.rs` to find the exact insertion points**
 
 Run:
+
 ```bash
 grep -n "SVGAttributes\|HTMLProps\|ComponentRef\|JSXElementConstructor\|html_element_for\|is_react_builtin" crates/core/src/react_types.rs | head -30
 ```
 
 Then open `crates/core/src/react_types.rs` and locate:
+
 - `html_element_for()` — the match arms that map type name → element string
 - `is_react_builtin()` — the list/match that returns `true` for known builtins
 
@@ -289,12 +297,14 @@ git commit -m "feat: recognize SVGAttributes, HTMLProps, ComponentRef, JSXElemen
 **Root cause:** `extractor/alias.rs:classify_type_alias` has arms for Omit, Pick, Partial, Required, then a `_ =>` wildcard that for "Readonly" creates `Passthrough { target: Named("Readonly") }`. That named type `"Readonly"` then hits `resolve_props_chain` step 1 (the utility-type silent list) and returns empty.
 
 There are TWO places to handle Readonly:
+
 1. `extractor/alias.rs` — teach `classify_type_alias` to create `Passthrough { target: inner_type }` (the base type)
 2. `extractor/mod.rs:extract_type_name_from_type` — already handles `Readonly` at line 418! But only for prop type args, not for `type X = Readonly<Y>` aliases.
 
 The fix in `alias.rs` is sufficient: match `"Readonly"` before `_ =>` and extract the inner type.
 
 **Files:**
+
 - Modify: `crates/core/src/extractor/alias.rs`
 - Test: `cargo test -p oxc-react-docgen-core`
 
@@ -354,18 +364,14 @@ git commit -m "feat: handle Readonly<T> as transparent alias in extractor"
 
 **Goal:** `interface IconButtonProps extends Pick<ButtonBaseProps, 'disabled' | 'type' | 'form'>` should resolve `disabled`, `type`, `form` from `ButtonBaseProps`.
 
-**Root cause:** When `classify_extends` processes `Pick<ButtonBaseProps, '...'>` it produces
-`ExtendsRef::SameFile { name: "Pick", type_args: ["ButtonBaseProps", "'disabled' | 'type' | 'form'"] }`.
-This calls `resolve_props_chain("Pick", type_args, ...)`. Step 1 of `resolve_props_chain`
-matches `"Pick"` and returns `ResolvedChain::default()` (empty) regardless of type_args.
+**Root cause:** When `classify_extends` processes `Pick<ButtonBaseProps, '...'>` it produces `ExtendsRef::SameFile { name: "Pick", type_args: ["ButtonBaseProps", "'disabled' | 'type' | 'form'"] }`. This calls `resolve_props_chain("Pick", type_args, ...)`. Step 1 of `resolve_props_chain` matches `"Pick"` and returns `ResolvedChain::default()` (empty) regardless of type_args.
 
 The alias.rs Pick handler (which correctly resolves Pick) is only reachable from the `type_aliases` map — i.e., when the user writes `type X = Pick<T,K>`. When Pick appears in an `extends` clause directly, it bypasses the alias system entirely.
 
-**Fix:** Add step 0.5 before step 1 in `resolve_props_chain`. If the type name is a
-utility type AND type_args is non-empty, construct a synthetic `CollectedTypeAlias` and
-route through `resolve_type_alias_chain` (which already handles Pick and Omit correctly).
+**Fix:** Add step 0.5 before step 1 in `resolve_props_chain`. If the type name is a utility type AND type_args is non-empty, construct a synthetic `CollectedTypeAlias` and route through `resolve_type_alias_chain` (which already handles Pick and Omit correctly).
 
 **Files:**
+
 - Modify: `crates/core/src/resolver/chain.rs`
 - Modify: `crates/core/src/resolver/alias.rs` (if Pick/Omit parsing needs a raw-string helper)
 - Test: `cargo test -p oxc-react-docgen-core --test snapshots`
@@ -402,6 +408,7 @@ fn parse_string_union_keys(raw: &str) -> Vec<String> {
 - [ ] **Step 4: Add step 0.5 before step 1 in `resolve_props_chain`**
 
 `CollectedTypeAlias` field types (from `types/collected.rs`):
+
 - `file_path: Utf8PathBuf` — construct with `Utf8PathBuf::from(consuming_file)`
 - `picked_keys / omitted_keys: Vec<String>` — plain `String`, not `CompactString`
 - `CollectedType::Named { name: CompactString, args: Vec<CollectedType> }`
@@ -492,6 +499,7 @@ git commit -m "feat: resolve Pick/Omit/Partial/Readonly in extends position (ste
 **Goal:** All snapshot tests pass; `docs/rdt-coverage.md` is updated to reflect fixed bugs.
 
 **Files:**
+
 - Modify: `crates/core/tests/snapshots/snapshots__snapshot_rdt_compat.snap`
 - Modify: `crates/core/tests/snapshots/` (new svg-icon entry)
 - Modify: `docs/rdt-coverage.md`
@@ -537,21 +545,25 @@ Expected: all tests pass.
 - [ ] **Step 4: Update `docs/rdt-coverage.md`**
 
 In the "Known bugs" section, update:
+
 - `Bug: method-shorthand handler loses param type` → mark as **FIXED** (2026-06-28), link to commit
 - `Bug: Pick<T, Keys> not resolved even for source types` → mark as **FIXED** (2026-06-28), link to commit
 
 In the "Component patterns" table, update:
+
 - `Method-shorthand handler (shorthand form)` row: change `⚠️ BUG` to `✅` and update "Covered by" to `rdt-compat/controlled`
 - `Pick<SourceInterface, Keys>` row: change `⚠️ BUG` to `✅` and update "Covered by" to `rdt-compat/pick-source`
 - Add new row for `SVGAttributes` → `✅ rdt-compat/svg-icon`
 
 In the "Known gaps summary" table, add new ✅ done rows:
+
 - TSMethodSignature param extraction
 - React namespace (SVGAttributes, HTMLProps, etc.)
 - `Readonly<T>` transparent wrapper
 - Inline `Pick<T,K>` in extends position
 
 Add remaining unfixed items to a "Remaining structural gaps" section (not deferred/type-checker):
+
 - Union-of-interfaces as root props type (silent skip, no diagnostic)
 - Component description set to last prop's JSDoc
 
@@ -569,6 +581,7 @@ git commit -m "test: regenerate snapshots after structural gap fixes; update cov
 This task just links the already-written `docs/type-checker-integration.md` from the coverage matrix and STATUS doc so future readers know where to find the deferred work.
 
 **Files:**
+
 - Modify: `docs/rdt-coverage.md` (add section at bottom)
 - Modify: `docs/09-STATUS.md` (add reference under known gaps)
 
@@ -581,19 +594,17 @@ At the very bottom of `docs/rdt-coverage.md`, add:
 
 ## Deferred gaps (require Corsa / TypeScript 7.1 type checker)
 
-The following gaps cannot be fixed with structural AST analysis alone.
-See `docs/type-checker-integration.md` for the full plan, timeline, and integration architecture.
+The following gaps cannot be fixed with structural AST analysis alone. See `docs/type-checker-integration.md` for the full plan, timeline, and integration architecture.
 
 | Gap | Why deferred |
-|-----|-------------|
+| --- | --- |
 | Generic parameter substitution (`List<T>` where T from call site) | Requires `checker.getTypeArguments()` — Corsa API |
 | Conditional types (`T extends U ? A : B`) | Already emitted as `opaque` — correct current behavior |
 | Mapped types (`{ [K in keyof T]: … }`) | Already emitted as `opaque` — correct current behavior |
 | `typeof expr` multi-level depth | `typeof Primitive.button` not followed to inferred type |
 | Multi-file generic propagation | `ComponentProps<typeof Button>` across files |
 
-**Target:** TypeScript 7.1 + Corsa API stable (est. Q1 2027)
-**Feature flag:** `--features=type-checker` (will not affect default builds)
+**Target:** TypeScript 7.1 + Corsa API stable (est. Q1 2027) **Feature flag:** `--features=type-checker` (will not affect default builds)
 ```
 
 - [ ] **Step 2: Add reference to `docs/09-STATUS.md`**
@@ -601,8 +612,7 @@ See `docs/type-checker-integration.md` for the full plan, timeline, and integrat
 Find the "Known gaps" or "Open issues" section in `09-STATUS.md` and add:
 
 ```markdown
-For the five structural gaps fixed in Phase X and the deferred type-checker gaps,
-see `docs/rdt-coverage.md` and `docs/type-checker-integration.md`.
+For the five structural gaps fixed in Phase X and the deferred type-checker gaps, see `docs/rdt-coverage.md` and `docs/type-checker-integration.md`.
 ```
 
 - [ ] **Step 3: Commit**
@@ -626,6 +636,7 @@ cargo clippy -p oxc-react-docgen-core -- -D warnings
 Both should produce zero failures and zero warnings.
 
 Check that these snapshot assertions hold:
+
 1. `controlled.tsx` → `onValueChange` has `eventType: "string"` (not `"..."`)
 2. `pick-source.tsx` → `IconButton` has `disabled`, `type`, `form` props
 3. `svg-icon.tsx` → `Icon` has `size` and `color` props; no `UnresolvableImport` diagnostics

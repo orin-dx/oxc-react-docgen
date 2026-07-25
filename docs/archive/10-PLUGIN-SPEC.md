@@ -21,6 +21,7 @@ apps/
 ```
 
 **Migration steps:**
+
 - Rename `crates/napi/` → `crates/binding/` (update `Cargo.toml` workspace members + `packages/napi/` build script)
 - Move `packages/validate/` → `apps/validate/`
 - Delete `packages/rolldown-plugin/`
@@ -193,7 +194,7 @@ Existing `apps/validate/` harness once `run-ours.ts` is implemented.
 ## 7. Decisions log
 
 | Decision | Rationale |
-|----------|-----------|
+| --- | --- |
 | Single `Plugin`, not `Plugin[]` | No internal composition needed; simpler for consumers to compose |
 | Vite `^7.0.0 \|\| ^8.0.0` | 7 is current stable; 8 ships Rolldown (March 2026) — no API surface we use changes |
 | No `enforce: 'pre'` | OXC reads disk directly; no need to intercept Vite's transform pipeline |

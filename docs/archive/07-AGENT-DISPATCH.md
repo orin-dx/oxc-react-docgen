@@ -3,8 +3,7 @@
 
 ## Overview
 
-9 Claude Code sessions in total, across 6 phases.
-Each session gets: its briefing document + the master plan + types.rs (after Phase 1a).
+9 Claude Code sessions in total, across 6 phases. Each session gets: its briefing document + the master plan + types.rs (after Phase 1a).
 
 ## Phase 0 — Repository Setup
 **Sessions: 1**
@@ -107,8 +106,7 @@ Prompt to Claude Code:
 **Sessions: 1 (after Phase 2 complete)**
 **Model: claude-sonnet-4-6**
 
-Send: 00-MASTER-PLAN.md + 02-PHASE1A-TYPES.md + 04-PHASE2B2C-3A3B.md (Resolver section)
-      + 06-SERIALIZERS-TESTS-GOTCHAS.md (Critical Gotchas section)
+Send: 00-MASTER-PLAN.md + 02-PHASE1A-TYPES.md + 04-PHASE2B2C-3A3B.md (Resolver section) + 06-SERIALIZERS-TESTS-GOTCHAS.md (Critical Gotchas section)
 
 Prompt to Claude Code:
 > "Implement crates/core/src/resolver.rs and crates/core/src/cache.rs.
@@ -141,8 +139,7 @@ Prompt to Claude Code:
 **Sessions: 1 (after Phase 3 complete)**
 **Model: claude-sonnet-4-6**
 
-Send: 00-MASTER-PLAN.md + 05-PHASE4-5-NAPI-CLI-PLUGINS.md (NAPI section)
-      + 06-SERIALIZERS-TESTS-GOTCHAS.md (NAPI thread safety gotcha)
+Send: 00-MASTER-PLAN.md + 05-PHASE4-5-NAPI-CLI-PLUGINS.md (NAPI section) + 06-SERIALIZERS-TESTS-GOTCHAS.md (NAPI thread safety gotcha)
 
 Prompt to Claude Code:
 > "Implement crates/napi/src/lib.rs and packages/napi/index.d.ts.
@@ -174,8 +171,7 @@ Prompt to Claude Code:
 **Sessions: 1 (after Phase 4a NAPI)**
 **Model: claude-sonnet-4-6**
 
-Send: 00-MASTER-PLAN.md + 05-PHASE4-5-NAPI-CLI-PLUGINS.md (Vite plugin section)
-      + 06-SERIALIZERS-TESTS-GOTCHAS.md (Vite enforce:pre gotcha)
+Send: 00-MASTER-PLAN.md + 05-PHASE4-5-NAPI-CLI-PLUGINS.md (Vite plugin section) + 06-SERIALIZERS-TESTS-GOTCHAS.md (Vite enforce:pre gotcha)
 
 Prompt to Claude Code:
 > "Implement packages/vite-plugin/src/index.ts.

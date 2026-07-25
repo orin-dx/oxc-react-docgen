@@ -5,9 +5,7 @@
 
 ## Mission
 
-Walk OXC AST for a single file, collect everything into a `SourceData`.
-This is the most complex Rust code in the project.
-Zero cross-file dependencies — each call is completely independent.
+Walk OXC AST for a single file, collect everything into a `SourceData`. This is the most complex Rust code in the project. Zero cross-file dependencies — each call is completely independent.
 
 ## Acceptance Criteria
 

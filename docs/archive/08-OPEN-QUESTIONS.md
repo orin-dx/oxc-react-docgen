@@ -1,7 +1,6 @@
 # Open Questions & Architecture Decisions
 
-Tracks gaps in the phase specs, decisions needed before implementation, and
-accuracy/DX concerns to carry forward into each phase.
+Tracks gaps in the phase specs, decisions needed before implementation, and accuracy/DX concerns to carry forward into each phase.
 
 ---
 
@@ -9,9 +8,7 @@ accuracy/DX concerns to carry forward into each phase.
 
 **Decision:** `docgen.config.ts` (not `oxc-react-docgen.config.ts`)
 
-Follows `vite.config.ts` / `eslint.config.js` convention. Short, obvious in
-context, no collision risk. Config shape mirrors `PipelineOptions` + a
-`propFilter` function.
+Follows `vite.config.ts` / `eslint.config.js` convention. Short, obvious in context, no collision risk. Config shape mirrors `PipelineOptions` + a `propFilter` function.
 
 TODO (Phase 4b): implement config file loading in the CLI.
 
@@ -104,8 +101,7 @@ impl DtsCache {
     pub fn save_to_disk(&self);
 }
 ```
-Storage: MessagePack (rmp-serde) keyed by `(path, mtime)`.
-Location: `dirs::cache_dir() / "oxc-react-docgen" / "dts-cache.msgpack"`.
+Storage: MessagePack (rmp-serde) keyed by `(path, mtime)`. Location: `dirs::cache_dir() / "oxc-react-docgen" / "dts-cache.msgpack"`.
 
 ### Watch mode incremental — UNIMPLEMENTED
 `WatchSession::update_file` is `todo!()`. Needs reverse-dep graph walk.
@@ -140,8 +136,7 @@ Some libraries document defaults via JSDoc rather than destructuring:
 /** @default "md" */
 size?: 'sm' | 'md' | 'lg'
 ```
-Phase 2a: parse `@default <value>` and populate `RawProp`'s default.
-Phase 3a: surface as `ParsedProp.default_value`.
+Phase 2a: parse `@default <value>` and populate `RawProp`'s default. Phase 3a: surface as `ParsedProp.default_value`.
 
 ### Event handler type inference
 The spec detects `MouseEventHandler` etc. from baked-in names.
@@ -165,8 +160,7 @@ Phase 2a: parse inline function types and classify as `EventHandler`.
 
 ## Decisions Made
 
-The following questions were resolved during the Phase 3/4/5 architectural review.
-They are recorded here to prevent re-litigation.
+The following questions were resolved during the Phase 3/4/5 architectural review. They are recorded here to prevent re-litigation.
 
 | Topic | Decision |
 |---|---|

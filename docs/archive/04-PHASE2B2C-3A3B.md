@@ -5,9 +5,7 @@
 
 ## Mission
 
-Given a `GlobalSourceData`, build lookup structures that allow the resolver to
-trace any type name → its canonical declaration file.
-This is pure data transformation — no I/O.
+Given a `GlobalSourceData`, build lookup structures that allow the resolver to trace any type name → its canonical declaration file. This is pure data transformation — no I/O.
 
 ## Key Types to Implement
 
@@ -149,9 +147,7 @@ mod tests {
 
 ## Mission
 
-A single function that recognizes named generic type patterns and returns either
-resolved props or a simplified PropType. No trait objects, no dynamic dispatch —
-just a match arm.
+A single function that recognizes named generic type patterns and returns either resolved props or a simplified PropType. No trait objects, no dynamic dispatch — just a match arm.
 
 ## The Complete known.rs
 
@@ -379,8 +375,7 @@ fn simple_prop(name: &str, prop_type: PropType, required: bool, description: &st
 
 ## Mission
 
-Given GlobalSourceData and an ImportResolutionMap, resolve a `ComponentMapping`
-to a complete `ComponentEntry` with fully-typed `PropType` props.
+Given GlobalSourceData and an ImportResolutionMap, resolve a `ComponentMapping` to a complete `ComponentEntry` with fully-typed `PropType` props.
 
 This is the hardest logic in the codebase. Be methodical.
 
@@ -817,9 +812,7 @@ The resolver needs no changes for this — it just handles `ComponentMapping` en
 
 ## Mission
 
-Orchestrate the full extraction: discover files, parse in parallel with rayon,
-merge GlobalSourceData, resolve in parallel, collect output.
-Also manages the DTS cache and incremental watch state.
+Orchestrate the full extraction: discover files, parse in parallel with rayon, merge GlobalSourceData, resolve in parallel, collect output. Also manages the DTS cache and incremental watch state.
 
 ## pipeline.rs Structure
 

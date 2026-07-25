@@ -4,8 +4,7 @@
 
 ## Mission
 
-Bootstrap the complete repository skeleton. No logic, no algorithms — just structure,
-tooling, and the workspace Cargo.toml so every subsequent agent has a stable foundation.
+Bootstrap the complete repository skeleton. No logic, no algorithms — just structure, tooling, and the workspace Cargo.toml so every subsequent agent has a stable foundation.
 
 ## Acceptance Criteria
 

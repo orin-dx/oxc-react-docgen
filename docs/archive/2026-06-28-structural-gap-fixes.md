@@ -12,13 +12,9 @@
 
 ## Background
 
-Five gaps found in `docs/rdt-coverage.md` and `docs/type-checker-integration.md`.
-These are NOT the deferred gaps (generics, conditionals, mapped types) — those require
-the Corsa API (TypeScript 7.1, est. Q1 2027). These five are fixable today.
+Five gaps found in `docs/rdt-coverage.md` and `docs/type-checker-integration.md`. These are NOT the deferred gaps (generics, conditionals, mapped types) — those require the Corsa API (TypeScript 7.1, est. Q1 2027). These five are fixable today.
 
-Run tests with: `cargo test -p oxc-react-docgen-core`
-Snapshot test specifically: `cargo test -p oxc-react-docgen-core --test snapshots`
-Regenerate snapshots: `INSTA_UPDATE=always cargo test -p oxc-react-docgen-core --test snapshots`
+Run tests with: `cargo test -p oxc-react-docgen-core` Snapshot test specifically: `cargo test -p oxc-react-docgen-core --test snapshots` Regenerate snapshots: `INSTA_UPDATE=always cargo test -p oxc-react-docgen-core --test snapshots`
 
 Non-negotiables from CLAUDE.md:
 - No `unwrap()` outside `#[cfg(test)]` — use `?`
@@ -145,8 +141,7 @@ TSSignature::TSMethodSignature(ms) => {
 cargo build -p oxc-react-docgen-core 2>&1 | head -40
 ```
 
-Expected: no errors. If OXC's `FormalParameter` field for method params is named
-differently than `params`, check with:
+Expected: no errors. If OXC's `FormalParameter` field for method params is named differently than `params`, check with:
 ```bash
 grep -n "TSMethodSignature\|FormalParameter" crates/core/src/extractor/mod.rs | head -20
 ```
@@ -157,8 +152,7 @@ grep -n "TSMethodSignature\|FormalParameter" crates/core/src/extractor/mod.rs | 
 cargo test -p oxc-react-docgen-core 2>&1 | tail -20
 ```
 
-Expected: snapshot tests fail because `onValueChange` now shows `eventType:"string"` not `"..."`.
-Unit tests should all pass. The failure is expected — snapshot update is Task 5.
+Expected: snapshot tests fail because `onValueChange` now shows `eventType:"string"` not `"..."`. Unit tests should all pass. The failure is expected — snapshot update is Task 5.
 
 - [ ] **Step 5: Commit**
 
@@ -244,8 +238,7 @@ After the existing `"AriaAttributes" => None` entry (or wherever the match ends)
 "HTMLProps" => Some("div"),                 // generic HTML props → div
 ```
 
-The `None` return from `html_element_for` means "we recognize this is an HTMLAttributes-
-family type, but don't inject a specific element's notable attrs." That's correct for SVG.
+The `None` return from `html_element_for` means "we recognize this is an HTMLAttributes- family type, but don't inject a specific element's notable attrs." That's correct for SVG.
 
 - [ ] **Step 4: Add to `is_react_builtin()` in `react_types.rs`**
 
@@ -255,8 +248,7 @@ In the list of React builtin names (FC, ComponentType, etc.), add:
 "ComponentRef" | "JSXElementConstructor" | "SVGAttributes" | "SVGProps" | "HTMLProps"
 ```
 
-These are terminal React types — they provide no extractable props in our structural
-analysis; they should be composed/inherited, not resolved further.
+These are terminal React types — they provide no extractable props in our structural analysis; they should be composed/inherited, not resolved further.
 
 - [ ] **Step 5: Add to step-6 silent list in `resolver/named.rs`**
 
@@ -270,8 +262,7 @@ Find the step-6 block in `named.rs` that checks known-harmless type names. Add:
 || bare == "JSXElementConstructor"
 ```
 
-Or wherever the suffix/name matching is done. This prevents UnresolvableImport from
-firing when these are referenced from DTS files we can't follow.
+Or wherever the suffix/name matching is done. This prevents UnresolvableImport from firing when these are referenced from DTS files we can't follow.
 
 - [ ] **Step 6: Compile and run tests**
 
@@ -280,8 +271,7 @@ cargo build -p oxc-react-docgen-core 2>&1 | head -20
 cargo test -p oxc-react-docgen-core --test snapshots 2>&1 | tail -20
 ```
 
-Expected: new snapshot for `svg-icon.tsx` is missing (snapshot tests will fail because
-the new fixture has no snapshot yet). That's fine — will be regenerated in Task 5.
+Expected: new snapshot for `svg-icon.tsx` is missing (snapshot tests will fail because the new fixture has no snapshot yet). That's fine — will be regenerated in Task 5.
 
 - [ ] **Step 7: Commit**
 
@@ -314,8 +304,7 @@ The fix in `alias.rs` is sufficient: match `"Readonly"` before `_ =>` and extrac
 sed -n '1,80p' crates/core/src/extractor/alias.rs
 ```
 
-Confirm the structure: Omit arm, Pick arm, Partial arm, Required arm, `_ =>` wildcard.
-Find the exact line where `_ =>` begins.
+Confirm the structure: Omit arm, Pick arm, Partial arm, Required arm, `_ =>` wildcard. Find the exact line where `_ =>` begins.
 
 - [ ] **Step 2: Add `"Readonly"` arm before `_ =>`**
 
@@ -334,8 +323,7 @@ In `classify_type_alias`, before the `_ =>` wildcard, add:
 }
 ```
 
-This mirrors the Partial arm exactly — they both unwrap a single inner type and create
-a Passthrough alias pointing to the inner.
+This mirrors the Partial arm exactly — they both unwrap a single inner type and create a Passthrough alias pointing to the inner.
 
 - [ ] **Step 3: Compile**
 
@@ -343,9 +331,7 @@ a Passthrough alias pointing to the inner.
 cargo build -p oxc-react-docgen-core 2>&1 | head -20
 ```
 
-Expected: no errors. If `CollectedType::Named` has a different shape (check
-`types/collected.rs`), adjust accordingly — the `Named` variant takes `name: CompactString`
-and `args: Vec<CollectedType>`.
+Expected: no errors. If `CollectedType::Named` has a different shape (check `types/collected.rs`), adjust accordingly — the `Named` variant takes `name: CompactString` and `args: Vec<CollectedType>`.
 
 - [ ] **Step 4: Run unit tests**
 
@@ -353,8 +339,7 @@ and `args: Vec<CollectedType>`.
 cargo test -p oxc-react-docgen-core 2>&1 | grep -E "FAILED|ok|test result"
 ```
 
-Expected: all unit tests pass. Snapshot tests may fail if any fixture uses `Readonly<T>`
-— that's fine, handled in Task 5.
+Expected: all unit tests pass. Snapshot tests may fail if any fixture uses `Readonly<T>` — that's fine, handled in Task 5.
 
 - [ ] **Step 5: Commit**
 
@@ -374,9 +359,7 @@ git commit -m "feat: handle Readonly<T> as transparent alias in extractor"
 This calls `resolve_props_chain("Pick", type_args, ...)`. Step 1 of `resolve_props_chain`
 matches `"Pick"` and returns `ResolvedChain::default()` (empty) regardless of type_args.
 
-The alias.rs Pick handler (which correctly resolves Pick) is only reachable from the
-`type_aliases` map — i.e., when the user writes `type X = Pick<T,K>`. When Pick appears
-in an `extends` clause directly, it bypasses the alias system entirely.
+The alias.rs Pick handler (which correctly resolves Pick) is only reachable from the `type_aliases` map — i.e., when the user writes `type X = Pick<T,K>`. When Pick appears in an `extends` clause directly, it bypasses the alias system entirely.
 
 **Fix:** Add step 0.5 before step 1 in `resolve_props_chain`. If the type name is a
 utility type AND type_args is non-empty, construct a synthetic `CollectedTypeAlias` and
@@ -393,8 +376,7 @@ route through `resolve_type_alias_chain` (which already handles Pick and Omit co
 sed -n '1,80p' crates/core/src/resolver/chain.rs
 ```
 
-Confirm the `// ── Step 1` comment and its `matches!()` block. Note the exact line where
-step 1 begins.
+Confirm the `// ── Step 1` comment and its `matches!()` block. Note the exact line where step 1 begins.
 
 - [ ] **Step 2: Read `resolver/alias.rs` to confirm Pick arm shape**
 
@@ -402,13 +384,11 @@ step 1 begins.
 sed -n '1,80p' crates/core/src/resolver/alias.rs
 ```
 
-Find the `CollectedTypeAlias::Pick { base, picked_keys, file_path }` arm. Note the field
-names — `base` is a `CollectedType`, `picked_keys` is a `Vec<CompactString>`.
+Find the `CollectedTypeAlias::Pick { base, picked_keys, file_path }` arm. Note the field names — `base` is a `CollectedType`, `picked_keys` is a `Vec<CompactString>`.
 
 - [ ] **Step 3: Add helper `parse_string_union_keys` to `resolver/chain.rs`**
 
-This helper converts the raw type_args[1] string (e.g., `"'disabled' | 'type' | 'form'"`)
-into a `Vec<String>`. Add it as a private fn near the bottom of `chain.rs`:
+This helper converts the raw type_args[1] string (e.g., `"'disabled' | 'type' | 'form'"`) into a `Vec<String>`. Add it as a private fn near the bottom of `chain.rs`:
 
 ```rust
 fn parse_string_union_keys(raw: &str) -> Vec<String> {
@@ -480,8 +460,7 @@ if !type_args.is_empty() {
 }
 ```
 
-Also add `use camino::Utf8PathBuf;` to the imports at the top of `chain.rs` if not
-already present — check with `grep "Utf8PathBuf" crates/core/src/resolver/chain.rs`.
+Also add `use camino::Utf8PathBuf;` to the imports at the top of `chain.rs` if not already present — check with `grep "Utf8PathBuf" crates/core/src/resolver/chain.rs`.
 
 - [ ] **Step 5: Compile**
 
@@ -489,8 +468,7 @@ already present — check with `grep "Utf8PathBuf" crates/core/src/resolver/chai
 cargo build -p oxc-react-docgen-core 2>&1 | head -30
 ```
 
-If field names don't match, fix them. The key invariant: we're constructing the same
-`CollectedTypeAlias` shape that `extractor/alias.rs` produces for `type X = Pick<T,K>`.
+If field names don't match, fix them. The key invariant: we're constructing the same `CollectedTypeAlias` shape that `extractor/alias.rs` produces for `type X = Pick<T,K>`.
 
 - [ ] **Step 6: Run tests**
 
@@ -498,8 +476,7 @@ If field names don't match, fix them. The key invariant: we're constructing the 
 cargo test -p oxc-react-docgen-core 2>&1 | grep -E "FAILED|ok|test result"
 ```
 
-Expected: unit tests pass. Snapshot tests will fail because pick-source.tsx will now
-have disabled/type/form props. That's correct — handled in Task 5.
+Expected: unit tests pass. Snapshot tests will fail because pick-source.tsx will now have disabled/type/form props. That's correct — handled in Task 5.
 
 - [ ] **Step 7: Commit**
 
@@ -541,15 +518,13 @@ Expected: `eventType: "string"` (was `"..."` before)
 grep -A2 "disabled\|type.*form" crates/core/tests/snapshots/snapshots__snapshot_rdt_compat.snap | head -20
 ```
 
-Expected: `disabled`, `type`, `form` now appear under `IconButton` props with
-`parent.name: "ButtonBaseProps"`
+Expected: `disabled`, `type`, `form` now appear under `IconButton` props with `parent.name: "ButtonBaseProps"`
 
 ```bash
 grep "Accordion\|accordion" crates/core/tests/snapshots/snapshots__snapshot_rdt_compat.snap
 ```
 
-Note: Accordion may still be absent (union-of-interfaces root props bug is NOT fixed
-in this plan). That's expected and documented.
+Note: Accordion may still be absent (union-of-interfaces root props bug is NOT fixed in this plan). That's expected and documented.
 
 - [ ] **Step 3: Run full test suite**
 
@@ -591,8 +566,7 @@ git commit -m "test: regenerate snapshots after structural gap fixes; update cov
 
 ## Task 6: Create type-checker integration doc reference in coverage matrix
 
-This task just links the already-written `docs/type-checker-integration.md` from the
-coverage matrix and STATUS doc so future readers know where to find the deferred work.
+This task just links the already-written `docs/type-checker-integration.md` from the coverage matrix and STATUS doc so future readers know where to find the deferred work.
 
 **Files:**
 - Modify: `docs/rdt-coverage.md` (add section at bottom)

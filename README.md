@@ -59,9 +59,7 @@ docgen.components['Button'].props
 
 ## CLI
 
-The CLI is a single Rust binary (`crates/cli`) — argument parsing, output formatting, and
-`--format rdt`/`--format storybook` serialization all live there and nowhere else.
-`@oxc-react-docgen/cli` (once published) is a thin npm wrapper that just execs the platform-appropriate compiled binary; it deliberately contains no reimplementation of CLI behavior, so there's exactly one place that behavior can drift.
+The CLI is a single Rust binary (`crates/cli`) — argument parsing, output formatting, and `--format rdt`/`--format storybook` serialization all live there and nowhere else. `@oxc-react-docgen/cli` (once published) is a thin npm wrapper that just execs the platform-appropriate compiled binary; it deliberately contains no reimplementation of CLI behavior, so there's exactly one place that behavior can drift.
 
 ```bash
 # Once published: npx @oxc-react-docgen/cli extract --src src/ --out docgen.json

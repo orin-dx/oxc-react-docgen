@@ -387,8 +387,7 @@ To keep team file-ownership disjoint and the wave reviewable, the following conf
 
 - [ ] **Step 4: Test**
 
-  For Step 1: run the full snapshot suite, update snapshots if the `[ROOT]` redaction needs adjusting for now-consistently-absolute paths (check `redact_paths` in `snapshots.rs` still does its job).
-  For Steps 2-3: `cargo clippy --workspace --all-targets -- -D warnings` should show no new warnings; no behavior change expected, so the full test suite should be green with zero snapshot diffs from these two steps specifically.
+For Step 1: run the full snapshot suite, update snapshots if the `[ROOT]` redaction needs adjusting for now-consistently-absolute paths (check `redact_paths` in `snapshots.rs` still does its job). For Steps 2-3: `cargo clippy --workspace --all-targets -- -D warnings` should show no new warnings; no behavior change expected, so the full test suite should be green with zero snapshot diffs from these two steps specifically.
 
 - [ ] **Step 5: Verify and commit**
 

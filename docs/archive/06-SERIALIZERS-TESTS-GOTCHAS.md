@@ -8,8 +8,7 @@
 
 ## The Three Output Formats
 
-All three formats are produced from the same `ExtractionOutput`.
-No separate extraction — just different views.
+All three formats are produced from the same `ExtractionOutput`. No separate extraction — just different views.
 
 ```rust
 // crates/core/src/serializer.rs

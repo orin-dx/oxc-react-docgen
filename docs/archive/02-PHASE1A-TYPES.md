@@ -5,9 +5,7 @@
 
 ## Mission
 
-Define every data type shared across the system. This is the contract every
-other agent depends on. Correctness and completeness here is more important
-than anything else. No logic — only type definitions.
+Define every data type shared across the system. This is the contract every other agent depends on. Correctness and completeness here is more important than anything else. No logic — only type definitions.
 
 ## Acceptance Criteria
 
@@ -581,8 +579,7 @@ impl GlobalSourceData {
 
 ## CRITICAL: Use camino's Utf8Path
 
-All path operations use `camino::{Utf8Path, Utf8PathBuf}` — never `std::path::Path`.
-This eliminates `.to_str().unwrap()` patterns throughout the codebase.
+All path operations use `camino::{Utf8Path, Utf8PathBuf}` — never `std::path::Path`. This eliminates `.to_str().unwrap()` patterns throughout the codebase.
 
 ## What NOT to Do
 

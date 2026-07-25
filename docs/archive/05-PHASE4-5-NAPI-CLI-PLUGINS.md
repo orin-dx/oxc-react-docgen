@@ -5,8 +5,7 @@
 
 ## Mission
 
-Expose three functions to Node.js: extract(), extractFile(), closeSession().
-Keep the boundary thin — JSON string across the NAPI boundary, not complex NAPI types.
+Expose three functions to Node.js: extract(), extractFile(), closeSession(). Keep the boundary thin — JSON string across the NAPI boundary, not complex NAPI types.
 
 ## The Three Functions
 
@@ -251,8 +250,7 @@ export declare function closeSession(sessionId: number): void
 
 ## Mission
 
-Simple, focused CLI. Four subcommands. Rich miette diagnostics.
-Clean summary output. No TUI.
+Simple, focused CLI. Four subcommands. Rich miette diagnostics. Clean summary output. No TUI.
 
 ## CLI Structure
 
@@ -632,8 +630,7 @@ The `find_config_file` helper walks from `root` upward, stopping at a workspace 
 
 ## Mission (original)
 
-Thin TypeScript wrapper over the NAPI binary. Follows Vite plugin best practices.
-Zero re-implementation of extraction logic.
+Thin TypeScript wrapper over the NAPI binary. Follows Vite plugin best practices. Zero re-implementation of extraction logic.
 
 ## packages/vite-plugin/src/index.ts
 
@@ -865,8 +862,7 @@ export type { ComponentEntry, PropItem, ExtractionOutput } from '@oxc-react-docg
 
 ## Mission
 
-Native Rust rolldown plugin — no NAPI, no JSON boundary.
-Uses the core crate directly. Follows rolldown plugin API.
+Native Rust rolldown plugin — no NAPI, no JSON boundary. Uses the core crate directly. Follows rolldown plugin API.
 
 ## packages/rolldown-plugin/Cargo.toml
 

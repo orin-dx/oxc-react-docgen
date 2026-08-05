@@ -39,6 +39,15 @@ pub(super) fn resolve_template_literal(
     OpaqueDetail::give_up(state, raw.clone(), OpaqueReason::TemplateLiteral { expression: raw }, diagnostic)
 }
 
+/// Cap on the Cartesian product `try_expand_template_literal` accumulates
+/// across a template literal's parts. Each part can itself be a union with
+/// many members, so the product is exponential in part count — an attacker-
+/// or generator-controlled type with enough parts/members would otherwise
+/// allocate unboundedly before ever returning. Same shape of guard as
+/// `extractor/mod.rs`'s `MAX_SOURCE_NESTING_DEPTH`, applied to a different
+/// input-derived size.
+const MAX_TEMPLATE_LITERAL_EXPANSIONS: usize = 4096;
+
 /// Try to fully expand a template literal into a list of concrete string values.
 /// Returns `None` if any part cannot be resolved to string literals.
 pub(super) fn try_expand_template_literal(
@@ -94,6 +103,9 @@ pub(super) fn try_expand_template_literal(
     // Cartesian product across all parts.
     let mut result = vec![String::new()];
     for alternatives in per_part {
+        if result.len().saturating_mul(alternatives.len()) > MAX_TEMPLATE_LITERAL_EXPANSIONS {
+            return None; // Falls through to the Opaque+diagnostic degrade path in resolve_template_literal.
+        }
         let mut next = Vec::with_capacity(result.len() * alternatives.len());
         for prefix in &result {
             for alt in &alternatives {
@@ -144,5 +156,60 @@ pub(super) fn resolve_named_to_string_literals(
             members.into_iter().map(|m| if let PropType::StringLiteral(s) = m { Some(s) } else { None }).collect()
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use camino::Utf8PathBuf;
+
+    use crate::pipeline::PipelineOptions;
+
+    fn empty_ctx() -> ResolutionContext {
+        let global = Arc::new(GlobalSourceData::default());
+        let options = PipelineOptions::default();
+        ResolutionContext::new(global, &options)
+    }
+
+    /// 5 parts x 10-member unions = 10^5 = 100,000 combinations — without a
+    /// cap this builds a 100k-entry `Vec<String>` (and grows exponentially
+    /// with more parts/members, the unbounded-allocation shape from
+    /// P1-1/P1-2). `MAX_TEMPLATE_LITERAL_EXPANSIONS` (4096) must stop the
+    /// accumulation loop well before that.
+    fn oversized_parts() -> Vec<CollectedType> {
+        let member = |part: usize, i: usize| CollectedType::StringLiteral(format!("p{part}v{i}").into());
+        (0..5).map(|part| CollectedType::Union((0..10).map(|i| member(part, i)).collect())).collect()
+    }
+
+    #[test]
+    fn test_try_expand_template_literal_returns_none_past_cap() {
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        let file = Utf8PathBuf::from("/test/button.tsx");
+
+        let result = try_expand_template_literal(&oversized_parts(), &file, &ctx, &mut state, 0);
+        assert!(result.is_none(), "expected None once the Cartesian product exceeds MAX_TEMPLATE_LITERAL_EXPANSIONS");
+    }
+
+    #[test]
+    fn test_template_literal_expansion_caps_and_degrades_to_opaque() {
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        let file = Utf8PathBuf::from("/test/button.tsx");
+
+        let result = resolve_template_literal(&oversized_parts(), &file, &ctx, &mut state, 0);
+
+        match &result {
+            PropType::Opaque(detail) if matches!(detail.reason(), OpaqueReason::TemplateLiteral { .. }) => {}
+            other => panic!("expected capped expansion to degrade to Opaque(TemplateLiteral), got {other:?}"),
+        }
+        assert!(
+            state.diagnostics.iter().any(|d| d.code == DiagnosticCode::TemplateLiteralOpaque),
+            "expected a TemplateLiteralOpaque diagnostic to be recorded, got {:?}",
+            state.diagnostics
+        );
     }
 }

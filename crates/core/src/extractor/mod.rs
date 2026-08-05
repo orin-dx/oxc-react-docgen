@@ -1596,4 +1596,30 @@ interface ButtonProps {
             data.diagnostics
         );
     }
+
+    #[test]
+    fn zero_param_pascal_case_function_declaration_is_not_flagged_as_skipped() {
+        // `function Button() { ... }` — a legitimate zero-props component.
+        // func.params.items.first() is None here, which is "wrong shape, not
+        // a candidate at all" per SkippedCandidate's own doc comment — this
+        // function was never a malformed candidate for Pattern 4 (that
+        // pattern exists specifically to read a first param's type
+        // annotation), so it must not emit a diagnostic. It also produces no
+        // mapping, since there's no props type to extract — this is a
+        // pre-existing, separate limitation (no props type source at all for
+        // truly prop-less components), not something this task changes.
+        let source = r#"
+            function Button() {
+                return null;
+            }
+        "#;
+        let path = Utf8Path::new("/test/zero-param.tsx");
+        let data = parse_file(path, source);
+
+        assert!(
+            !data.diagnostics.iter().any(|d| d.code == DiagnosticCode::SkippedCandidate),
+            "a parameterless component must not be flagged as a skipped candidate, got: {:?}",
+            data.diagnostics
+        );
+    }
 }

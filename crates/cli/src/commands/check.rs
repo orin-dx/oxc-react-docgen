@@ -18,17 +18,6 @@ pub fn cmd_check(args: crate::CheckArgs, quiet: bool, config_path: Option<&str>)
     })?;
     let output = oxc_react_docgen_core::pipeline::extract(&options);
 
-    let errors: Vec<_> = output
-        .diagnostics
-        .iter()
-        .filter(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Error))
-        .collect();
-    let warnings: Vec<_> = output
-        .diagnostics
-        .iter()
-        .filter(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Warning))
-        .collect();
-
     if args.json {
         println!("{}", serde_json::to_string(&output.diagnostics).into_diagnostic()?);
     } else if !quiet {
@@ -36,14 +25,7 @@ pub fn cmd_check(args: crate::CheckArgs, quiet: bool, config_path: Option<&str>)
         print_diagnostics(&output.diagnostics);
     }
 
-    if !errors.is_empty() {
-        return Ok(2);
-    }
-    if args.strict && !warnings.is_empty() {
-        return Ok(1);
-    }
-
-    Ok(0)
+    Ok(output.exit_code(args.strict))
 }
 
 #[cfg(test)]

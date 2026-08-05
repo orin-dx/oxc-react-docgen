@@ -65,12 +65,7 @@ pub fn cmd_extract(args: crate::ExtractArgs, quiet: bool, config_path: Option<&s
 
     // Must run regardless of --json — this is the one thing CI actually
     // depends on the exit code for.
-    let has_errors = output
-        .diagnostics
-        .iter()
-        .any(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Error));
-
-    Ok(if has_errors { 2 } else { 0 })
+    Ok(output.exit_code(false))
 }
 
 /// RDT's type-name convention for literal unions: `{"name": "enum", "value": [...]}`

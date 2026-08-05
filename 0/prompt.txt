@@ -1,0 +1,28 @@
+<task-notification>
+<task-id>a0b2d6ec80df46bec</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/8659ece6-b660-4616-9f1d-5c547b9c57c2/tasks/a0b2d6ec80df46bec.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix recipe arg-index bug + update Panda snapshot" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Done. Here's a summary of what was changed:
+
+**Bug fix** — `/Users/gabe/Projects/oxc-react-codegen/crates/core/src/extractor/interface.rs`, line 77 (now lines 77-78):
+
+The hard-coded `call.arguments.get(1)` was replaced with:
+```rust
+let arg_index = usize::from(callee_name == "cva");
+let Some(second_arg) = call.arguments.get(arg_index) else { return };
+```
+
+`cva` is the only callee that takes a base-classes string as argument 0, so it reads config from index 1. All other callees (`tv`, `defineRecipe`, `recipe`, `defineSlotRecipe`) take config at index 0.
+
+**Snapshot update** — `crates/core/tests/snapshots/snapshots__snapshot_panda.snap` now reflects the correct output for `ButtonVariants`:
+- `visual` prop expands to `solid | outline | ghost` (was in `composes` as opaque `VariantProps&lt;typeof buttonRecipe&gt;`)
+- `size` prop expands to `sm | md | lg`
+- `composes` is now empty
+- `enums.buttonRecipe` is populated with all 6 variant entries
+
+All 8 snapshot tests pass. Committed as `bded542`.</result>
+<usage><subagent_tokens>19367</subagent_tokens><tool_uses>7</tool_uses><duration_ms>45639</duration_ms></usage>
+</task-notification>

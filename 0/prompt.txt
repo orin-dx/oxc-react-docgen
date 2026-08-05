@@ -1,0 +1,9 @@
+<task-notification>
+<task-id>ac6dc94016d4a8508</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/45b9a47b-5f62-4e04-a9aa-d8a71dab3bfe/tasks/ac6dc94016d4a8508.output</output-file>
+<status>failed</status>
+<summary>Agent "Task A: parser safety + silent-drops" failed: Agent terminated early due to an API error: You've hit your session limit · resets 10:40pm (America/Toronto)</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Exactly 2 occurrences, matching the expected artifact locations. Fixing them and finalizing the snapshot.</result>
+</task-notification>

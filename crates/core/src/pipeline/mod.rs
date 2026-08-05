@@ -23,6 +23,12 @@ pub mod watch;
 use discover::{discover_files, should_skip};
 pub use watch::WatchSession;
 
+/// Filename that trips a simulated panic in the Phase 2 parse closure —
+/// exists only to let tests exercise `panic_guard::contain_panic`'s
+/// containment without a plugin hook to inject a real one through.
+#[cfg(test)]
+const PARSE_PANIC_TEST_SENTINEL: &str = "__PANIC_TEST__.tsx";
+
 // ─── PipelineOptions ─────────────────────────────────────────────────────────
 
 /// User-supplied known type override for custom library patterns.
@@ -253,25 +259,38 @@ pub(crate) fn extract_with_global(
     let cache_hits = AtomicU32::new(0);
 
     // Phase 2: Parallel parse with rayon — check DTS cache for .d.ts files.
+    // The whole closure body is wrapped in `contain_panic` so one file's
+    // parse panicking (a bug in the OXC visitor, an unanticipated AST shape)
+    // degrades to a per-file diagnostic instead of poisoning the entire
+    // `.collect()` and crashing the whole extraction run for every file.
     let source_data_vec: Vec<(Utf8PathBuf, SourceData, Option<Diagnostic>)> = src_files
         .par_iter()
         .map(|path| {
-            let is_dts = path.as_str().ends_with(".d.ts");
-            if is_dts {
-                if let Some(cached) = cache_ref.get(path) {
-                    cache_hits.fetch_add(1, Ordering::Relaxed);
-                    return (path.clone(), cached, None);
+            let label = format!("parse:{path}");
+            crate::panic_guard::contain_panic(&label, || {
+                #[cfg(test)]
+                if path.file_name() == Some(PARSE_PANIC_TEST_SENTINEL) {
+                    panic!("simulated parse-phase panic (test-only sentinel)");
                 }
-            }
-            let (source, io_diag) = match std::fs::read_to_string(path) {
-                Ok(s) => (s, None),
-                Err(e) => (String::new(), Some(Diagnostic::io_read_error(path, &e))),
-            };
-            let data = crate::extractor::parse_file(path, &source);
-            if is_dts {
-                cache_ref.insert(path, data.clone());
-            }
-            (path.clone(), data, io_diag)
+
+                let is_dts = path.as_str().ends_with(".d.ts");
+                if is_dts {
+                    if let Some(cached) = cache_ref.get(path) {
+                        cache_hits.fetch_add(1, Ordering::Relaxed);
+                        return (path.clone(), cached, None);
+                    }
+                }
+                let (source, io_diag) = match std::fs::read_to_string(path) {
+                    Ok(s) => (s, None),
+                    Err(e) => (String::new(), Some(Diagnostic::io_read_error(path, &e))),
+                };
+                let data = crate::extractor::parse_file(path, &source);
+                if is_dts {
+                    cache_ref.insert(path, data.clone());
+                }
+                (path.clone(), data, io_diag)
+            })
+            .unwrap_or_else(|diag| (path.clone(), SourceData::default(), Some(diag)))
         })
         .collect();
 
@@ -520,6 +539,36 @@ mod tests {
         let path = dir.path().join(name);
         fs::write(&path, content).unwrap();
         Utf8PathBuf::from_path_buf(path).unwrap()
+    }
+
+    // ── a_panic_during_parse_phase_degrades_to_a_diagnostic_not_a_crash ──────
+    //
+    // No plugin system exists in this codebase yet to inject a panic via a
+    // hook (that's a separate, later task), so this drives the real Phase 2
+    // rayon closure via the sentinel filename it checks for under
+    // `#[cfg(test)]` (see the `PARSE_PANIC_TEST_SENTINEL` check above).
+
+    #[test]
+    fn a_panic_during_parse_phase_degrades_to_a_diagnostic_not_a_crash() {
+        let tmp = TempDir::new().unwrap();
+        write_file(&tmp, "Button.tsx", "export const Button = () => null;");
+        write_file(&tmp, PARSE_PANIC_TEST_SENTINEL, "export const Other = () => null;");
+
+        let options = PipelineOptions {
+            src_dirs: vec![Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap()],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        // Must not panic the test process — that's the whole point.
+        let output = extract(&options);
+
+        assert_eq!(output.stats.files_parsed, 2, "both files should still be counted as discovered");
+        assert!(
+            output.diagnostics.iter().any(|d| d.code == DiagnosticCode::InternalPanic),
+            "expected an InternalPanic diagnostic, got {:?}",
+            output.diagnostics
+        );
     }
 
     // ── test_discover_files ───────────────────────────────────────────────────

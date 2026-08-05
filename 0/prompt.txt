@@ -1,0 +1,298 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+## 1. Primary Request and Intent
+
+This session had three main requests:
+1. **Moon hooks investigation**: Wait for deep-research workflow to complete, then implement correct moon 2.x native hook setup (replacing lefthook)
+2. **R12-R17**: Tackle the quality improvement queue identified in prior architecture review
+3. **Skills/agents assessment**: Evaluate whether we're properly leveraging agents and skills
+
+## 2. Key Technical Concepts
+
+- **Moon 2.x native hooks**: `vcs.hooks` in `workspace.yml` → `moon sync vcs-hooks` → `.moon/hooks/` + `git config core.hooksPath` (no lefthook needed)
+- **`hookFormat`**: `native` (default, Bash on Unix/PowerShell on Windows) vs `bash` (forces Bash). Breaking change from v1: hooks now go to `.moon/hooks/`, not `.git/hooks/`
+- **`cargo clippy --all-targets`**: Includes test/bench targets; `--all-targets` doesn't fix `#[cfg(test)]` inline dead code (only separate integration test files)
+- **`#[non_exhaustive]`**: External crates matching the enum MUST include a `_` wildcard arm
+- **`#[must_use]`**: On a type (struct) propagates — redundant on functions returning that type (`double_must_use` lint)
+- **`pub(crate)`**: Narrowing visibility of `ResolveState` from `pub` to internal
+- **superpowers skills**: Available via `Skill` tool; project-local skills in `.claude/skills/` may require fresh session to be discoverable
+- **`typos-cli`** and **`cargo-deny`**: Installed to `~/.cargo/bin/` for use in pre-commit hooks
+
+## 3. Files and Code Sections
+
+### `.moon/workspace.yml`
+Added `vcs.hooks` and `vcs.sync`:
+```yaml
+vcs:
+  client: git
+  defaultBranch: master
+  sync: true
+  hooks:
+    pre-commit:
+      - '. "$HOME/.cargo/env"'
+      - "cargo fmt --check"
+      - "cargo clippy --workspace --all-targets -- -D warnings"
+      - "typos"
+      - "cargo deny check advisories"
+```
+
+### `.moon/tasks.yml`
+Changed clippy to include `--all-targets`:
+```yaml
+lint:
+  command: cargo clippy --workspace --all-targets -- -D warnings
+```
+
+### `.moon/hooks/pre-commit` (generated, committed)
+```bash
+#!/usr/bin/env bash
+set -eo pipefail
+. "$HOME/.cargo/env"
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -D warnings
+typos
+cargo deny check advisories
+```
+
+### `justfile`
+Changed setup target:
+```
+setup:
+    proto install
+    pnpm install
+    moon sync vcs-hooks
+```
+
+### `package.json`
+Removed `lefthook: "^2.1.9"` from devDependencies.
+
+### `.typos.toml` (new file)
+```toml
+[default.extend-words]
+afe = "afe"
+sme = "sme"
+ratatui = "ratatui"
+```
+
+### `crates/core/benches/extraction.rs`
+Fixed broken bench (was using private `extractor` module):
+```rust
+fn main() { divan::main(); }
+
+#[divan::bench(args = ["shadcn/button.tsx", "shadcn/input.tsx", "radix/button.d.ts", "mui/Button.d.ts"])]
+fn extract_file_bench(bencher: divan::Bencher, fixture: &&str) {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_dir = manifest_dir
+        .join("../../fixtures")
+        .join(std::path::Path::new(fixture).parent().unwrap_or(std::path::Path::new(".")));
+    let options = oxc_react_docgen_core::pipeline::PipelineOptions {
+        src_dirs: vec![camino::Utf8PathBuf::from_path_buf(fixture_dir).expect("valid utf8 path")],
+        ..Default::default()
+    };
+    bencher.bench(|| oxc_react_docgen_core::pipeline::extract(&options));
+}
+```
+
+### `crates/core/src/lib.rs`
+```rust
+#![recursion_limit = "2048"]
+#![deny(unsafe_code)]
+
+pub(crate) mod cache;
+pub(crate) mod extractor;
+pub(crate) mod import_map;
+pub(crate) mod known;
+pub mod pipeline;
+pub mod react_types;
+pub(crate) mod resolver;
+pub mod types;
+
+pub use pipeline::{extract, PipelineOptions};
+pub use types::diagnostic::{Diagnostic, DiagnosticCode, DiagnosticSeverity};
+pub use types::output::ExtractionOutput;
+```
+
+### `crates/core/src/types/diagnostic.rs`
+Added `Display`, `Error`, `#[non_exhaustive]` on enums:
+```rust
+use std::fmt;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Diagnostic { ... }
+
+impl fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(file) = &self.file { write!(f, "{file}: ")?; }
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for Diagnostic {}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DiagnosticSeverity { Error, Warning, Info, }
+
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DiagnosticCode { UnresolvableImport, OpaqueType, ... }
+```
+
+### `crates/core/src/types/output.rs`
+Added `#[must_use]` to `ExtractionOutput`:
+```rust
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionOutput {
+    pub components: BTreeMap<String, ComponentEntry>,
+    pub enums: BTreeMap<String, Vec<EnumEntry>>,
+    pub diagnostics: Vec<Diagnostic>,
+    pub stats: ExtractionStats,
+}
+```
+
+### `crates/core/src/types/global.rs`
+Deleted `ScopedKey`; made `ResolveState` `pub(crate)`:
+```rust
+#[derive(Default)]
+pub(crate) struct ResolveState {
+    pub(crate) visited: FxHashSet<CompactString>,
+    pub(crate) diagnostics: Vec<Diagnostic>,
+}
+// ScopedKey removed entirely
+```
+
+### `crates/core/src/types/mod.rs`
+Updated comment: `ScopedKey` → `ResolveState` in module layout doc.
+
+### `crates/core/src/known.rs`
+Removed `args` field from `KnownPatternResult::Alias`:
+```rust
+pub enum KnownPatternResult {
+    Props(Vec<ParsedProp>),
+    Type(PropType),
+    Alias { name: String },  // was: Alias { name: String, args: Vec<PropType> }
+}
+```
+All construction sites changed from `Alias { name: ..., args: vec![] }` → `Alias { name: ... }`.
+
+### `crates/core/src/resolver/mod.rs`
+Removed `react_version` from `ResolutionContext`:
+```rust
+pub struct ResolutionContext {
+    pub global: Arc<GlobalSourceData>,
+    pub import_map: Arc<ImportResolutionMap>,
+    pub oxc_resolver: Arc<Resolver>,
+    pub extra_builtins: FxHashSet<CompactString>,
+    // react_version removed
+}
+```
+
+### `crates/core/src/import_map.rs`
+Added `#[allow(dead_code)]` to pre-wired scaffolding:
+- `ImportRef::is_type_only` field
+- `ReExportStep` enum
+- `ImportResolutionMap::wildcard_sources` field
+- `ImportResolutionMap::resolve_reexport_chain` method
+- `ImportResolutionMap::wildcard_sources_for` method
+
+### `crates/cli/src/output.rs`
+Added `_` wildcard arm required by `#[non_exhaustive]` on `DiagnosticSeverity`:
+```rust
+let prefix = match d.severity {
+    DiagnosticSeverity::Error => "error".red().to_string(),
+    DiagnosticSeverity::Warning => { "warn".yellow().to_string() }
+    DiagnosticSeverity::Info => "info".dimmed().to_string(),
+    _ => "info".dimmed().to_string(),
+};
+```
+
+### `crates/cli/src/commands/watch.rs`
+Fixed unused `#[must_use]` return:
+```rust
+let _ = session_clone.initialize();
+```
+
+### `crates/core/src/pipeline/mod.rs`
+Fixed unused must_use return in test:
+```rust
+let _ = session.initialize();
+```
+
+### `docs/09-STATUS.md`
+Updated: R12-R17 marked complete, pre-commit hooks row added to phase table.
+
+## 4. Errors and Fixes
+
+- **`cargo: command not found` in git hook**: PATH doesn't include `~/.cargo/bin` in hook environment. Fix: added `. "$HOME/.cargo/env"` as first hook command.
+- **`typos: command not found`**: Not installed. Fix: `cargo install typos-cli`.
+- **`cargo deny: command not found`**: Not installed. Fix: `cargo install cargo-deny`.
+- **`ExtractionOutput` re-export error `E0603`**: `ExtractionOutput` is in `types::output`, not `pipeline`. Fix: `pub use types::output::ExtractionOutput` instead of `pub use pipeline::ExtractionOutput`.
+- **clippy `double_must_use`**: `#[must_use]` on `extract()` is redundant since `ExtractionOutput` already has it. Fix: removed `#[must_use]` from the function.
+- **`unused-must-use` on `session.initialize()`**: Two call sites ignored the `#[must_use]` return. Fix: `let _ = session.initialize()`.
+- **`E0004` non-exhaustive pattern in CLI**: Adding `#[non_exhaustive]` to `DiagnosticSeverity` requires external crates to add `_` wildcard. Fix: added `_ => "info".dimmed().to_string()` in `crates/cli/src/output.rs`.
+- **Bench `E0603` private module**: `crates/core/benches/extraction.rs` referenced `extractor::parse_file` (private). Fix: rewrote bench to use public `pipeline::extract()`.
+- **`cargo fmt` rewrote entire codebase**: Pre-commit hook caught pre-existing formatting issues across all crates on first commit attempt. Fix: ran `cargo fmt` first.
+- **`rm` interactive prompt**: Using `rm lefthook.yml` prompted interactively. Fix: used `rm -f lefthook.yml`.
+- **`pnpm install` not on PATH**: Used `~/.proto/shims/pnpm install` instead.
+- **False positive typos**: `afe` (ArrowFunctionExpression binding), `sme` (StaticMemberExpression binding), `ratatui` (real library). Fix: `.typos.toml` with extend-words.
+
+## 5. Problem Solving
+
+**Solved:**
+- Moon 2.x native hooks fully working without lefthook: `vcs.hooks` → `moon sync vcs-hooks` → `.moon/hooks/` → `core.hooksPath`
+- All R12-R17 items completed (R13 was verified-as-done, R16 was handled in the hooks commit)
+- Dead code elimination: `ScopedKey` deleted, `Alias.args` removed, `ResolutionContext.react_version` removed
+- Import map scaffolding preserved with explicit `#[allow(dead_code)]` and test coverage
+- Pre-commit hook now catches format/lint/typos/security issues before every commit
+
+**Question raised but not resolved:**
+- Whether project-local skills in `.claude/skills/` are accessible via the `Skill` tool. User said "I think you're hallucinating" when I claimed they weren't. User suggested a fresh session might resolve skill discovery.
+
+## 6. All User Messages
+
+- "This session is being continued from a previous conversation..." (system continuation)
+- "let's tackle R12-R17"
+- "Are we leveraging our agents and skills?"
+- "No, you are hallucinating I think" (pushback on claim that project skills can't be invoked via Skill tool)
+- "Do we just need to restart?"
+- `/exit`
+
+## 7. Pending Tasks
+
+- **Phase 5a — Vite plugin**: Not started. Spec: `hotUpdate`, `moduleType:'js'`, `Plugin[]`, environment API
+- **Phase 5b — Rolldown plugin**: Not started. Native Rust, Rolldown 1.0 stable
+- **Phase 6 — Integration tests**: Needs `packages/validate/run-ours.ts` once NAPI binary compiled
+- **Wire config file loading**: `config.rs` currently stubs and discards result
+- **WatchSession race condition**: `ArcSwap` read-modify-write needs `rcu` or Mutex
+- **`PipelineOptions` builder** (R17 deferred): 15+ fields, deferred as medium effort
+- **Cross-package type resolution** (R10 deferred): Scaffolded in `import_map.rs` with `#[allow(dead_code)]`
+- **Investigate skill tool behavior for project-local skills**: User indicated current understanding may be wrong; needs fresh session to verify
+
+## 8. Current Work
+
+Immediately before the `/exit` command, the discussion was about whether project-local skills (`.claude/skills/rust-style`, etc.) are accessible via the `Skill` tool. I had:
+1. Tried `Skill("rust-style")` and got "Unknown skill: rust-style"
+2. Claimed project skills can't be invoked via Skill tool, only superpowers registry
+3. Read the contents of `rust-style`, `rust-types`, `rustdoc`, `dispatching-parallel-agents`, and `verification-before-completion` skills
+4. Recommended moving project skill content into CLAUDE.md
+
+User pushed back saying "No, you are hallucinating I think" — suggesting my claim about skill accessibility was wrong.
+
+User then asked "Do we just need to restart?" — I agreed a fresh session would reload the SessionStart hook and skill discovery.
+
+## 9. Optional Next Step
+
+Start a fresh Claude Code session to properly load skill discovery, then continue with Phase 5a (Vite plugin) as the next major work item. The user's last direction was to restart — no specific technical task was mid-flight at session end.
+
+The next natural work per the status doc:
+> Phase 5a — Vite plugin: Not started. Spec updated: hotUpdate, moduleType:'js', Plugin[], environment API
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

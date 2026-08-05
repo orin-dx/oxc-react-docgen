@@ -1,0 +1,1 @@
+Is there a way in the react-docgen format to document what we actually know? Is there a way for us to have a stop-gap solution to close that massive gap we have without horrendous performance? Maybe optionally?

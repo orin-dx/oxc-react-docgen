@@ -10,6 +10,28 @@ fn watch_exit_code(output: &oxc_react_docgen_core::types::ExtractionOutput) -> i
     output.exit_code(false)
 }
 
+/// Writes `contents` to `path` via a same-directory temp file + rename, so a
+/// mid-write failure (disk full, permission revoked) can never leave `path`
+/// truncated or half-written. Returns the `io::Error` on failure instead of
+/// swallowing it — callers must report it, not discard the `Result`.
+fn write_atomic(path: &str, contents: &str) -> std::io::Result<()> {
+    let target = std::path::Path::new(path);
+    let dir = match target.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => std::path::Path::new("."),
+    };
+    let file_name = target.file_name().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("'{path}' has no file name component"))
+    })?;
+    let mut tmp_name = std::ffi::OsString::from(".");
+    tmp_name.push(file_name);
+    tmp_name.push(".tmp");
+    let tmp_path = dir.join(tmp_name);
+    std::fs::write(&tmp_path, contents)?;
+    std::fs::rename(&tmp_path, target)?;
+    Ok(())
+}
+
 pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>) -> Result<i32> {
     use indicatif::{ProgressBar, ProgressStyle};
     use owo_colors::OwoColorize;
@@ -124,7 +146,20 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
                         }
                         if let Some(ref p) = out_path {
                             if let Ok(json) = serde_json::to_string(&snapshot) {
-                                let _ = std::fs::write(p, json);
+                                if let Err(e) = write_atomic(p, &json) {
+                                    print_diagnostics(&[oxc_react_docgen_core::types::Diagnostic {
+                                        severity: oxc_react_docgen_core::types::DiagnosticSeverity::Error,
+                                        message: format!("Failed to write '{p}': {e}"),
+                                        file: Some(p.clone()),
+                                        line: None,
+                                        column: None,
+                                        help: Some(
+                                            "Check that the output path's parent directory exists and is writable."
+                                                .into(),
+                                        ),
+                                        code: oxc_react_docgen_core::types::DiagnosticCode::IoError,
+                                    }]);
+                                }
                             }
                         }
                     }
@@ -146,6 +181,25 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn write_atomic_surfaces_error_when_parent_dir_is_missing() {
+        let result = write_atomic("/nonexistent-rdt-watch-dir-xyz-123/out.json", "{}");
+        assert!(result.is_err(), "write to a missing parent directory should surface an error, not succeed silently");
+    }
+
+    #[test]
+    fn write_atomic_writes_via_temp_then_rename() {
+        let dir = std::env::temp_dir().join(format!("rdt-watch-atomic-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let target = dir.join("out.json");
+
+        write_atomic(target.to_str().expect("utf8 path"), "{\"a\":1}").expect("write should succeed");
+
+        let contents = std::fs::read_to_string(&target).expect("read back written file");
+        assert_eq!(contents, "{\"a\":1}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn watch_exit_code_mirrors_extraction_output_exit_code_non_strict() {

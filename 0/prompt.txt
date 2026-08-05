@@ -1,0 +1,3 @@
+Added an origin for us to rebase against. Let's write a README and CONTRIBUTING AND ARCHITECTURE doc borrowing from the best tools in the rust and oxc realm. Best practices, etc. 
+
+Friendly, scannable, succinct and eng focused. Devoid of AI slop and AI word salad please. Leverage all that is available in MD, including mermaid diagrams where appropriate to make it more readable. Don't just add diagrams for the sake of doing it.

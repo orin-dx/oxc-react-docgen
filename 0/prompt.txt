@@ -1,0 +1,1 @@
+Do we produce better results than RDT? That is one of our goals

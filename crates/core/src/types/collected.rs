@@ -222,7 +222,23 @@ impl CollectedType {
             CollectedType::Symbol => serde_json::json!("symbol"),
             // Literals
             CollectedType::StringLiteral(s) => serde_json::json!({"sl": s.as_str()}),
-            CollectedType::NumberLiteral(n) => serde_json::json!({"nl": n}),
+            CollectedType::NumberLiteral(n) => {
+                // `serde_json::Number` cannot represent NaN/Infinity (they'd
+                // silently become JSON `null`, then fail every `from_json_value`
+                // match arm and fall through to `Raw`). Tag non-finite values as
+                // strings instead so the read side can tell them apart from a
+                // genuinely-absent value.
+                let value = if n.is_finite() {
+                    serde_json::json!(n)
+                } else if n.is_nan() {
+                    serde_json::json!("NaN")
+                } else if *n > 0.0 {
+                    serde_json::json!("Infinity")
+                } else {
+                    serde_json::json!("-Infinity")
+                };
+                serde_json::json!({"nl": value})
+            }
             CollectedType::BoolLiteral(b) => serde_json::json!({"bl": b}),
             // Named: {"n": name, "a": [args...]}
             CollectedType::Named { name, args } => serde_json::json!({
@@ -317,8 +333,19 @@ impl CollectedType {
                 if let Some(s) = map.get("sl").and_then(|v| v.as_str()) {
                     return Ok(CollectedType::StringLiteral(s.into()));
                 }
-                if let Some(n) = map.get("nl").and_then(|v| v.as_f64()) {
-                    return Ok(CollectedType::NumberLiteral(n));
+                if let Some(val) = map.get("nl") {
+                    if let Some(s) = val.as_str() {
+                        let n = match s {
+                            "NaN" => f64::NAN,
+                            "Infinity" => f64::INFINITY,
+                            "-Infinity" => f64::NEG_INFINITY,
+                            _ => 0.0,
+                        };
+                        return Ok(CollectedType::NumberLiteral(n));
+                    }
+                    if let Some(n) = val.as_f64() {
+                        return Ok(CollectedType::NumberLiteral(n));
+                    }
                 }
                 if let Some(b) = map.get("bl").and_then(|v| v.as_bool()) {
                     return Ok(CollectedType::BoolLiteral(b));
@@ -750,5 +777,53 @@ mod tests {
         assert_eq!(round_tripped.name, "label");
         assert!(round_tripped.required);
         assert_eq!(round_tripped.description, "the label");
+    }
+
+    #[test]
+    fn nan_number_literal_round_trips_as_nan_not_raw() {
+        let original = CollectedType::NumberLiteral(f64::NAN);
+        let json = original.to_json_value();
+        let restored = CollectedType::from_json_value(&json).expect("deserialize");
+
+        match restored {
+            CollectedType::NumberLiteral(n) => assert!(n.is_nan(), "expected NaN to survive the round-trip, got {n}"),
+            other => panic!("expected NumberLiteral, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn infinity_number_literal_round_trips_as_infinity() {
+        let original = CollectedType::NumberLiteral(f64::INFINITY);
+        let json = original.to_json_value();
+        let restored = CollectedType::from_json_value(&json).expect("deserialize");
+
+        match restored {
+            CollectedType::NumberLiteral(n) => assert_eq!(n, f64::INFINITY),
+            other => panic!("expected NumberLiteral, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn negative_infinity_number_literal_round_trips_as_negative_infinity() {
+        let original = CollectedType::NumberLiteral(f64::NEG_INFINITY);
+        let json = original.to_json_value();
+        let restored = CollectedType::from_json_value(&json).expect("deserialize");
+
+        match restored {
+            CollectedType::NumberLiteral(n) => assert_eq!(n, f64::NEG_INFINITY),
+            other => panic!("expected NumberLiteral, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn finite_number_literal_still_round_trips_normally() {
+        let original = CollectedType::NumberLiteral(42.5);
+        let json = original.to_json_value();
+        let restored = CollectedType::from_json_value(&json).expect("deserialize");
+
+        match restored {
+            CollectedType::NumberLiteral(n) => assert_eq!(n, 42.5),
+            other => panic!("expected NumberLiteral, got {other:?}"),
+        }
     }
 }

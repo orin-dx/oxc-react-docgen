@@ -73,6 +73,8 @@ criterion         = "0.7"
 insta             = { version = "1.48", features = ["json", "redactions"] }
 pretty_assertions = "1.4"
 tempfile          = "3.20"
+rstest            = "0.25"
+trycmd            = "0.15"
 
 [profile.release]
 opt-level = 3

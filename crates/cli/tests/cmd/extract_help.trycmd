@@ -1,0 +1,68 @@
+```console
+$ oxc-react-docgen extract --help
+Extract prop types and write to stdout or --out file
+
+Usage: oxc-react-docgen extract [OPTIONS]
+
+Options:
+  -s, --src <SRC>
+          Source directories to scan [default: ./src]
+
+  -o, --out <OUT>
+          Output file [default: stdout]
+
+  -f, --format <FORMAT>
+          Output format
+
+          Possible values:
+          - canonical: oxc-react-docgen canonical schema (richest)
+          - rdt:       react-docgen-typescript compatible output
+          - storybook: Storybook __docgenInfo blocks
+          - toon:      Token-Optimized Object Notation (compact agent format)
+          
+          [default: canonical]
+
+      --no-cross-package
+          Disable cross-package type resolution
+
+      --react-version <REACT_VERSION>
+          React version override [default: auto-detect]
+
+      --cache-dir <CACHE_DIR>
+          Cache directory
+
+      --html-attributes <HTML_ATTRIBUTES>
+          How much of an inherited HTML element's attributes to expose
+
+          Possible values:
+          - curated: ~15-20 curated, commonly-documented attributes per element
+            [default]
+          - full:    All of @types/react's real attributes for the element
+            (matches RDT)
+          - none:    No inherited HTML attributes at all — own props only
+
+      --extra-builtins <EXTRA_BUILTINS>
+          Extra type names to treat as recognized/builtin (no "unknown type"
+          warning) — e.g. a library-specific type this tool doesn't already know
+
+  -v, --verbose...
+          Verbose output (repeat for more: -v, -vv)
+
+  -j, --json
+          Machine-readable JSON output: the canonical schema, compact, always to
+          stdout, ignoring --out/--format (which govern the human/RDT/Storybook
+          paths below), and suppresses the human-readable summary/diagnostics
+
+  -q, --quiet
+          Suppress all non-error output
+
+      --config <CONFIG>
+          Path to docgen.config.ts
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+```

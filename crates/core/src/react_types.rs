@@ -244,6 +244,7 @@ pub fn parse_react_version(s: &str) -> Result<ReactVersion, &str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn parse_react_version_accepts_known_values() {
@@ -255,5 +256,26 @@ mod tests {
     fn parse_react_version_rejects_a_typo_instead_of_silently_defaulting() {
         assert_eq!(parse_react_version("react20"), Err("react20"));
         assert_eq!(parse_react_version("React18"), Err("React18"));
+    }
+
+    #[rstest]
+    #[case("ButtonHTMLAttributes", Some("button"))]
+    #[case("InputHTMLAttributes", Some("input"))]
+    #[case("TextareaHTMLAttributes", Some("textarea"))]
+    #[case("AnchorHTMLAttributes", Some("a"))]
+    #[case("HTMLAttributes", Some("div"))]
+    #[case("SVGAttributes", None)]
+    #[case("UnknownAttributes", None)]
+    fn test_html_element_for_table(#[case] input: &str, #[case] expected: Option<&str>) {
+        assert_eq!(html_element_for(input), expected);
+    }
+
+    #[rstest]
+    #[case("HTMLButtonElement", Some("button"))]
+    #[case("HTMLAnchorElement", Some("a"))]
+    #[case("SVGSVGElement", Some("svg"))]
+    #[case("UnknownElement", None)]
+    fn test_html_element_from_type_arg_table(#[case] input: &str, #[case] expected: Option<&str>) {
+        assert_eq!(html_element_from_type_arg(input), expected);
     }
 }

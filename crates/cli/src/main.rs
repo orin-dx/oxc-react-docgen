@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 #![recursion_limit = "256"]
 
 mod commands;
@@ -11,6 +12,8 @@ use commands::check::cmd_check;
 use commands::completions::cmd_completions;
 use commands::extract::cmd_extract;
 use commands::inspect::cmd_inspect;
+use commands::lsp::cmd_lsp;
+use commands::schema::cmd_schema;
 use commands::watch::cmd_watch;
 
 #[derive(Parser)]
@@ -50,6 +53,12 @@ enum Command {
 
     /// Show resolved props for a single component (debugging tool)
     Inspect(InspectArgs),
+
+    /// Export JSON Schema for docgen output format
+    Schema,
+
+    /// Start LSP language server for IDE component prop hovers
+    Lsp,
 
     /// Generate shell completions
     Completions(CompletionsArgs),
@@ -106,6 +115,8 @@ pub enum OutputFormat {
     Rdt,
     /// Storybook __docgenInfo blocks
     Storybook,
+    /// Token-Optimized Object Notation (compact agent format)
+    Toon,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy)]
@@ -175,6 +186,14 @@ fn main() -> Result<()> {
         Command::Check(args) => cmd_check(args, cli.quiet, cli.config.as_deref())?,
         Command::Inspect(args) => {
             cmd_inspect(args, cli.config.as_deref())?;
+            0
+        }
+        Command::Schema => {
+            cmd_schema()?;
+            0
+        }
+        Command::Lsp => {
+            cmd_lsp()?;
             0
         }
         Command::Completions(args) => {

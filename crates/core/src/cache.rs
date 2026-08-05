@@ -56,6 +56,9 @@ impl From<SerializableCacheKey> for CacheKey {
 
 // ─── DtsCache ────────────────────────────────────────────────────────────────
 
+/// Maximum number of cached `.d.ts` entries allowed in memory/on disk.
+const MAX_CACHE_ENTRIES: usize = 5000;
+
 /// Thread-safe DTS parse-result cache.
 ///
 /// Keyed by `(path, size, mtime_ns)` — if the file hasn't changed, the cached
@@ -63,6 +66,7 @@ impl From<SerializableCacheKey> for CacheKey {
 pub struct DtsCache {
     store: DashMap<CacheKey, SourceData>,
     cache_dir: Utf8PathBuf,
+    dirty: std::sync::atomic::AtomicBool,
 }
 
 impl DtsCache {
@@ -79,7 +83,7 @@ impl DtsCache {
             .unwrap_or_else(|| Utf8PathBuf::from("node_modules/.cache/oxc-react-docgen"));
 
         let store = Self::try_load(&dir).unwrap_or_default();
-        Self { store, cache_dir: dir }
+        Self { store, cache_dir: dir, dirty: std::sync::atomic::AtomicBool::new(false) }
     }
 
     fn try_load(dir: &Utf8Path) -> Option<DashMap<CacheKey, SourceData>> {
@@ -119,13 +123,25 @@ impl DtsCache {
     /// Silently does nothing if the file metadata cannot be read.
     pub fn insert(&self, path: &Utf8Path, data: SourceData) {
         let Some(key) = self.key_for(path) else { return };
+        // Evict extra entries if cache size exceeds MAX_CACHE_ENTRIES
+        if self.store.len() >= MAX_CACHE_ENTRIES {
+            let keys_to_evict: Vec<CacheKey> = self.store.iter().take(100).map(|r| r.key().clone()).collect();
+            for k in keys_to_evict {
+                self.store.remove(&k);
+            }
+        }
         self.store.insert(key, data);
+        self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Persist the cache to disk atomically (temp file + rename).
     ///
+    /// Skips writing if the cache is clean (no inserts since load).
     /// Never panics — all errors are silently ignored.
     pub fn save_to_disk(&self) {
+        if !self.dirty.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
         let _ = self.try_save();
     }
 
@@ -152,6 +168,7 @@ impl DtsCache {
         let manifest_json = serde_json::to_string_pretty(&manifest).ok()?;
         std::fs::write(self.cache_dir.join("manifest.json").as_std_path(), manifest_json.as_bytes()).ok()?;
 
+        self.dirty.store(false, std::sync::atomic::Ordering::Relaxed);
         Some(())
     }
 
@@ -289,7 +306,47 @@ mod tests {
     #[test]
     fn test_save_to_disk_never_panics_on_bad_dir() {
         // Writing to a path that can't be created should not panic.
-        let cache = DtsCache { store: DashMap::new(), cache_dir: Utf8PathBuf::from("/dev/null/impossible/cache") };
+        let cache = DtsCache {
+            store: DashMap::new(),
+            cache_dir: Utf8PathBuf::from("/dev/null/impossible/cache"),
+            dirty: std::sync::atomic::AtomicBool::new(true),
+        };
         cache.save_to_disk(); // must not panic
+    }
+
+    #[test]
+    fn test_dirty_flag_prevents_unnecessary_write() {
+        let tmp = temp_dir("dirty");
+        let cache_dir = tmp.join("cache");
+        let cache = DtsCache::load_from_disk(Some(&cache_dir));
+
+        assert!(!cache.dirty.load(std::sync::atomic::Ordering::Relaxed));
+        cache.save_to_disk();
+        // manifest should NOT exist because cache wasn't dirty
+        assert!(!cache_dir.join("manifest.json").exists());
+
+        let file_path = make_temp_file(&tmp, "dirty.d.ts", b"export type D = boolean;");
+        cache.insert(&file_path, SourceData::default());
+        assert!(cache.dirty.load(std::sync::atomic::Ordering::Relaxed));
+
+        cache.save_to_disk();
+        assert!(!cache.dirty.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(cache_dir.join("manifest.json").exists());
+    }
+
+    #[test]
+    fn test_eviction_when_exceeding_max_entries() {
+        let tmp = temp_dir("evict");
+        let cache_dir = tmp.join("cache");
+        let cache = DtsCache::load_from_disk(Some(&cache_dir));
+
+        for i in 0..(MAX_CACHE_ENTRIES + 10) {
+            let key = CacheKey { path: Utf8PathBuf::from(format!("file_{i}.d.ts")), size: 10, mtime_ns: 100 };
+            cache.store.insert(key, SourceData::default());
+        }
+
+        let file_path = make_temp_file(&tmp, "overflow.d.ts", b"export type O = string;");
+        cache.insert(&file_path, SourceData::default());
+        assert!(cache.store.len() <= MAX_CACHE_ENTRIES);
     }
 }

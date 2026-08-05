@@ -1,0 +1,25 @@
+```console
+$ oxc-react-docgen --help
+Fast React prop extraction powered by OXC
+
+Usage: oxc-react-docgen [OPTIONS] <COMMAND>
+
+Commands:
+  extract      Extract prop types and write to stdout or --out file
+  watch        Watch for changes and re-extract
+  check        Validate extraction — exits 2 if any errors, or 1 if --strict and
+               there are warnings. For CI
+  inspect      Show resolved props for a single component (debugging tool)
+  schema       Export JSON Schema for docgen output format
+  lsp          Start LSP language server for IDE component prop hovers
+  completions  Generate shell completions
+  help         Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --verbose...       Verbose output (repeat for more: -v, -vv)
+  -q, --quiet            Suppress all non-error output
+      --config <CONFIG>  Path to docgen.config.ts
+  -h, --help             Print help
+  -V, --version          Print version
+
+```

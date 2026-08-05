@@ -90,6 +90,8 @@ pub struct PipelineOptions {
     pub cache_dir: Option<Utf8PathBuf>,
     /// Future: opt-in to typescript-go for conditional/mapped type resolution.
     pub resolve_complex_types: bool,
+    /// Custom docgen extension plugins.
+    pub plugins: crate::plugin::PluginRegistry,
 }
 
 impl Default for PipelineOptions {
@@ -110,6 +112,7 @@ impl Default for PipelineOptions {
             vanilla_extract: false,
             cache_dir: None,
             resolve_complex_types: false,
+            plugins: crate::plugin::PluginRegistry::default(),
         }
     }
 }
@@ -306,6 +309,7 @@ pub(crate) fn extract_with_global(
         // Surface any diagnostics the extractor raised while parsing this file
         // (excessive nesting, syntax errors) — never drop them silently.
         diagnostics.append(&mut data.diagnostics);
+        options.plugins.run_on_file_extracted(&path, &mut data);
         if capture_source_data {
             per_file_data.push((path.clone(), data.clone()));
         }
@@ -396,6 +400,8 @@ pub(crate) fn extract_with_global(
             format!("{} ({})", base_name, entry.file_path)
         };
 
+        let mut entry = entry;
+        options.plugins.run_on_component_resolved(&mut entry);
         components.insert(key, entry);
         diagnostics.extend(diags);
     }
@@ -1399,5 +1405,38 @@ Button.defaultProps = { size: 'md' };
             update.affected_files.contains(&canonical_button_path),
             "changed file should always appear in affected_files"
         );
+    }
+
+    #[test]
+    fn test_pipeline_plugin_execution() {
+        use crate::plugin::{DocgenPlugin, PluginRegistry};
+        use crate::types::ComponentEntry;
+
+        struct TestPlugin;
+        impl DocgenPlugin for TestPlugin {
+            fn name(&self) -> &str {
+                "test-plugin"
+            }
+            fn on_component_resolved(&self, entry: &mut ComponentEntry) {
+                entry.composes.push("PluginAdded".into());
+            }
+        }
+
+        let tmp = TempDir::new().unwrap();
+        write_file(&tmp, "Button.tsx", "export function Button(props: { label: string }) { return null; }\n");
+
+        let mut plugins = PluginRegistry::new();
+        plugins.register(TestPlugin);
+
+        let options = PipelineOptions {
+            src_dirs: vec![Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap()],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            plugins,
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+        let button = output.components.get("Button").expect("Button component not found");
+        assert_eq!(button.composes, vec!["PluginAdded"]);
     }
 }

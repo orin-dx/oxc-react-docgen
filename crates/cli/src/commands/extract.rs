@@ -54,6 +54,7 @@ pub fn cmd_extract(args: crate::ExtractArgs, quiet: bool, config_path: Option<&s
             crate::OutputFormat::Canonical => serde_json::to_string_pretty(&output).into_diagnostic()?,
             crate::OutputFormat::Rdt => serialize_rdt(&output),
             crate::OutputFormat::Storybook => serialize_storybook(&output),
+            crate::OutputFormat::Toon => oxc_react_docgen_core::toon::render_output_toon(&output),
         };
 
         match args.out {

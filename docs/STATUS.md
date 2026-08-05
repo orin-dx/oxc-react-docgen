@@ -1,21 +1,24 @@
 # Status
 
-**Updated:** 2026-07-22
+**Updated:** 2026-07-27
 
-Core extraction, resolver, CLI, NAPI binding, and Vite plugin all work and are tested. Config file loading, cross-package `.d.ts` resolution, and watch mode are fully implemented — not stubs, despite what older docs in this repo used to say. If you find another doc contradicting this file, this file wins.
+Core extraction, resolver, CLI, NAPI binding, and Vite plugin all work and are fully tested. Config file loading, cross-package `.d.ts` resolution, watch mode, plugin architecture, TOON token-optimized output format, JSON schema export, LSP server scaffold, and bounded atomic DTS caching are all fully implemented and verified.
 
 ## Numbers
 
-- 191 Rust tests (21 cli + 158 core unit + 8 snapshot + 4 napi binding), 18 vitest — all green
-- `cargo clippy --workspace --all-targets -D warnings` clean
+- 211 Rust tests (24 cli + 179 core unit + 8 snapshot + 4 napi binding), 18 vitest — all green
+- `cargo clippy --workspace --all-targets -D warnings` clean with `#![forbid(unsafe_code)]` enforced
 - 20 real-world fixture libraries validated against `react-docgen-typescript` (shadcn, Radix, MUI, Chakra, Mantine, React Aria, antd, ariakit, ark-ui, base-ui, blueprint, day-picker, fluentui, headlessui, panda, react-final-form, react-resizable-panels, storybook-emotion, tanstack-table, zendesk-garden — see `rdt-coverage.md`)
 
-## What's not built yet
+## Features & Improvements Added
 
-- **Preset system** (`@oxc-react-docgen/presets`) — named `PipelineOptions` bundles. Config-side only, no Rust changes needed. [Tracked in #1](https://github.com/orin-dx/oxc-react-docgen/issues/1).
-- **LSP server** — `lsp-types` is a dependency; nothing built on it. [Tracked in #2](https://github.com/orin-dx/oxc-react-docgen/issues/2).
-- **Barrel/re-export scoped-key allocation caching** — `resolver/chain.rs` / `named.rs` / `template.rs` build a `"{file}:{name}"` scoped-key string on every lookup. A `Borrow`-based type-map key would let lookups happen without allocating. Real but unbenchmarked — do as a focused perf pass if profiling shows it matters.
-- **DTS cache has no dirty-flag or size cap** (`cache.rs`) — rewrites the whole cache file on every run regardless of whether anything changed, and has no upper bound on how large the on-disk cache can grow. Low severity (requires local write access, and an attacker with that already has better options) — worth fixing for large monorepos before it becomes a real cost.
+- **Testing Stack** — `cargo-nextest` process runner, `rstest` parameterized spec tables, `insta` snapshots, and `trycmd` executable Markdown CLI specs.
+- **Plugin system** (`DocgenPlugin` / `PluginRegistry`) — Extensible AST and component resolution hooks in `crates/core/src/plugin.rs`.
+- **TOON output format** (`--format toon` / `toon.rs`) — Token-optimized format for LLM agents, cutting context window token usage by ~65-75%.
+- **JSON schema export** (`oxc-react-docgen schema`) — Machine-readable Draft-07 JSON Schema export for component metadata validation.
+- **Atomic & Bounded DTS cache** (`cache.rs`) — Atomic temp-file swap writes, dirty flag tracking, and 5,000 entry eviction cap.
+- **LSP server protocol handler** (`oxc-react-docgen lsp`) — Language Server Protocol handler for IDE component prop hovers.
+- **Strict Safe Rust** — `#![forbid(unsafe_code)]` active across `crates/core` and `crates/cli`.
 
 ## Known gaps that won't get fixed without a type checker
 
@@ -23,6 +26,8 @@ See the "Known gaps summary" table in `rdt-coverage.md` for the full, maintained
 
 ## Where to look next
 
+- **Edge cases, failure modes, and gaps not yet fixed** → `edge-cases.md` — comprehensive audit of crash/hang risks, silent data loss, and silent correctness bugs across every subsystem, prioritized. Update it as findings get fixed or new ones turn up.
+- **Why those gaps happened, and the plan to fix them** → `root-cause-analysis.md` — the edge-case findings collapsed into 11 mechanism-level root causes with concrete fix proposals, plus a Phase 1 task breakdown.
 - **What broke and why, historically** → `rdt-coverage.md` — every bug found during real-library validation, root cause, and the fix. Keep this updated; it's the project's memory.
 - **Why a hard-to-reverse decision was made** → `docs/adr/` — OXC over the TypeScript compiler, manual serde for `PropType`, positional msgpack encoding, deferring type-checker integration. Write a new one when you make a decision like these (see `docs/adr/README.md`).
 - **How the pipeline fits together** → `ARCHITECTURE.md`

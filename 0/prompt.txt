@@ -1,0 +1,3 @@
+I think anything that is native to JS should always show up right? And the dependency list should too like any other import perhaps? Or is that just an allowlist configuration?
+
+When we run across something that is not in the configurable allow list we should call it out in the output in a very user-friendly way. Right?

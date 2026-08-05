@@ -716,6 +716,19 @@ mod tests {
 
         fs::set_permissions(&restricted, fs::Permissions::from_mode(0o000)).unwrap();
 
+        // Root bypasses Unix DAC permission bits entirely, so under a root
+        // test runner the 0o000 directory stays readable and this test's
+        // premise doesn't hold. Detect that behaviorally (no libc dependency
+        // needed) and skip rather than fail spuriously.
+        if fs::read_dir(&restricted).is_ok() {
+            eprintln!(
+                "skipping test_discover_files_reports_diagnostic_for_permission_denied_subtree: \
+                 running as root, which bypasses Unix permission bits"
+            );
+            fs::set_permissions(&restricted, fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
+
         let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
         let (files, diagnostics) = discover_files(&[dir], &[]);
 

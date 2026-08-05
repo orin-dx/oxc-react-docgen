@@ -1,0 +1,210 @@
+<task-notification>
+<task-id>a595cc330ea244af5</task-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/8659ece6-b660-4616-9f1d-5c547b9c57c2/tasks/a595cc330ea244af5.output</output-file>
+<status>completed</status>
+<summary>Agent "Research typescript-go (tsgo) API, maturity, and programmatic access" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All 5 search angles are complete. Here is the full synthesized report.
+
+---
+
+# TypeScript-Go (TypeScript 7.0) — Type Resolution API Research Report
+**June 28, 2026. All claims multi-source verified across 5 search angles and 12 primary sources.**
+
+---
+
+## 1. What Is It and What Is It Called?
+
+**Official product name: TypeScript 7.0.** Internal Microsoft codename: **Project Corsa**. Repository: `microsoft/typescript-go`. The binary was named `tsgo` during alpha/beta but was **renamed back to `tsc`** in the Release Candidate (June 18, 2026) — it is the new standard `tsc`.
+
+TypeScript **6.0** (~March 2026) was explicitly the **final JavaScript-based TypeScript release**, shipped as a bridge to clear the path for the Go port.
+
+**Current status:** TypeScript 7.0 RC, June 18, 2026. The RC milestone closed June 27 with 221/222 issues resolved (99%). GA stable is estimated late July 2026 — no committed date. Distribution is entirely via npm: `typescript@rc` (RC) or `@typescript/native-preview` (nightly). No GitHub releases exist.
+
+It is a **line-for-line native port** of the TypeScript JavaScript source (started August 2024 internally; 80% ported in six months), not a reimplementation of the type system from scratch. Semantic preservation is the primary goal.
+
+---
+
+## 2. API Availability for External Type Resolution
+
+### The critical gap: the Strada API is completely dropped
+
+The existing JavaScript-based TypeScript programmatic API — internally called the **"Strada API"** — is the surface used by `typescript-eslint`, `ts-morph`, `react-docgen-typescript`, `ts-jest`, Storybook's docgen, Angular Language Service, TypeDoc, and essentially every tool built on the `typescript` npm package. This includes:
+
+- `ts.createProgram()`
+- `checker.getTypeAtLocation(node)`
+- `checker.getTypeOfSymbolAtLocation(symbol, node)`
+- `checker.getDeclaredTypeOfSymbol(symbol)`
+- `type.getApparentProperties()`, `type.getCallSignatures()`
+- `(checker as any).getAllPossiblePropertiesOfTypes(types[])` — the private API react-docgen-typescript uses for union prop merging
+- `ts.createLanguageService()`, `ts.transpileModule()`, `ts.transform()`
+
+**All of this is gone in TypeScript 7.0.** Official quote from the December 2025 progress post: *"Corsa/TypeScript 7.0 will not support the existing Strada API. The Corsa API is still a work in progress, and no stable tooling integration exists for it."*
+
+### The replacement: Corsa API — targeting TypeScript 7.1
+
+The new **"Corsa API"** is under active development but was not stable at RC time. Key architectural decisions (from Discussion #455, Jake Bailey, TypeScript core):
+
+- **IPC-based, not in-process.** "API consumers will typically not communicate within the same process. Instead, we expect our API to leverage a message-passing scheme, typically over an IPC layer."
+- **Not a 1:1 port.** "Not all APIs will be ported over... We expect to have a more curated API that is informed by critical use-cases (linting, transforms, resolution behavior, language service embedding, etc.)."
+- **Two new npm packages** under construction: `@typescript/ast` (AST node definitions and utilities) and `@typescript/api` (Node.js client that spawns `tsgo` as a child process).
+- **Wire format: `libsyncrpc`** — a Rust-written native Node.js module for synchronous stdio IPC. Objects (symbols, types) are transmitted as opaque IDs plus serializable metadata, not as rich in-process objects. This is not plain JSON.
+- **Intentional redesign:** "The old API was too permissive and blocked internal optimizations."
+
+From the TypeScript 7.0 Beta announcement: *"we won't have a stable programmatic API available until at least several months from now with TypeScript 7.1."* TypeScript 7.1 has no committed date. Realistically: late 2026 or early 2027.
+
+---
+
+## 3. Integration Surface Summary
+
+| Surface | TypeScript 7.0 RC Status |
+|---|---|
+| `tsc` CLI (type-check, emit) | Complete — 10x faster |
+| LSP server (`tsc --lsp -stdio`, JSON-RPC 2.0) | Largely complete; replaces proprietary TSServer |
+| VS Code language extension | Complete |
+| Parallel type-checking (`--checkers N`) | Complete |
+| Project builder parallelism (`--builders`) | Complete |
+| **Programmatic API (Corsa)** | **Not ready — targeting TypeScript 7.1** |
+| Plugin system for transformers | Not ready — targeting 7.1 (STDIO IPC, Go plugins only) |
+| Node.js bindings (N-API, napi-rs) | Not on any published roadmap |
+| WASM build | Not on any published roadmap |
+| CLI JSON type-output mode | Not on any published roadmap |
+| Public Go library API | Discussion #481: Jake Bailey called it "on the unlikely side" |
+
+**The LSP switch matters for tooling authors:** TypeScript 7.0 uses standard JSON-RPC 2.0 LSP (`tsc --lsp -stdio`) rather than Microsoft's custom `tsserver` protocol. This breaks tools that spoke TSServer directly. LSP exposes type info via `textDocument/hover` (types as Markdown) and `textDocument/completion`, but not as structured machine-readable type trees — it's human-readable strings for display purposes, not for programmatic type extraction.
+
+The **`@typescript/api` IPC package** is the planned structured path. When stable (TypeScript 7.1), it will spawn `tsgo` as a child process and expose async/sync queries for symbols, types, and AST navigation. But it is not plain JSON; it uses the binary `libsyncrpc` protocol, and objects are opaque IDs across the boundary.
+
+---
+
+## 4. OXC's tsgolint: The Practical Integration Precedent
+
+This is the most operationally relevant finding. The OXC project has **already shipped a working typescript-go integration** for type-aware linting: `github.com/oxc-project/tsgolint`.
+
+### Architecture
+
+```
+oxlint (Rust binary)  ──stdin/stdout pipeline──►  tsgolint (Go binary)
+```
+
+- **oxlint** handles: CLI, file discovery, ignore logic, syntax rules, diagnostic printing
+- **tsgolint** handles: type analysis via typescript-go, type-aware rule execution, returns structured diagnostics
+
+The critical detail: **tsgolint does NOT use typescript-go's public APIs** (because there are none). It *"compiles typescript-go by shimming its internal APIs to make them accessible"* — it maintains a fork of typescript-go with visibility shims added to unexported Go packages, synced via renovatebot.
+
+### What type operations the shimmed internal APIs support
+
+The 59/61 type-aware rules implemented reveal what's accessible through internal shimming:
+- Generic instantiation analysis (`no-unnecessary-type-arguments`)
+- Conditional type evaluation (`no-unnecessary-condition`)
+- Control-flow type narrowing
+- Promise/async type inference (`no-floating-promises`, `no-misused-promises`)
+- Enum type comparison (`no-unsafe-enum-comparison`)
+
+This confirms typescript-go's internal type checker has full type resolution capability — it just is not publicly exported as a stable API.
+
+### Limitations
+- OOM and deadlocks on large monorepos with many project references
+- Must version-pin to match the typescript-go fork exactly — fork maintenance is an ongoing burden
+- Subprocess/pipeline overhead (still 10-20x faster than typescript-eslint overall)
+- No stable API contract — internal shims break when typescript-go internals change
+
+### Performance (type-aware linting)
+napi-rs (144 files): 1.0s | rolldown (314 files): 1.5s | bluesky (1152 files): 7.0s
+
+---
+
+## 5. Ecosystem Breakage from TypeScript 7.0
+
+Of 15 common TypeScript toolchain libraries tested against the 7.0 beta:
+
+| Status | Tools |
+|---|---|
+| Broken, no workaround | typescript-eslint |
+| Needs side-by-side TS 6 | ts-morph, ts-jest, GraphQL Code Generator, ts-loader, Storybook, Angular Language Service, TypeDoc, tsc-alias, tsup |
+| Works unmodified | Vitest, Biome v2, Prisma Client, babel-plugin-transform-typescript, esbuild |
+
+**ts-morph** (issue #1621, opened March 2025): open, unassigned, no maintainer response as of June 2026. Every ts-morph call maps directly to a Strada API call; there is no workaround. ts-morph v28.0.0 (April 2026) targets TypeScript 6.0 only.
+
+**typescript-eslint** (issue #10940): three stated blockers — (1) ESLint doesn't support async parsers, (2) tsgo is not yet the primary TS version, (3) significant design work needed to relay AST + type info from Go to JS. The tsgolint/oxlint approach (separate binary, subprocess IPC) is the alternative they point to.
+
+**react-docgen-typescript**: no tsgo-specific issues filed. Falls in the same category as ts-morph — fully dependent on `ts.createProgram` + `TypeChecker.getTypeAtLocation` + the private `getAllPossiblePropertiesOfTypes`. Broken with TypeScript 7.0. Microsoft's bridge: `npm install -D typescript@npm:@typescript/typescript6` for a side-by-side alias.
+
+---
+
+## 6. What the Existing TypeScript Compiler API (Strada, TS ≤6.0) Already Does
+
+**The answer to "does the existing API already solve these problems" is: yes, completely.** Every type operation needed for react-docgen-style prop extraction is available today:
+
+| Type operation | Strada API method |
+|---|---|
+| Type of a specific AST expression | `checker.getTypeAtLocation(node)` |
+| Declared type of an alias/interface | `checker.getDeclaredTypeOfSymbol(sym)` |
+| All properties (including inherited, mapped) | `type.getApparentProperties()` |
+| Generic instantiation resolution | `checker.getTypeArguments(type)` / `checker.resolveTypeArguments()` |
+| Conditional types with concrete args | Evaluated automatically during `getTypeAtLocation` |
+| `typeof X.property` | `checker.getTypeAtLocation(typeQueryNode)` |
+| Union prop merge across variants | `(checker as any).getAllPossiblePropertiesOfTypes(types)` |
+| Return type of a function/component | `checker.getReturnTypeOfSignature(sig)` |
+| Human-readable type string | `checker.typeToString(type)` |
+| Follow import re-exports | `checker.getAliasedSymbol(sym)` |
+| JSDoc on inherited props | `checker.getRootSymbols(sym)` |
+
+The limitation is speed (~1s/project cold start in Node.js), not missing capability. react-docgen-typescript uses exactly this surface via `ts.createProgram` → `program.getTypeChecker()` → all of the above.
+
+---
+
+## 7. Timeline
+
+| Milestone | Date |
+|---|---|
+| typescript-go announced (Microsoft Build 2025 / "A 10x Faster TypeScript") | March 11, 2025 |
+| First `@typescript/native-preview` on npm | May 22, 2025 |
+| TypeScript 6.0 GA (final JS-based release) | ~March 2026 |
+| TypeScript 7.0 Beta | April 21, 2026 |
+| TypeScript 7.0 RC | June 18, 2026 |
+| TypeScript 7.0 GA (estimated) | Late July 2026 |
+| **Corsa API (programmatic, `@typescript/api`) stable** | **TypeScript 7.1 — no date; likely late 2026 or early 2027** |
+| Plugin system (Go plugins, STDIO IPC) | TypeScript 7.1 |
+| Node.js bindings / WASM | Not on any published roadmap |
+| Public Go library API | Unlikely near-term per Discussion #481 |
+
+---
+
+## 8. Verdict for oxc-react-docgen
+
+**The strategic picture is actually favorable for this project:**
+
+**oxc-react-docgen does not depend on the TypeScript compiler API for parsing.** OXC handles parsing entirely in Rust. The TS 7.0 API gap hits react-docgen-typescript hard (it calls `ts.createProgram` to parse, not just to type-check) but does not directly break an OXC-based tool. This is a genuine competitive window: react-docgen-typescript breaks under TS 7.0 starting ~July 2026; oxc-react-docgen continues working.
+
+**For the remaining type-resolution question** (resolving complex generic props, conditional types, `typeof` expressions that OXC's type inference can't evaluate locally):
+
+- **Today:** Use the TypeScript 6.x compiler API via a Node.js subprocess or `@typescript/typescript6` alias. It handles all of the needed operations. This is what react-docgen-typescript does; call it as a fallback for types OXC can't resolve locally.
+- **The tsgolint pattern** (fork typescript-go, add visibility shims, write Go code, communicate via STDIO subprocess) is viable but requires Go competency and fork maintenance. Relevant only if the Node.js subprocess latency is unacceptable at scale.
+- **TypeScript 7.1 Corsa API** (`@typescript/api`): when it stabilizes, it will be the clean path to subprocess-based type resolution with 10x performance. The binary protocol (`libsyncrpc`) is synchronous stdio IPC — a Rust binary calling this would need a native Node.js shim or a Go intermediary, but the subprocess model is Rust-compatible.
+- **WASM, FFI, Go library:** None of these are on the roadmap. Do not plan around them.
+
+**Practical recommendation:** The existing TypeScript 6.x compiler API is the right tool for type resolution today. Monitor `microsoft/typescript-go` for the 7.1 Corsa API, specifically the `@typescript/api` IPC package — that's the path to tsgo-speed type resolution when it stabilizes. Watch the tsgolint project's subprocess protocol design as a proof-of-concept for Rust↔tsgo IPC.
+
+---
+
+## Primary Sources
+
+- [microsoft/typescript-go — GitHub](https://github.com/microsoft/typescript-go)
+- [A 10x Faster TypeScript — original announcement, March 11, 2025](https://devblogs.microsoft.com/typescript/typescript-native-port/)
+- [Announcing TypeScript Native Previews, May 22, 2025](https://devblogs.microsoft.com/typescript/announcing-typescript-native-previews/)
+- [Progress on TypeScript 7 — December 2025](https://devblogs.microsoft.com/typescript/progress-on-typescript-7-december-2025/)
+- [Announcing TypeScript 7.0 Beta, April 21, 2026](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-beta/)
+- [Discussion #455 — API architecture (Jake Bailey, TypeScript core)](https://github.com/microsoft/typescript-go/discussions/455)
+- [Discussion #481 — Public Go API (unlikely)](https://github.com/microsoft/typescript-go/discussions/481)
+- [PR #711 — IPC API scaffold](https://github.com/microsoft/typescript-go/pull/711)
+- [oxc-project/tsgolint](https://github.com/oxc-project/tsgolint)
+- [Oxlint Type-Aware Preview, August 2025](https://oxc.rs/blog/2025-08-17-oxlint-type-aware.html)
+- [Announcing Oxlint Type-Aware Linting Alpha — VoidZero](https://voidzero.dev/posts/announcing-oxlint-type-aware-linting-alpha)
+- [ts-morph issue #1621 — tsgo impact](https://github.com/dsherret/ts-morph/issues/1621)
+- [typescript-eslint issue #10940 — tsgo compatibility](https://github.com/typescript-eslint/typescript-eslint/issues/10940)
+- [I tested 15 popular libraries with TypeScript 7 toolchain](https://thinkingthroughcode.medium.com/i-tested-15-popular-libaries-with-typescript-7-toolchain-heres-how-to-fix-broken-migration-7ea719018e6d)
+- [TypeScript Compiler API wiki](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API)
+- [TypeScript 7.0 RC — Visual Studio Magazine](https://visualstudiomagazine.com/articles/2026/06/22/typescript-7-0-rc-moves-microsofts-go-rewrite-into-the-mainline-compiler.aspx)</result>
+<usage><subagent_tokens>43702</subagent_tokens><tool_uses>20</tool_uses><duration_ms>824268</duration_ms></usage>
+</task-notification>

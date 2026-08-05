@@ -1,0 +1,9 @@
+<task-notification>
+<task-id>a839ac2315cc41131</task-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0602cae8-9776-4cab-baaa-67ad00aaf7d1/tasks/a839ac2315cc41131.output</output-file>
+<status>completed</status>
+<summary>Agent "Research Rolldown native Rust plugin API" came to rest</summary>
+<note>A task-notification fires each time this agent comes to rest with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>You've hit your session limit · resets 11pm (America/Los_Angeles)</result>
+<usage><subagent_tokens>0</subagent_tokens><tool_uses>52</tool_uses><duration_ms>647251</duration_ms></usage>
+</task-notification>

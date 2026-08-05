@@ -44,16 +44,30 @@ impl PluginRegistry {
         self.plugins.push(plugin);
     }
 
-    pub fn run_on_file_extracted(&self, file_path: &camino::Utf8Path, data: &mut SourceData) {
+    pub fn run_on_file_extracted(
+        &self,
+        file_path: &camino::Utf8Path,
+        data: &mut SourceData,
+    ) -> Vec<crate::types::Diagnostic> {
+        let mut diagnostics = Vec::new();
         for plugin in &self.plugins {
-            plugin.on_file_extracted(file_path, data);
+            let label = format!("plugin:{}:on_file_extracted", plugin.name());
+            if let Err(diag) = crate::panic_guard::contain_panic(&label, || plugin.on_file_extracted(file_path, data)) {
+                diagnostics.push(diag);
+            }
         }
+        diagnostics
     }
 
-    pub fn run_on_component_resolved(&self, entry: &mut ComponentEntry) {
+    pub fn run_on_component_resolved(&self, entry: &mut ComponentEntry) -> Vec<crate::types::Diagnostic> {
+        let mut diagnostics = Vec::new();
         for plugin in &self.plugins {
-            plugin.on_component_resolved(entry);
+            let label = format!("plugin:{}:on_component_resolved", plugin.name());
+            if let Err(diag) = crate::panic_guard::contain_panic(&label, || plugin.on_component_resolved(entry)) {
+                diagnostics.push(diag);
+            }
         }
+        diagnostics
     }
 }
 
@@ -126,5 +140,50 @@ mod tests {
         let mut data = SourceData::default();
         registry.run_on_file_extracted(camino::Utf8Path::new("src/test.tsx"), &mut data);
         assert!(data.interfaces.contains_key("HookIface"));
+    }
+
+    #[test]
+    fn a_panicking_plugin_is_contained_and_tagged_with_its_name_others_still_run() {
+        struct PanickingPlugin;
+        impl DocgenPlugin for PanickingPlugin {
+            fn name(&self) -> &str {
+                "panicking-plugin"
+            }
+            fn on_component_resolved(&self, _entry: &mut ComponentEntry) {
+                panic!("boom");
+            }
+        }
+
+        let mut registry = PluginRegistry::new();
+        registry.register(PanickingPlugin);
+        registry.register(TestEnricherPlugin);
+
+        let mut entry = ComponentEntry {
+            display_name: "Button".into(),
+            file_path: "src/Button.tsx".into(),
+            props: Default::default(),
+            description: String::new(),
+            inheritance: vec![],
+            notable_inherited: Default::default(),
+            discriminant_prop: None,
+            composes: vec![],
+            tags: Default::default(),
+            methods: vec![],
+        };
+
+        let diagnostics = registry.run_on_component_resolved(&mut entry);
+
+        assert_eq!(diagnostics.len(), 1, "expected exactly one diagnostic, from the panicking plugin");
+        assert_eq!(diagnostics[0].code, crate::types::DiagnosticCode::InternalPanic);
+        assert!(
+            diagnostics[0].message.contains("panicking-plugin"),
+            "diagnostic should name the panicking plugin, got {}",
+            diagnostics[0].message
+        );
+        assert_eq!(
+            entry.composes,
+            vec!["TestEnricher"],
+            "the second, well-behaved plugin should still run after the first one panicked"
+        );
     }
 }

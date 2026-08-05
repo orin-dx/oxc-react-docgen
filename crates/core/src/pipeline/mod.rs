@@ -318,7 +318,7 @@ pub(crate) fn extract_with_global(
         // Surface any diagnostics the extractor raised while parsing this file
         // (excessive nesting, syntax errors) — never drop them silently.
         diagnostics.append(&mut data.diagnostics);
-        options.plugins.run_on_file_extracted(&path, &mut data);
+        diagnostics.extend(options.plugins.run_on_file_extracted(&path, &mut data));
         if capture_source_data {
             per_file_data.push((path.clone(), data.clone()));
         }
@@ -441,7 +441,7 @@ pub(crate) fn extract_with_global(
         };
 
         let mut entry = entry;
-        options.plugins.run_on_component_resolved(&mut entry);
+        diagnostics.extend(options.plugins.run_on_component_resolved(&mut entry));
         components.insert(key, entry);
         diagnostics.extend(diags);
     }
@@ -1515,5 +1515,73 @@ Button.defaultProps = { size: 'md' };
         let output = extract(&options);
         let button = output.components.get("Button").expect("Button component not found");
         assert_eq!(button.composes, vec!["PluginAdded"]);
+    }
+
+    #[test]
+    fn a_panicking_plugin_hook_degrades_to_a_diagnostic_and_other_work_still_completes() {
+        use crate::plugin::{DocgenPlugin, PluginRegistry};
+        use crate::types::ComponentEntry;
+
+        struct AlwaysPanicsPlugin;
+        impl DocgenPlugin for AlwaysPanicsPlugin {
+            fn name(&self) -> &str {
+                "always-panics"
+            }
+            fn on_component_resolved(&self, _entry: &mut ComponentEntry) {
+                panic!("boom");
+            }
+        }
+
+        struct WellBehavedPlugin;
+        impl DocgenPlugin for WellBehavedPlugin {
+            fn name(&self) -> &str {
+                "well-behaved"
+            }
+            fn on_component_resolved(&self, entry: &mut ComponentEntry) {
+                entry.composes.push("PluginAdded".into());
+            }
+        }
+
+        let tmp = TempDir::new().unwrap();
+        write_file(&tmp, "Button.tsx", "export function Button(props: { label: string }) { return null; }\n");
+        write_file(&tmp, "Card.tsx", "export function Card(props: { title: string }) { return null; }\n");
+
+        let mut plugins = PluginRegistry::new();
+        plugins.register(AlwaysPanicsPlugin);
+        plugins.register(WellBehavedPlugin);
+
+        let options = PipelineOptions {
+            src_dirs: vec![Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap()],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            plugins,
+            ..Default::default()
+        };
+
+        // Must not panic the test process — that's the whole point.
+        let output = extract(&options);
+
+        let panic_diagnostics: Vec<_> =
+            output.diagnostics.iter().filter(|d| d.code == DiagnosticCode::InternalPanic).collect();
+        assert_eq!(
+            panic_diagnostics.len(),
+            2,
+            "expected one InternalPanic diagnostic per component resolution, got {:?}",
+            output.diagnostics
+        );
+        assert!(
+            panic_diagnostics.iter().all(|d| d.message.contains("always-panics")),
+            "each diagnostic should name the panicking plugin, got {panic_diagnostics:?}"
+        );
+
+        // Both components must still be present — the panicking plugin's hook
+        // failure on one entry must not drop that entry, nor prevent the
+        // sibling entry from being processed.
+        let button = output.components.get("Button").expect("Button component not found");
+        let card = output.components.get("Card").expect("Card component not found");
+
+        // The well-behaved plugin, registered after the panicking one, must
+        // still have run for both entries.
+        assert_eq!(button.composes, vec!["PluginAdded"]);
+        assert_eq!(card.composes, vec!["PluginAdded"]);
     }
 }

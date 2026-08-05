@@ -1,0 +1,1 @@
+Is it possible to use tsgolint to cover some of our needs of tsgo? oxlint uses tsgolint right? Research, not implement.

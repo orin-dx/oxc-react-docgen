@@ -3,15 +3,13 @@
 use camino::Utf8Path;
 use compact_str::CompactString;
 
-use crate::known::{push_known_opaque_diagnostic, resolve_known, KnownPatternResult};
+use crate::known::{push_known_opaque_diagnostic, KnownPatternResult};
 use crate::react_types;
 use crate::types::*;
 
 use super::alias::resolve_type_alias_type;
 use super::collected::resolve_collected_type;
-use super::import::{
-    lookup_ambient_global, lookup_interface, lookup_type_alias, resolve_to_canonical, AmbientGlobalLookup,
-};
+use super::import::{lookup_ambient_global, AmbientGlobalLookup};
 use super::react::react_type_to_prop_type;
 use super::{ResolutionContext, MAX_DEPTH};
 
@@ -39,59 +37,51 @@ pub(super) fn resolve_named(
     let resolved_args: Vec<PropType> =
         args.iter().map(|a| resolve_collected_type(a, consuming_file, ctx, state, depth + 1)).collect();
 
-    // ── 2. Import resolution → canonical (file, name) ─────────────────────────
-    // Check source-defined types BEFORE known library patterns so that user-defined
-    // types like ThemingProps or StylesApiProps are never silently replaced by
-    // opaque known-pattern shortcuts.
-    let (canonical_file, canonical_name) =
-        resolve_to_canonical(name.as_str(), consuming_file, ctx, &mut state.diagnostics)
-            .unwrap_or_else(|| (consuming_file.to_owned(), name.to_string()));
+    // ── 2-5. Try the project's own source before a known-pattern shortcut ────
+    // See `resolver::precedence` — the shared, single-source-of-truth order.
+    let (canonical_file, canonical_name, matched) =
+        super::precedence::resolve_source_defined_or_known(name.as_str(), &resolved_args, consuming_file, ctx, state);
 
-    // ── 3. Type alias lookup ──────────────────────────────────────────────────
-    if let Some((matched_key, alias)) = lookup_type_alias(&ctx.global, canonical_file.as_str(), &canonical_name) {
-        let alias = alias.clone();
-        // A generic alias's own declared type parameters (`type Foo<TData> = ...`)
-        // are expected, unexpandable placeholders wherever referenced in its body —
-        // not unresolvable types. Register them so step 7 below doesn't warn.
-        if let Some(params) = ctx.global.type_alias_params.get(&matched_key) {
-            state.in_scope_type_params.extend(params.iter().cloned());
+    match matched {
+        Some(super::precedence::SourceOrKnownMatch::TypeAlias { matched_key, alias }) => {
+            // A generic alias's own declared type parameters (`type Foo<TData> = ...`)
+            // are expected, unexpandable placeholders wherever referenced in its body —
+            // not unresolvable types. Register them so step 7 below doesn't warn.
+            if let Some(params) = ctx.global.type_alias_params.get(&matched_key) {
+                state.in_scope_type_params.extend(params.iter().cloned());
+            }
+            return resolve_type_alias_type(&alias, ctx, state, depth);
         }
-        return resolve_type_alias_type(&alias, ctx, state, depth);
-    }
-
-    // ── 4. Interface lookup ───────────────────────────────────────────────────
-    // At the prop-TYPE level (not chain level), an interface name is returned as Named.
-    // Full prop expansion only happens at the component level via resolve_props_chain.
-    if lookup_interface(&ctx.global, canonical_file.as_str(), &canonical_name).is_some() {
-        return PropType::Named { name: name.clone(), args: resolved_args };
-    }
-
-    // ── 5. Known pattern check (fallback — only when not found in source) ─────
-    // Library opaque patterns (ThemingProps, StylesApiProps, VariantProps, …) are
-    // applied only when the type cannot be resolved from the project's own source.
-    if let Some(result) = resolve_known(name.as_str(), &resolved_args, &ctx.global, &ctx.enum_bare_index) {
-        return match result {
-            KnownPatternResult::Type(pt) => {
-                if let PropType::Opaque(detail) = &pt {
-                    push_known_opaque_diagnostic(
-                        &mut state.diagnostics,
-                        detail.reason(),
-                        name.as_str(),
-                        consuming_file,
-                    );
+        Some(super::precedence::SourceOrKnownMatch::Interface(_)) => {
+            // At the prop-TYPE level (not chain level), an interface name is returned as Named.
+            // Full prop expansion only happens at the component level via resolve_props_chain.
+            return PropType::Named { name: name.clone(), args: resolved_args };
+        }
+        Some(super::precedence::SourceOrKnownMatch::Known(result)) => {
+            return match result {
+                KnownPatternResult::Type(pt) => {
+                    if let PropType::Opaque(detail) = &pt {
+                        push_known_opaque_diagnostic(
+                            &mut state.diagnostics,
+                            detail.reason(),
+                            name.as_str(),
+                            consuming_file,
+                        );
+                    }
+                    pt
                 }
-                pt
-            }
-            KnownPatternResult::Alias { name: alias_name } => {
-                // Follow the alias through resolve_named.
-                let alias_ct = CollectedType::Named { name: alias_name.as_str().into(), args: vec![] };
-                resolve_collected_type(&alias_ct, consuming_file, ctx, state, depth + 1)
-            }
-            KnownPatternResult::Props(_) => {
-                // Props result at type level — surface as Named.
-                PropType::Named { name: name.clone(), args: resolved_args }
-            }
-        };
+                KnownPatternResult::Alias { name: alias_name } => {
+                    // Follow the alias through resolve_named.
+                    let alias_ct = CollectedType::Named { name: alias_name.as_str().into(), args: vec![] };
+                    resolve_collected_type(&alias_ct, consuming_file, ctx, state, depth + 1)
+                }
+                KnownPatternResult::Props(_) => {
+                    // Props result at type level — surface as Named.
+                    PropType::Named { name: name.clone(), args: resolved_args }
+                }
+            };
+        }
+        None => {}
     }
 
     // ── 6. Silent no-op for well-known unresolvable types ────────────────────

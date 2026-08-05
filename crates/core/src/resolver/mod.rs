@@ -31,6 +31,7 @@ mod func;
 mod html;
 mod import;
 mod named;
+mod precedence;
 mod primitives;
 mod react;
 mod substitute;

@@ -119,8 +119,13 @@ impl TryFrom<JsExtractOptions> for PipelineOptions {
 pub async fn extract_all(options: JsExtractOptions) -> napi::Result<String> {
     let pipeline_options = PipelineOptions::try_from(options).map_err(napi::Error::from_reason)?;
     tokio::task::spawn_blocking(move || {
-        let output = oxc_react_docgen_core::pipeline::extract(&pipeline_options);
-        extraction_output_to_json(&output).map_err(|e| napi::Error::from_reason(e.to_string()))
+        match oxc_react_docgen_core::panic_guard::contain_panic("extract_all", move || {
+            let output = oxc_react_docgen_core::pipeline::extract(&pipeline_options);
+            extraction_output_to_json(&output).map_err(|e| napi::Error::from_reason(e.to_string()))
+        }) {
+            Ok(result) => result,
+            Err(diag) => Err(napi::Error::from_reason(diag.to_string())),
+        }
     })
     .await
     .map_err(|e| napi::Error::from_reason(e.to_string()))?
@@ -131,10 +136,15 @@ pub async fn extract_all(options: JsExtractOptions) -> napi::Result<String> {
 #[napi]
 pub fn create_session(options: JsExtractOptions) -> napi::Result<u32> {
     let pipeline_options = PipelineOptions::try_from(options).map_err(napi::Error::from_reason)?;
-    let id = next_session_id();
-    let session = Arc::new(WatchSession::new(pipeline_options));
-    SESSIONS.insert(id, session);
-    Ok(id)
+    match oxc_react_docgen_core::panic_guard::contain_panic("create_session", move || {
+        let id = next_session_id();
+        let session = Arc::new(WatchSession::new(pipeline_options));
+        SESSIONS.insert(id, session);
+        id
+    }) {
+        Ok(id) => Ok(id),
+        Err(diag) => Err(napi::Error::from_reason(diag.to_string())),
+    }
 }
 
 /// Incremental extraction for a single changed file.
@@ -157,9 +167,14 @@ pub async fn extract_file_incremental(
     };
 
     tokio::task::spawn_blocking(move || {
-        let path = Utf8Path::new(&file_path);
-        let update = session.update_file(path);
-        incremental_update_to_json(&update).map_err(|e| napi::Error::from_reason(e.to_string()))
+        match oxc_react_docgen_core::panic_guard::contain_panic("extract_file_incremental", move || {
+            let path = Utf8Path::new(&file_path);
+            let update = session.update_file(path);
+            incremental_update_to_json(&update).map_err(|e| napi::Error::from_reason(e.to_string()))
+        }) {
+            Ok(result) => result,
+            Err(diag) => Err(napi::Error::from_reason(diag.to_string())),
+        }
     })
     .await
     .map_err(|e| napi::Error::from_reason(e.to_string()))?
@@ -180,9 +195,14 @@ pub async fn initialize_session(session_id: u32, options: JsExtractOptions) -> n
         }
     };
     tokio::task::spawn_blocking(move || {
-        let output = session.initialize();
-        oxc_react_docgen_core::pipeline::extraction_output_to_json(&output)
-            .map_err(|e| napi::Error::from_reason(e.to_string()))
+        match oxc_react_docgen_core::panic_guard::contain_panic("initialize_session", move || {
+            let output = session.initialize();
+            oxc_react_docgen_core::pipeline::extraction_output_to_json(&output)
+                .map_err(|e| napi::Error::from_reason(e.to_string()))
+        }) {
+            Ok(result) => result,
+            Err(diag) => Err(napi::Error::from_reason(diag.to_string())),
+        }
     })
     .await
     .map_err(|e| napi::Error::from_reason(e.to_string()))?
@@ -191,7 +211,9 @@ pub async fn initialize_session(session_id: u32, options: JsExtractOptions) -> n
 /// Release session state. Call in Vite's buildEnd hook.
 #[napi]
 pub fn close_session(session_id: u32) {
-    SESSIONS.remove(&session_id);
+    let _ = oxc_react_docgen_core::panic_guard::contain_panic("close_session", move || {
+        SESSIONS.remove(&session_id);
+    });
 }
 
 #[cfg(test)]
@@ -254,5 +276,27 @@ mod tests {
 
         let opts = PipelineOptions::try_from(js).expect("should parse valid JSON");
         assert_eq!(opts.extra_paths.get("@myorg/ui").map(|v| v.len()), Some(1));
+    }
+
+    #[test]
+    fn contain_panic_is_reachable_from_the_binding_crate() {
+        let result: Result<i32, oxc_react_docgen_core::Diagnostic> =
+            oxc_react_docgen_core::panic_guard::contain_panic("binding-test", || panic!("boom from binding"));
+        let diag = result.expect_err("panic should be contained, not propagated across the FFI boundary");
+        assert!(diag.message.contains("boom from binding"), "got {}", diag.message);
+    }
+
+    #[test]
+    fn a_panic_inside_create_session_surfaces_as_a_napi_error_not_a_crash() {
+        let result: napi::Result<u32> =
+            match oxc_react_docgen_core::panic_guard::contain_panic("create_session", move || -> u32 {
+                panic!("simulated create_session panic")
+            }) {
+                Ok(id) => Ok(id),
+                Err(diag) => Err(napi::Error::from_reason(diag.to_string())),
+            };
+
+        let err = result.expect_err("panic should be caught and converted to a napi::Error");
+        assert!(err.reason.contains("simulated create_session panic"), "got {}", err.reason);
     }
 }

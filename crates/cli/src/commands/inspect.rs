@@ -2,7 +2,7 @@ use miette::Result;
 
 use crate::config::{build_options, BuildOptionsArgs};
 
-pub fn cmd_inspect(args: crate::InspectArgs, config_path: Option<&str>) -> Result<()> {
+pub fn cmd_inspect(args: crate::InspectArgs, config_path: Option<&str>) -> Result<i32> {
     use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table};
     use owo_colors::OwoColorize;
 
@@ -79,5 +79,43 @@ pub fn cmd_inspect(args: crate::InspectArgs, config_path: Option<&str>) -> Resul
     }
 
     println!();
-    Ok(())
+    Ok(output.exit_code(false))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inspect_surfaces_error_exit_code_from_diagnostics_elsewhere_in_the_tree() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = tempfile::TempDir::new_in(manifest_dir).unwrap();
+        std::fs::write(
+            tmp.path().join("Comp.tsx"),
+            r#"
+export interface CompProps { label: string; }
+export function Comp(props: CompProps) { return null; }
+"#,
+        )
+        .unwrap();
+        // Deliberately malformed, same fixture shape as
+        // extractor::tests::test_parse_error_surfaced_as_diagnostic — unclosed
+        // interface body triggers a ParseError diagnostic (Error severity).
+        std::fs::write(
+            tmp.path().join("Bad.tsx"),
+            r#"
+export interface BrokenProps {
+    label: string;
+"#,
+        )
+        .unwrap();
+
+        let dir = camino::Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let args = crate::InspectArgs { component: "Comp".into(), src: vec![dir.to_string()] };
+        let code = cmd_inspect(args, None).expect("cmd_inspect should find Comp and not error");
+        assert_eq!(
+            code, 2,
+            "expected exit code 2: Bad.tsx has a parse error even though the inspected component is fine"
+        );
+    }
 }

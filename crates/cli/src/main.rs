@@ -181,10 +181,7 @@ fn main() -> Result<()> {
         Command::Extract(args) => cmd_extract(args, cli.quiet, cli.config.as_deref())?,
         Command::Watch(args) => cmd_watch(args, cli.quiet, cli.config.as_deref())?,
         Command::Check(args) => cmd_check(args, cli.quiet, cli.config.as_deref())?,
-        Command::Inspect(args) => {
-            cmd_inspect(args, cli.config.as_deref())?;
-            0
-        }
+        Command::Inspect(args) => cmd_inspect(args, cli.config.as_deref())?,
         Command::Schema => {
             cmd_schema()?;
             0

@@ -1,0 +1,349 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+## 1. Primary Request and Intent
+
+This session covered multiple sequential requests:
+1. Architecture evaluation comparing the codebase to OXC/oxlint/rolldown standards
+2. Planning R12-R17 improvement work and identifying root patterns of issues
+3. Improving agent/skills/CLAUDE.md setup with constraints: short files, goal-oriented, not prescriptive, examples only when needed, tools over agents for deterministic tasks
+4. Research into "superpowers" and rust skills plugins
+5. Creating project skills (rust-style, rust-types, rustdoc) and CLAUDE.md files
+6. Memory cleanup — removing stale architecture_refactor.md, trimming project_overview.md
+7. Adding pre-commit hooks: cargo fmt, clippy, typos, cargo-deny
+8. Upgrading moon from 0.26.0 (homebrew) to 2.3.3 (proto-managed)
+9. **Most recent**: Determining whether moon+proto has native hook support without needing lefthook, after the user said "WTF, you're spinning your wheels. Read the moon docs please"
+
+The deep-research workflow `wf_b5722295-48d` is currently running to answer the moon hooks question definitively.
+
+---
+
+## 2. Key Technical Concepts
+
+- **Architecture patterns**: 5 root anti-patterns identified (policy without enforcement, incomplete types, defined≠done, inside-out API, human-only gate)
+- **CLAUDE.md hierarchy**: root (~40 lines) + per-crate (@-loaded on demand) + skills auto-invoked
+- **Claude Code skills**: `.claude/skills/<name>/SKILL.md` with frontmatter (name, description, allowed-tools)
+- **Superpowers plugin**: obra/superpowers — 14 skills, uses lefthook as hook execution engine
+- **davidbarsky rust-style**: 3 skills (rustdoc, rust-style, rust-analyzer-ssr) from Rust lang team member
+- **moon 2.x**: Breaking changes from 0.26 — `vcs.manager` → `vcs.client`, explicit project IDs required for name collisions
+- **moon `hookFormat`**: Schema shows `"bash" | "native"` — controls generated hook script format
+- **lefthook**: moon 2.x's hook system appears to use lefthook as its execution engine via `moon sync vcs-hooks`
+- **proto**: Toolchain manager (`~/.proto/shims/`) — manages Node, pnpm, Rust, moon versions via `.prototools`
+- **RTK**: `PreToolUse` hook on Bash calls `rtk hook claude` — filters shell output, reducing tokens
+- **insta snapshots**: 7 tests across fixtures, `INSTA_UPDATE=always` to regenerate
+- **R12-R17 queue**: Quality improvements identified in architecture review
+
+---
+
+## 3. Files and Code Sections
+
+### Created/Modified Skills
+
+**`.claude/skills/rust-style/SKILL.md`**:
+```markdown
+---
+name: rust-style
+description: Apply when writing or modifying Rust code in this project.
+---
+**Goal:** Code correct by construction, readable under churn, performant in hot paths.
+## Project-specific decisions
+- Internal maps: `FxHashMap`. JSON-output maps: `BTreeMap`.
+- Type/prop names: `CompactString`
+- No `unwrap()` outside `#[cfg(test)]` — use `?`
+## Control flow
+`let...else` keeps the happy path flat
+## Matching
+No wildcards — explicit match arms, full `match` over `matches!`
+## Types
+Newtypes for semantic clarity, enums over booleans
+## Naming
+Shadow variables through transformations (no raw_/parsed_ prefixes)
+## Comments
+Only when the WHY is non-obvious
+```
+
+**`.claude/skills/rust-types/SKILL.md`**:
+```markdown
+---
+name: rust-types
+description: Apply when defining new public structs or enums.
+---
+**Goal:** Every public type is immediately usable, extendable without semver breaks.
+Checklist: Debug, Display (if in messages), Error (if failure), AsRef<str> (string newtypes), #[non_exhaustive] (enums gaining variants), #[must_use]
+Wire or don't define rule.
+Reference: crates/core/src/types/diagnostic.rs
+```
+
+**`.claude/skills/rustdoc/SKILL.md`**:
+```markdown
+---
+name: rustdoc
+description: Apply when writing doc comments on public Rust items.
+---
+**Goal:** Public API usable from docs.rs without reading source.
+RFC 1574: third-person present, ends with period, ///, link types with [...], sections only when needed, hide boilerplate with # 
+```
+
+### Created CLAUDE.md Files
+
+**`CLAUDE.md`** (root, ~35 lines):
+```markdown
+# oxc-react-docgen
+10-100x faster drop-in replacement for react-docgen-typescript...
+## Commands
+cargo test -p oxc-react-docgen-core
+cargo clippy -p oxc-react-docgen-core -- -D warnings
+## Non-negotiables
+1. No `unwrap()` outside `#[cfg(test)]`
+2. FxHashMap internal, BTreeMap JSON-output
+3. CompactString for type/prop names
+4. No AST refs escape parse_file()
+5. No terminal/display code in crates/core
+6. Always emit Diagnostic when degrading
+## Architecture
+OXC parse → SourceData (extractor/) → GlobalSourceData (pipeline/) → ComponentEntry (resolver/) → ExtractionOutput
+## Crate guide
+- crates/core — @crates/core/CLAUDE.md
+- crates/cli — @crates/cli/CLAUDE.md
+- crates/napi — thin NAPI wrapper
+```
+
+**`crates/core/CLAUDE.md`**: Module layout, type discipline (reference diagnostic.rs), rayon/Send+Sync constraint, snapshot test pointer.
+
+**`crates/cli/CLAUDE.md`**: Layout, output routing (never println!, use output.rs/tracing), config injection security note (path via env var, not embedded in shell string).
+
+### Created Commands
+
+**`.claude/commands/check.md`**:
+```markdown
+cargo clippy -p oxc-react-docgen-core -- -D warnings 2>&1
+cargo test -p oxc-react-docgen-core 2>&1
+cargo insta pending-snapshots 2>/dev/null && echo "⚠ pending snapshots" || echo "✓ no pending snapshots"
+Report: warnings, failing tests, pending snapshots. Stop there.
+```
+
+**`.claude/commands/snapshot.md`**:
+```markdown
+INSTA_UPDATE=always cargo test -p oxc-react-codegen-core 2>&1
+cargo insta review
+Then run cargo test once more to confirm.
+```
+
+### Memory Files Updated
+
+**`memory/MEMORY.md`** (trimmed to 1 entry):
+```markdown
+# Memory Index
+- [Project: oxc-react-docgen](project_overview.md) — Locked versions, OXC API notes, key decisions
+```
+
+**`memory/project_overview.md`** (rewritten, ~40 lines): Locked dependency versions, OXC 0.135 API notes (critical gotchas for extractor), key decisions (cache location, config file name, Vite plugin format, PropType serde workaround, ScopedKey deferred).
+
+`memory/architecture_refactor.md` — **DELETED** (stale, refactor complete).
+
+### `.moon/workspace.yml` (current state)
+```yaml
+# https://moonrepo.dev/docs/config/workspace
+$schema: "https://moonrepo.dev/schemas/workspace.json"
+
+projects:
+  core: "crates/core"
+  cli: "crates/cli"
+  crates-napi: "crates/napi"
+  napi: "packages/napi"
+  rolldown-plugin: "packages/rolldown-plugin"
+  validate: "packages/validate"
+  vite-plugin: "packages/vite-plugin"
+
+vcs:
+  client: git
+  defaultBranch: master
+
+telemetry: false
+```
+
+### `.moon/tasks.yml` (updated)
+```yaml
+tasks:
+  fmt-check:
+    command: cargo fmt --check
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+  lint:
+    command: cargo clippy --workspace -- -D warnings
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+  typos:
+    command: typos
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+  deny:
+    command: cargo deny check advisories
+    options:
+      runFromWorkspaceRoot: true
+      cache: false
+```
+
+### `.prototools`
+```toml
+node = "~26"
+pnpm = "~10"
+rust = "1.96.0"
+moon = "2.3.3"
+
+[plugins]
+moon = "source:https://raw.githubusercontent.com/moonrepo/moon/master/proto-plugin.toml"
+
+[settings]
+auto-install = true
+```
+
+### `lefthook.yml` (current, state uncertain after restore attempt)
+```yaml
+pre-commit:
+  parallel: true
+  commands:
+    fmt:
+      glob: "**/*.rs"
+      run: cargo fmt --check
+    clippy:
+      glob: "crates/**/*.rs"
+      run: cargo clippy --workspace -- -D warnings
+    typos:
+      run: typos
+    deny:
+      glob: "Cargo.{toml,lock}"
+      run: cargo deny check advisories
+```
+
+### `deny.toml`
+```toml
+[advisories]
+version = 2
+ignore = []
+
+[licenses]
+version = 2
+allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "ISC", "BSD-2-Clause", "BSD-3-Clause", "Unicode-3.0", "Unicode-DFS-2016"]
+
+[bans]
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+```
+
+### `justfile` (updated setup target)
+```
+setup:
+    proto install
+    pnpm install
+    pnpm exec lefthook install
+```
+
+### `docs/09-STATUS.md`
+Updated: test count 97, added Refactor + Claude setup rows, added R12-R17 quality queue table.
+
+---
+
+## 4. Errors and Fixes
+
+- **moon 0.26 → 2.x breaking change: `vcs.manager`**: Renamed to `vcs.client`. Fixed in workspace.yml.
+- **Project ID collision (crates/napi vs packages/napi)**: Moon 2.x derives IDs from folder names. Fixed by using explicit `id: value` mapping in workspace.yml projects section.
+- **`rm` commands blocked by permission system**: Several `rm` commands appeared to run but were actually blocked (the terminal showed "remove file? (y/n)" prompts that defaulted to no). This caused confusion where I thought files were deleted but they weren't. This led to spinning wheels on the hook setup.
+- **moon sync vcs-hooks always generates lefthook-based hook**: Even with `hookFormat: "bash"`, moon generated a lefthook-calling git hook. The `hookFormat` schema value "bash" was found but didn't produce the expected result. This needs proper docs reading.
+- **`pnpm add` workspace root warning**: Required `-w` flag (`pnpm add -Dw lefthook`).
+- **proto not on PATH in Claude sessions**: `proto` command not found; must use `~/.proto/bin/proto` or `~/.proto/shims/proto`.
+
+**User feedback**: "WTF, you're spinning your wheels. Read the moon docs please" — after multiple failed attempts to determine if moon can install hooks without lefthook through trial-and-error. Correct approach: read docs first.
+
+---
+
+## 5. Problem Solving
+
+**Solved:**
+- Architecture gaps documented as R12-R17 with specific fixes
+- CLAUDE.md hierarchy established (root + per-crate + skills)
+- Skills written for this project's specific conventions (not generic davidbarsky)
+- Memory trimmed to unique content not in CLAUDE.md
+- Moon upgraded from 0.26 (homebrew) to 2.3.3 (proto)
+- Pre-commit hooks working via lefthook with glob filtering
+
+**Ongoing/Unresolved:**
+- **Moon hooks question**: Does moon 2.x require lefthook or can it install hooks natively? The deep-research workflow `wf_b5722295-48d` is running to answer this. The JSON schema shows `hookFormat: "bash" | "native"` but testing showed hookFormat didn't change hook runner.
+- **Git state**: workspace.yml has uncommitted changes (vcs.hooks removed). lefthook.yml restore was interrupted. Need clean state after deep-research completes.
+
+---
+
+## 6. All User Messages
+
+1. "Let's go to the next part" (continuing from prior session)
+2. "Can we take a stab at another round of evaluation of the architecture and our rust best practices? Where else can we improve our codebase to something that exceeds the standards for the industry? How do we compare to the codebases for the likes of RTK, oxc, oxlint, rolldown?" [CRITICAL: Respond with TEXT ONLY]
+3. "Can we make a plan to address these? Can we identify the patterns of issues and consider how we avoiding making the same mistakes going forward?"
+4. "How do we ensure LLMs don't write more code with the same mistakes?"
+5. "If we think of the best way to guide our work in this repo with agents, skills and CLAUDE.md making sure we stay focused on goal and outcomes along with the anthropic best practices how do we improve our setup as well as our token efficiency/cost?"
+6. [Mid-task interrupt]: "We want to make sure that we're focused on industry best practices, short files, goal and outcome oriented, not overly prescriptive, examples only when text is not sufficient, references where useful. Tools over agentic workflows for deterministic tasks."
+7. "Let's learn from superpowers and other similar setups and tools in order to consider our agent and skills setup for this repo"
+8. "sounds like we should install superpowers and rust-style like? Are there better alternatives out there?"
+9. "yes, write all three with a goal and outcome focus. Short, to the point and not prescriptive, right?"
+10. "yes, continue with CLAUDE.md and the commands"
+11. "commit this"
+12. "Are we leveraging tools for deterministic tasks, reducing the context we bring in and out? Are we making sure we're leveraging the best model and effort to accomplish the task while keeping cost down?"
+13. "Let's leverage all of the best pre-commit hooks to help us here, not just clippy but things that run very fast"
+14. [Mid-task interrupt]: "Let's cleanup what is already done to avoid confusion going forward"
+15. "Why are we not using moon/proto for this??"
+16. "upgrade moon first"
+17. "Doesn't moon+proto have hook support? Why do we need lefthook?"
+18. "WTF, you're spinning your wheels. Read the moon docs please"
+19. "Run the 'deep-research' workflow." [confirming workflow launch]
+
+---
+
+## 7. Pending Tasks
+
+1. **Complete moon hooks investigation**: Wait for deep-research workflow `wf_b5722295-48d` to complete, then implement the correct moon hook setup based on actual docs
+2. **Clean up git state**: After hooks are properly configured, commit the final clean state
+3. **R12-R17 implementation**: Quality improvement queue (deny unsafe_code, panic cleanup, type completion, ScopedKey wire/delete, dead code, API ergonomics)
+4. **Model tiering**: Use `model: "haiku"` for Explore/research agents (not currently done)
+5. **Phase 5a**: Vite plugin (ready to start after R12-R17)
+
+---
+
+## 8. Current Work
+
+Immediately before this summary, the deep-research workflow was launched to definitively answer whether moon 2.x requires lefthook or has native hook support. The user was frustrated by repeated trial-and-error attempts.
+
+The background workflow `wf_b5722295-48d` is researching:
+- `https://moonrepo.dev/docs/guides/vcs-hooks`
+- `https://moonrepo.dev/docs/config/workspace`
+- Whether `hookFormat: "bash"` produces a pure bash git hook
+- Whether `moon sync vcs-hooks` can work without lefthook installed
+
+Current file states that are **uncommitted**:
+- `.moon/workspace.yml` — `vcs.hooks` section removed (from the experimentation)
+- `lefthook.yml` — uncertain state (restore from /tmp was interrupted by permission block)
+- `package.json` / `pnpm-lock.yaml` — lefthook added as pnpm dev dep
+
+Last committed state: `3d8d1f2` — "chore: upgrade moon to 2.3.3 via proto, add pre-commit hooks"
+
+---
+
+## 9. Optional Next Step
+
+Wait for the deep-research workflow (`wf_b5722295-48d`) to complete, then read the findings and implement the correct moon hook setup based on the actual documentation.
+
+The user's most recent explicit direction: **"WTF, you're spinning your wheels. Read the moon docs please"** — meaning: stop trial-and-error, use the research results to understand exactly how moon hooks work, then make one clean correct implementation.
+
+After the workflow completes, the next step is to:
+1. Read the workflow findings
+2. Determine the definitive answer: does moon 2.x need lefthook for hooks or not?
+3. If moon has native support: remove lefthook dependency, use `vcs.hooks` only
+4. If moon requires lefthook: keep lefthook as pnpm dep, configure `vcs.hooks` to generate the lefthook.yml via `moon sync vcs-hooks`, gitignore the generated lefthook.yml
+5. Commit a clean final state
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

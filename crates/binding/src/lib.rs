@@ -14,6 +14,13 @@ use oxc_react_docgen_core::pipeline::{
 static SESSIONS: LazyLock<DashMap<u32, Arc<WatchSession>>> = LazyLock::new(DashMap::new);
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(0);
 
+/// Src-dir value that trips a simulated panic inside `create_session`'s real
+/// body — exists only to let tests exercise `panic_guard::contain_panic`'s
+/// containment through the actual production entry point, the same pattern
+/// `oxc_react_docgen_core::pipeline`'s `PARSE_PANIC_TEST_SENTINEL` uses.
+#[cfg(test)]
+const CREATE_SESSION_PANIC_TEST_SENTINEL: &str = "__CREATE_SESSION_PANIC_TEST__";
+
 fn next_session_id() -> u32 {
     let pid = std::process::id() as u64;
     let counter = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
@@ -137,6 +144,11 @@ pub async fn extract_all(options: JsExtractOptions) -> napi::Result<String> {
 pub fn create_session(options: JsExtractOptions) -> napi::Result<u32> {
     let pipeline_options = PipelineOptions::try_from(options).map_err(napi::Error::from_reason)?;
     match oxc_react_docgen_core::panic_guard::contain_panic("create_session", move || {
+        #[cfg(test)]
+        if pipeline_options.src_dirs.iter().any(|d| d.as_str() == CREATE_SESSION_PANIC_TEST_SENTINEL) {
+            panic!("simulated create_session panic (test-only sentinel)");
+        }
+
         let id = next_session_id();
         let session = Arc::new(WatchSession::new(pipeline_options));
         SESSIONS.insert(id, session);
@@ -279,24 +291,11 @@ mod tests {
     }
 
     #[test]
-    fn contain_panic_is_reachable_from_the_binding_crate() {
-        let result: Result<i32, oxc_react_docgen_core::Diagnostic> =
-            oxc_react_docgen_core::panic_guard::contain_panic("binding-test", || panic!("boom from binding"));
-        let diag = result.expect_err("panic should be contained, not propagated across the FFI boundary");
-        assert!(diag.message.contains("boom from binding"), "got {}", diag.message);
-    }
-
-    #[test]
     fn a_panic_inside_create_session_surfaces_as_a_napi_error_not_a_crash() {
-        let result: napi::Result<u32> =
-            match oxc_react_docgen_core::panic_guard::contain_panic("create_session", move || -> u32 {
-                panic!("simulated create_session panic")
-            }) {
-                Ok(id) => Ok(id),
-                Err(diag) => Err(napi::Error::from_reason(diag.to_string())),
-            };
+        let mut js = base_options();
+        js.src_dirs = vec![CREATE_SESSION_PANIC_TEST_SENTINEL.into()];
 
-        let err = result.expect_err("panic should be caught and converted to a napi::Error");
+        let err = create_session(js).expect_err("panic should be caught and converted to a napi::Error");
         assert!(err.reason.contains("simulated create_session panic"), "got {}", err.reason);
     }
 }

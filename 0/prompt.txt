@@ -1,0 +1,1 @@
+Should we cleanup historical texts that are not the spec? Relevant spec information can be merged

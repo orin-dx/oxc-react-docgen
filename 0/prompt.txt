@@ -1,0 +1,157 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   The user invoked `/remote-control` and requested: "Let's start the next phase with as many agent teams as possible to avoid conflicts with one another." They then said: "Once you're done compile and run against real codebases to validate that we have the issues addressed." The final message is "How do we feel about the current status?" — a request for a qualitative assessment.
+   
+   The broader goal was to execute the structural gap fixes from `docs/superpowers/plans/2026-06-28-structural-gap-fixes.md` and the adversarial analysis bugs from `docs/adversarial-analysis-2026-06-28.md` in parallel, then validate the results against real component library codebases using the compare harness in `apps/validate/`.
+
+2. Key Technical Concepts:
+   - **oxc-react-docgen**: 10-100x faster drop-in for react-docgen-typescript using Rust/OXC instead of tsc
+   - **Architecture**: `OXC parse → SourceData (extractor/) → GlobalSourceData (pipeline/) → ComponentEntry (resolver/) → ExtractionOutput`
+   - **CollectedType**: Intermediate AST representation (Named, Union, Intersection, Function, Raw, etc.)
+   - **CollectedTypeAlias**: Pick, Omit, Partial, Required, Union, Passthrough, LiteralUnion
+   - **ResolvedChain**: `{ props, inheritance, composes, inherited_by_name, discriminant_prop }`
+   - **PropType**: 21 resolver output kinds (string, number, boolean, eventHandler, ref, etc.)
+   - **TSMethodSignature**: OXC AST node for method shorthand in interfaces — params were previously hardcoded as `Raw("...")`
+   - **notableInherited**: Design choice to surface 15-20 key HTML attrs instead of RDT's 250-300 inline expansion
+   - **JSDoc consumed tracking**: `FxHashSet<u32>` tracking which comment `span_end` offsets have been consumed, preventing same comment from leaking to both component description and first prop
+   - **Git worktrees**: Each agent worked on an isolated branch — 8 parallel commits with zero merge conflicts because file sets were disjoint
+   - **RUSTSEC-2026-0190**: anyhow 1.0.102 soundness advisory in `Error::downcast_mut()`, fixed by upgrading to 1.0.103
+   - **C1 bug (unfixed)**: `forwardRef<E, A | B>` — `extract_type_name_from_type` returns `None` for `TSUnionType`, `?` short-circuits, component silently dropped
+
+3. Files and Code Sections:
+
+   **`crates/core/src/extractor/mod.rs`** — MODIFIED (Teams A and H)
+   - Team A: Fixed 2 TSMethodSignature sites. Was `vec![CollectedType::Raw("...".into())]`; now maps `ms.params.items` via `ts_type_to_collected`, with `ms.return_type.as_ref().map(|rt| ...).unwrap_or(CollectedType::Void)`
+   - Team H: Added `consumed_jsdoc: FxHashSet<u32>` field to `SourceDataCollector` struct, initialized in `new()`. Changed 8 method signatures from `&self` to `&mut self`: `ts_type_to_collected`, `ts_tuple_element_to_collected`, `ts_signature_to_object_field`, `extract_type_args`, `extract_type_name_from_type`, `extract_props_arg`, `collect_extends`, `collect_property_signature`
+   - Both applied cleanly via git 3-way auto-merge
+
+   **`crates/core/src/extractor/jsdoc.rs`** — MODIFIED (Team H)
+   - `find_jsdoc` changed to `&mut self`, added `!self.consumed_jsdoc.contains(&c.span_end)` to search filter, inserts `span_end` on non-empty match
+   - `extract_jsdoc_tags` intentionally NOT adding consumed mark (always called after `find_jsdoc` for same span, needs to find already-consumed comment)
+   - Fixes: Avatar/Select/IconButton descriptions no longer leak from first prop's JSDoc
+
+   **`crates/core/src/extractor/component.rs`** — MODIFIED (Team H)
+   - 5 methods changed to `&mut self`: `try_fc_annotation`, `extract_props_from_type_annotation`, `try_forward_ref`, `try_hoc_wrapped`, `try_forward_ref_exotic_decl`
+
+   **`crates/core/src/extractor/alias.rs`** — MODIFIED (Teams C and H)
+   - Team C: Added `"Readonly"` arm to `classify_type_alias` before `_ =>` wildcard, mirrors `"Partial"` arm: `Some(CollectedTypeAlias::Passthrough { target, file_path })`
+   - Team H: Changed `classify_type_alias` to `&mut self`
+   - Applied cleanly via auto-merge
+
+   **`crates/core/src/react_types.rs`** — MODIFIED (Team B)
+   - `html_element_for()`: added `"SVGAttributes" | "SVGProps" => None` and `"HTMLProps" => Some("div")`
+   - `is_react_builtin()`: added `"ComponentRef" | "JSXElementConstructor" | "SVGAttributes" | "SVGProps" | "HTMLProps"`
+
+   **`crates/core/src/resolver/named.rs`** — MODIFIED (Team B)
+   - Added to step-6 silent list: `"SVGAttributes" | "SVGProps" | "HTMLProps" | "ComponentRef" | "JSXElementConstructor"`
+
+   **`crates/core/src/resolver/chain.rs`** — MODIFIED (Team D)
+   - Added step 0.5 before step 1, before the `// ── Step 1` comment:
+   ```rust
+   if !type_args.is_empty() {
+       let fp = camino::Utf8PathBuf::from(consuming_file);
+       let synthetic = match type_name_bare {
+           "Pick" if type_args.len() >= 2 => { ... }
+           "Omit" if type_args.len() >= 2 => { ... }
+           "Partial" if type_args.len() >= 1 => { ... }
+           "Readonly" if type_args.len() >= 1 => { ... }
+           _ => None,
+       };
+       if let Some(alias) = synthetic {
+           return resolve_type_alias_chain(&alias, consuming_file, mapping, ctx, state, depth);
+       }
+   }
+   ```
+   - Added `parse_string_union_keys` helper at bottom of file
+   - Fixed `find_discriminant_prop`: replaced `members[0]`-only iteration with BTreeSet intersection of all members' prop names, then checks each candidate for string-literal presence in at least one member
+   - Also fixed `redact_paths` in `snapshots.rs` for within-string workspace path occurrences
+
+   **`crates/core/src/resolver/extends.rs`** — MODIFIED (Team E)
+   - Changed `ComponentPropsWithoutRef`/`ComponentPropsWithRef`/`ComponentProps` branch return from:
+     `(ResolvedChain { inheritance: vec![layer.clone()], ..Default::default() }, Some(layer))`
+   - To: `(ResolvedChain::default(), Some(layer))`
+   - Layer was being pushed twice: once from `Some(layer)` in chain.rs, once from `parent_chain.inheritance` in `merge_parent`
+
+   **`crates/core/src/resolver/alias.rs`** — MODIFIED (Team F)
+   - After Named member merge loop in `resolve_union_alias`, added loop to also merge non-Named members via `resolve_base_as_chain`
+   - Added `CollectedType::Union(members)` arm to `resolve_base_as_chain` before `_ =>` wildcard
+
+   **`crates/core/src/resolver/mod.rs`** — MODIFIED (Team G)
+   - `merge_parent` line 203: replaced `self.inherited_by_name.extend(parent.inherited_by_name)` with:
+     ```rust
+     for (name, prop) in parent.inherited_by_name {
+         self.inherited_by_name.entry(name).or_insert(prop);
+     }
+     ```
+
+   **`fixtures/rdt-compat/svg-icon.tsx`** — CREATED (Team B)
+   - `Icon` component extending `React.SVGAttributes<SVGSVGElement>` with `size` and `color` props
+   - `Box` component extending `React.HTMLProps<HTMLDivElement>` with `padded` prop
+
+   **`deny.toml`** — MODIFIED
+   - Removed stale `RUSTSEC-2026-0190` ignore entry (anyhow upgraded to 1.0.103)
+
+   **`Cargo.lock`** — MODIFIED
+   - `anyhow` 1.0.102 → 1.0.103
+
+   **`crates/core/tests/snapshots/*.snap`** — REGENERATED (all 7)
+   - All snapshots updated to reflect all 8 fixes
+   - Notably: `onValueChange` now shows `eventType: "string"` instead of `"..."`; `IconButton` now has `disabled`, `type`, `form` from Pick resolution
+
+   **`apps/validate/`** — baseline updated to post-fix output
+
+4. Errors and Fixes:
+   - **RUSTSEC-2026-0190 pre-commit hook block**: All 8 agents hit `cargo deny check advisories` blocking commit due to `anyhow v1.0.102`. Each team independently resolved it — Teams A/D/F/G updated `anyhow` via `cargo update -p anyhow`; Team C added to `deny.toml` ignore. At integration, I kept the anyhow update and removed the `deny.toml` ignore entry.
+   - **Worktree path normalization in snapshots**: Team D noticed snapshot diffs were path artifacts (`[ROOT]/Users/.../node_modules/` vs `[ROOT]/node_modules/`) caused by worktree root differing from main checkout. Team D fixed `redact_paths` in `snapshots.rs` to handle path occurrences within strings, not just at string starts.
+   - **git status from wrong directory**: When I ran `git add deny.toml`, I was in `apps/validate/` so paths were relative and wrong. Fixed by using `git -C /Users/gabe/Projects/oxc-react-codegen add ...`.
+
+5. Problem Solving:
+   - **Parallel integration with zero conflicts**: By assigning each team a completely disjoint set of files, all 8 cherry-picks applied cleanly. Teams A+H both touched `mod.rs` and `alias.rs` but at different line ranges — git's 3-way merge auto-resolved.
+   - **anyhow redundancy**: 4+ teams independently fixed the same advisory. Reconciled at merge time by keeping one upgrade, removing duplicate `deny.toml` entry.
+   - **TSMethodSignature return type optionality**: `TSFunctionType.return_type` is `Box<TSTypeAnnotation>` (not optional) but `TSMethodSignature.return_type` is `Option<Box<TSTypeAnnotation>>` — agents used `.as_ref().map(|rt| ...).unwrap_or(CollectedType::Void)` to handle this difference.
+
+6. All User Messages:
+   - `/remote-control` + "Let's start the next phase with as many agent teams as possible to avoid conflicts with one another."
+   - "Once you're done compile and run against real codebases to validate that we have the issues addressed"
+   - "How do we feel about the current status?" (current message — requests text-only summary)
+
+7. Pending Tasks:
+   - **C1 (Critical)**: Fix inline union props type in `forwardRef<E, A | B>` silently dropping components — `extractor/component.rs:90` and `extractor/mod.rs:413-430`. `extract_type_name_from_type` returns `None` for `TSUnionType`; `?` short-circuits; `Accordion` completely absent from output. Needs synthetic anonymous alias generation. This is the highest-impact single remaining fix.
+   - **Snapshot documentation**: `docs/rdt-coverage.md` needs updating to mark fixed bugs as resolved, add svg-icon coverage row
+   - **Task 6** from the plan: Link `docs/type-checker-integration.md` from coverage matrix and `docs/09-STATUS.md`
+   - **Design difference D6**: `ref` and `key` not emitted — RDT always includes these; we intentionally omit. Worth deciding if intentional or to fix.
+   - **Compare harness "Coverage" metric** is misleading — 19% counts HTML attr expansion gap (design choice) as misses. The real precision metric (own non-HTML props) is much higher.
+
+8. Current Work:
+   Just completed: ran `npx tsx src/compare.ts` to validate the post-fix baseline against all fixture libraries. Results confirmed all 8 fixes working. Committed final snapshot regeneration and `deny.toml` cleanup as `fc9427e chore: drop stale RUSTSEC-2026-0190 ignore; regenerate all snapshots`.
+
+   The final git log on `main`:
+   ```
+   fc9427e chore: drop stale RUSTSEC-2026-0190 ignore; regenerate all snapshots
+   183e820 feat(extractor): handle Readonly<T> as transparent alias
+   3a632b1 fix(extractor): extract TSMethodSignature params instead of hardcoding ellipsis
+   ed52f5a fix(extractor): track consumed JSDoc comments to prevent description leaks
+   4b68c84 fix(resolver): resolve Pick/Omit/Partial in extends position; scan all members for discriminant
+   23eb858 feat(react-types): recognize SVGAttributes, HTMLProps, ComponentRef, JSXElementConstructor
+   e1c8316 fix(resolver): include non-Named union members; handle Union base type in resolve_base_as_chain
+   ea691ec fix(resolver): remove duplicate InheritedLayer from ComponentPropsWithoutRef return
+   c47c2db fix(resolver): merge_parent uses or_insert for inherited_by_name (child wins over grandparent)
+   ```
+
+   Compare harness final results:
+   - `rdt-compat/pick-source/IconButton`: 2→5 props (disabled, type, form resolved from Pick<>)
+   - `rdt-compat/controlled/Select`: onValueChange/onOpenChange show real param types instead of "..."
+   - `rdt-compat/svg-icon/*`: new fixture extracted cleanly
+   - `rdt-compat/memo/Avatar`: ✅ still perfect match (3/3)
+   - `rdt-compat/discriminated-union/Accordion`: ❌ still 0/7 (C1 unfixed)
+   - Overall: 227/1197 props (19%), 101/101 tests pass, 0 clippy warnings
+
+9. Optional Next Step:
+   The user asked "How do we feel about the current status?" — this is a qualitative check-in. After providing the status assessment, the most natural next step aligned with prior work is fixing **C1**: the inline union in `forwardRef<E, A | B>` that silently drops the entire component.
+
+   The fix involves modifying `crates/core/src/extractor/component.rs:90` and `crates/core/src/extractor/mod.rs:413-430` — specifically, `extract_type_name_from_type` needs new arms for `TSType::TSUnionType` and `TSType::TSIntersectionType` that generate synthetic anonymous type aliases registered in `source_data.type_aliases`, returning a synthetic name so the component is created normally and resolved through the alias system.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

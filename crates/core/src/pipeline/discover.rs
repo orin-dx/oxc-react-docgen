@@ -1,10 +1,20 @@
 use camino::Utf8PathBuf;
 
+use crate::types::{Diagnostic, DiagnosticCode, DiagnosticSeverity};
+
 /// Walk `src_dirs` and collect every `.ts` / `.tsx` file, excluding:
 /// - Built-in patterns: `.stories.`, `.test.`, `.spec.`, `__snapshots__`, `node_modules`
 /// - User-supplied extra exclude patterns
-pub(super) fn discover_files(src_dirs: &[Utf8PathBuf], extra_excludes: &[String]) -> Vec<Utf8PathBuf> {
+///
+/// Returns discovered files alongside any diagnostics raised while walking
+/// (e.g. a permission-denied subtree) — never dropped silently (CLAUDE.md
+/// non-negotiable #6).
+pub(super) fn discover_files(
+    src_dirs: &[Utf8PathBuf],
+    extra_excludes: &[String],
+) -> (Vec<Utf8PathBuf>, Vec<Diagnostic>) {
     let mut files = Vec::new();
+    let mut diagnostics = Vec::new();
 
     for dir in src_dirs {
         // If the user explicitly points at a node_modules path, respect it.
@@ -14,7 +24,22 @@ pub(super) fn discover_files(src_dirs: &[Utf8PathBuf], extra_excludes: &[String]
         let walker =
             ignore::WalkBuilder::new(dir.as_std_path()).hidden(false).git_ignore(!dir_is_in_node_modules).build();
 
-        for entry in walker.flatten() {
+        for result in walker {
+            let entry = match result {
+                Ok(entry) => entry,
+                Err(err) => {
+                    diagnostics.push(Diagnostic {
+                        severity: DiagnosticSeverity::Warning,
+                        message: format!("Error walking '{dir}': {err}"),
+                        file: Some(dir.to_string()),
+                        line: None,
+                        column: None,
+                        help: Some("Check file/directory permissions and for broken symlinks under this path.".into()),
+                        code: DiagnosticCode::IoError,
+                    });
+                    continue;
+                }
+            };
             let path = entry.path();
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             if !matches!(ext, "ts" | "tsx") {
@@ -52,7 +77,7 @@ pub(super) fn discover_files(src_dirs: &[Utf8PathBuf], extra_excludes: &[String]
     }
 
     files.sort(); // deterministic ordering across OS / FS
-    files
+    (files, diagnostics)
 }
 
 pub(super) fn should_skip(name: &str, exclude_prefixes: &[String]) -> bool {

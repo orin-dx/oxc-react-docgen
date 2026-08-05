@@ -264,7 +264,8 @@ pub(crate) fn extract_with_global(
     let cache_ref = Arc::clone(&cache);
 
     // Phase 1: Discover source files.
-    let src_files = discover_files(&options.src_dirs, &options.exclude_patterns);
+    let (src_files, mut discover_diagnostics) = discover_files(&options.src_dirs, &options.exclude_patterns);
+    diagnostics.append(&mut discover_diagnostics);
     let files_parsed = src_files.len() as u32;
 
     // Counter for cache hits (atomic so rayon closures can increment safely).
@@ -665,7 +666,7 @@ mod tests {
         write_file(&tmp, "README.md", "# docs");
 
         let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
-        let files = discover_files(&[dir], &[]);
+        let (files, _diagnostics) = discover_files(&[dir], &[]);
 
         let names: Vec<&str> = files.iter().map(|f| f.file_name().unwrap()).collect();
         assert!(names.contains(&"Button.tsx"), "should find .tsx files");
@@ -685,13 +686,50 @@ mod tests {
         write_file(&tmp, "Button.spec.ts", "");
 
         let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
-        let files = discover_files(&[dir], &[]);
+        let (files, _diagnostics) = discover_files(&[dir], &[]);
 
         let names: Vec<&str> = files.iter().map(|f| f.file_name().unwrap()).collect();
         assert!(names.contains(&"Button.tsx"), "implementation should be included");
         assert!(!names.contains(&"Button.stories.tsx"), ".stories. should be excluded");
         assert!(!names.contains(&"Button.test.tsx"), ".test. should be excluded");
         assert!(!names.contains(&"Button.spec.ts"), ".spec. should be excluded");
+    }
+
+    // ── test_discover_files_reports_diagnostic_for_permission_denied_subtree ─
+    //
+    // Bug A (root-cause-analysis.md): `discover_files` used `walker.flatten()`,
+    // silently dropping every `ignore::Walk` `Err` — a permission-denied
+    // subtree, a broken symlink, or any other I/O error mid-walk vanished with
+    // no diagnostic, no warning, nothing. This exercises the permission-denied
+    // case with a real unreadable subdirectory.
+
+    #[test]
+    #[cfg(unix)]
+    fn test_discover_files_reports_diagnostic_for_permission_denied_subtree() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = TempDir::new().unwrap();
+        let restricted = tmp.path().join("restricted");
+        fs::create_dir(&restricted).unwrap();
+        fs::write(restricted.join("Hidden.tsx"), "export const Hidden = () => null;").unwrap();
+        write_file(&tmp, "Visible.tsx", "export const Visible = () => null;");
+
+        fs::set_permissions(&restricted, fs::Permissions::from_mode(0o000)).unwrap();
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let (files, diagnostics) = discover_files(&[dir], &[]);
+
+        // Restore permissions so TempDir's Drop can actually remove the directory.
+        fs::set_permissions(&restricted, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let names: Vec<&str> = files.iter().map(|f| f.file_name().unwrap()).collect();
+        assert!(names.contains(&"Visible.tsx"), "readable file should still be discovered");
+        assert!(!names.contains(&"Hidden.tsx"), "unreadable subtree's file must not silently appear");
+        assert!(
+            diagnostics.iter().any(|d| d.code == DiagnosticCode::IoError),
+            "expected an IoError diagnostic for the unreadable subtree, got {:?}",
+            diagnostics
+        );
     }
 
     // ── test_extract_empty_src ────────────────────────────────────────────────

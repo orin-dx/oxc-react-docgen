@@ -79,6 +79,11 @@ pub enum DiagnosticCode {
     /// of crashing the process (see ADR 0005). Never expected in normal
     /// operation — always a bug, filed with the panic's own message.
     InternalPanic,
+    /// The extractor recognized an AST shape as a candidate (a type-alias utility
+    /// invocation, a component-detector pattern) but it was malformed or
+    /// incomplete in a way that made it unsupported — distinct from "wrong shape,
+    /// not a candidate at all," which emits no diagnostic.
+    SkippedCandidate,
 }
 
 #[cfg(test)]
@@ -112,5 +117,11 @@ mod tests {
         };
         let json = serde_json::to_string(&diagnostic).unwrap();
         assert!(json.contains("\"INTERNAL_PANIC\""), "expected INTERNAL_PANIC in {json}");
+    }
+
+    #[test]
+    fn skipped_candidate_code_serializes_screaming_snake_case() {
+        let json = serde_json::to_string(&DiagnosticCode::SkippedCandidate).unwrap();
+        assert_eq!(json, "\"SKIPPED_CANDIDATE\"");
     }
 }

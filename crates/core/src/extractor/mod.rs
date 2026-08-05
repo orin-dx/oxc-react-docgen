@@ -1571,4 +1571,29 @@ interface ButtonProps {
             data.diagnostics
         );
     }
+
+    #[test]
+    fn pascal_case_function_declaration_with_untyped_first_param_records_skipped_candidate() {
+        // `function Button(props) { ... }` — PascalCase FunctionDeclaration,
+        // .tsx file, has a first param, but it carries no type annotation at
+        // all. Previously the whole chain (type_annotation.as_ref()?...) fell
+        // through silently.
+        let source = r#"
+            function Button(props) {
+                return null;
+            }
+        "#;
+        let path = Utf8Path::new("/test/untyped-param.tsx");
+        let data = parse_file(path, source);
+
+        assert!(
+            !data.component_mappings.iter().any(|m| m.component_name == "Button"),
+            "no mapping should have been produced for an untyped first param"
+        );
+        assert!(
+            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::SkippedCandidate),
+            "expected a SkippedCandidate diagnostic, got: {:?}",
+            data.diagnostics
+        );
+    }
 }

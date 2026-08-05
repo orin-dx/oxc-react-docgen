@@ -300,7 +300,22 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                                     span_end: func.span.end,
                                     param_defaults,
                                 });
+                            } else {
+                                self.record_skip(
+                                    DiagnosticCode::SkippedCandidate,
+                                    format!(
+                                        "'{name}' is a PascalCase function declaration whose first param's type \
+                                         annotation isn't a recognizable props type reference"
+                                    ),
+                                    type_ann.span,
+                                );
                             }
+                        } else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{name}' is a PascalCase function declaration with an untyped first param"),
+                                first_param.span,
+                            );
                         }
                     }
                 }

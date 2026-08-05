@@ -174,6 +174,17 @@ impl DtsCache {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    /// Builds the cache key from the file's current size + mtime.
+    ///
+    /// Known limitation: staleness detection is mtime+size only, no content
+    /// hash. On filesystems with coarse mtime resolution (e.g. some
+    /// configurations report only 1-second granularity), an edit that lands
+    /// in the same tick as a prior write *and* happens to produce a
+    /// same-length file will be served a stale cache hit — the key looks
+    /// unchanged even though the content differs. A content hash would close
+    /// this gap but trades away the cheap stat-only check this cache relies
+    /// on for its speed; see `docs/root-cause-analysis.md` — this is a
+    /// deliberate, scoped-for-later tradeoff, not an oversight.
     fn key_for(&self, path: &Utf8Path) -> Option<CacheKey> {
         let meta = std::fs::metadata(path.as_std_path()).ok()?;
         let mtime_ns = meta

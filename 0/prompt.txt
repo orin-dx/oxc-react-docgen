@@ -1,0 +1,28 @@
+<task-notification>
+<task-id>a2cbdf4648b0aa52a</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a2cbdf4648b0aa52a.output</output-file>
+<status>completed</status>
+<summary>Agent "Build React Day Picker fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Summary
+
+**Files created** (all under `fixtures/day-picker/`, nothing else touched):
+- `DayPicker.tsx` — component, trimmed body, real signature/mode-narrowing preamble kept
+- `props.ts` — `DayPickerProps` union verbatim (7 branches + JSDoc), `PropsBase` verbatim (~54 fields)
+- `shared.ts` — auxiliary types (`Modifiers`, `Formatters`, `ClassNames`, etc.) collapsed to minimal stand-ins
+
+Sources (verified live, `main` branch, matched the ~671/~832 line counts given):
+- https://github.com/gpbl/react-day-picker/blob/main/packages/react-day-picker/src/types/props.ts
+- https://github.com/gpbl/react-day-picker/blob/main/packages/react-day-picker/src/DayPicker.tsx
+- https://github.com/gpbl/react-day-picker/blob/main/packages/react-day-picker/src/types/shared.ts
+
+**Trimming**: only auxiliary types referenced by `PropsBase` were stubbed (`Formatters`→`Record&lt;string,fn&gt;`, `Numerals` truncated from 18→5 literals, `dateLib` field detyped from `Partial&lt;typeof DateLib.prototype&gt;`). The union itself — `DayPickerProps = PropsBase &amp; (PropsSingle | PropsSingleRequired | PropsMulti | PropsMultiRequired | PropsRange | PropsRangeRequired | {mode?:undefined;required?:undefined})` — and all 7 branch interfaces are byte-for-byte unchanged from upstream.
+
+**Extraction**: exit 0, 1 component, 68 props, 116 non-fatal diagnostics, 0 errors, 3ms. Real react-docgen-typescript also produces exactly 68 props (good cross-check — nothing dropped). But **`discriminantProp` came back `null`**, and `selected`/`onSelect` collapsed to the first branch's type (`Date`) instead of a union — RDT correctly shows `selected: "Date | Date[] | DateRange"`.
+
+**Root cause found** (traced into `crates/core/src/resolver/alias.rs`): `find_discriminant_prop`/`resolve_union_alias` (the discriminant-detection logic that works fine for the existing 2-way `discriminated-union.tsx` fixture) is only invoked when a type alias's RHS is *directly* a union (`type X = A | B`). Because `DayPickerProps` is `Base &amp; (union)` — an `Intersection` — the union member instead falls into `resolve_base_as_chain`'s naive `CollectedType::Union` arm, which merges branches first-wins with zero discriminant detection. This is a real gap specific to the intersection-wrapping-union pattern (very common in real components), not to union size — worth a follow-up fix.
+
+Secondary, unrelated finding: bare function-type aliases (`type OnSelectHandler&lt;T&gt; = (...) =&gt; void`) aren't classified as aliases at all (`extractor/alias.rs::classify_type_alias` has no arm for bare function types), causing "cannot resolve" warnings independent of generics or the union.</result>
+<usage><subagent_tokens>146741</subagent_tokens><tool_uses>66</tool_uses><duration_ms>645496</duration_ms></usage>
+</task-notification>

@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bxf7nhbab</task-id>
+<tool-use-id>toolu_01AFQvSx41nuFZJ4XzshWaXa</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/4fe08305-17f4-42f0-993c-45f9fae2f7a4/tasks/bxf7nhbab.output</output-file>
+<status>killed</status>
+<summary>Background command "Test moon native hooks without lefthook present" was stopped</summary>
+</task-notification>

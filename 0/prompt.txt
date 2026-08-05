@@ -1,0 +1,27 @@
+<task-notification>
+<task-id>a0e677c1b413ad1ab</task-id>
+<tool-use-id>toolu_016WpTqo5kkKofJkgG12BAJs</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a0e677c1b413ad1ab.output</output-file>
+<status>completed</status>
+<summary>Agent "Build TanStack Table fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Fixture created and verified. Summary:
+
+**Files created** (all under `/Users/gabe/Projects/oxc-react-codegen/fixtures/tanstack-table/`):
+- `types.ts` — trimmed `ColumnDef&lt;TData,TValue&gt;` chain, adapted from `packages/table-core/src/{types.ts, core/table.ts, core/headers.ts, core/cell.ts, utils.ts}`
+- `column.ts` — near-verbatim `CoreColumn`/`createColumn` (real file is 169 lines; only import paths changed), from `packages/table-core/src/core/column.ts`
+- `data-table.tsx` — near-verbatim `flexRender`/`useReactTable` (real file is 94 lines), from `packages/react-table/src/index.tsx`, plus an added generic `DataTable&lt;TData,TValue&gt;` component
+
+**Source**: tag `v8.21.3` (last v8 release). Confirmed via `gh api repos/TanStack/table/branches` that default branch is now `beta` (v9 restructure, doesn't have this file layout); `main` also isn't the tip — the v8 line lives on version tags. All three core files matched the task's expected line counts exactly (169/94), confirming the right source.
+
+**Trims**: dropped ~13 feature-plugin mixins (visibility/pinning/filtering/sorting/grouping/sizing/pagination/row-selection) that extend `ColumnDef`/`Table`/`Column` in real code — irrelevant to the `&lt;TData,TValue&gt;` shape. `core/table.ts`'s 527-line real `createTable` (which wires every plugin) became a trivial stub. `memo`/`getMemoOptions` folded from `utils.ts` into `types.ts` to stay at 3 files.
+
+**Component finding**: `@tanstack/react-table` ships zero actual components — only hooks/functions. `DataTable` is fixture-added (JSDoc'd as such), body adapted from the real `examples/react/basic/src/main.tsx`, restructured to take generic `columns`/`data` props.
+
+**Generic-flow result**: our tool extracts exactly 1 component (`DataTable`) and correctly expands `columns: ColumnDef&lt;TData,TValue&gt;[]` across the file boundary into the real union `DisplayColumnDef&lt;TData,TValue&gt; | GroupColumnDef&lt;TData,TValue&gt; | AccessorColumnDef&lt;TData,TValue&gt;` — binding survives structurally (`kind: "named"`, `opaqueCount: 0`). However it emits 12 spurious `UNRESOLVABLE_IMPORT` warnings, one per `TData`/`TValue` occurrence reached via that cross-file alias expansion, mislabeling them as "opaque" when they aren't — a diagnostic bug, not an extraction bug. Exit 0, no crash.
+
+RDT (real, exit 0) over-detects: treats `flexRender`, `useReactTable`, `createTable`, and `DataTable` all as components, and never expands `ColumnDef&lt;TData,TValue&gt;` — just stringifies it verbatim.
+
+Only 3 minor pre-existing-pattern tsc errors (2× missing `@types/node` for `process.env`, matching existing `antd` fixture; 1× deep union-assignability quirk in an internal, non-exported code path) — consistent with the repo's existing tolerance (35 similar errors already exist across other fixtures).</result>
+<usage><subagent_tokens>119355</subagent_tokens><tool_uses>69</tool_uses><duration_ms>754839</duration_ms></usage>
+</task-notification>

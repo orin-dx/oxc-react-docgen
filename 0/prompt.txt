@@ -1,0 +1,346 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+
+The session had two main phases:
+
+**Phase 1 (Resumed from prior context):** Complete the interrupted writing-plans task to create:
+- `docs/type-checker-integration.md` — document Corsa API future work (what genuinely needs a type checker, TypeScript 7.0/tsgo ecosystem status, integration architecture)
+- `docs/superpowers/plans/2026-06-28-structural-gap-fixes.md` — full implementation plan for 5 structural gap fixes (TSMethodSignature params, React namespace recognitions, Readonly<T>, inline Pick/Omit in extends, snapshot regeneration)
+
+**Phase 2:** "Do an adversarial analysis of the architecture, RDT spec and what we need to support. Build and test output against the real codebases, compare to typescript-react-docgen and look for bugs and shortcomings."
+
+---
+
+2. Key Technical Concepts:
+
+- **oxc-react-docgen**: 10-100x faster drop-in for react-docgen-typescript using OXC (Rust) for parsing instead of tsc
+- **RDT (react-docgen-typescript)**: The tool we're replacing; uses TypeScript Strada API (dropped in TS 7.0)
+- **TypeScript 7.0 / tsgo**: Go rewrite of tsc; Strada API dropped; Corsa API (replacement) targets TS 7.1 ~Q1 2027
+- **CollectedType**: AST extractor's intermediate representation (Named, Union, Intersection, Function, etc.)
+- **CollectedTypeAlias**: Pick, Omit, Partial, Required, Union, Passthrough, etc.
+- **PropType**: Resolver's output type (21 kinds: string, number, boolean, literalUnion, eventHandler, etc.)
+- **ExtractionOutput**: Final output `{ components, enums, diagnostics, stats }`
+- **ComponentEntry**: `{ displayName, filePath, description, props, inheritance, notableInherited, discriminantProp, composes, tags, methods }`
+- **ResolvedChain**: Intermediate resolver structure `{ props, inheritance, composes, inherited_by_name, discriminant_prop }`
+- **InheritedLayer**: Records HTML element inheritance `{ typeName, fileName, htmlElement, omitted }`
+- **resolve_props_chain**: Main resolver entry point in `resolver/chain.rs`
+- **validate harness**: `apps/validate/` with react-docgen-typescript, react-docgen, and our tool comparison
+- **notableInherited**: Our approach to HTML attrs — surface 15-20 key attrs per element instead of RDT's 250-300 inline expansion
+- **CVA/VariantProps semantics**: `| null` on variant props is intentional (null opts out of variant)
+- **Corsa API**: Replacement for Strada in TS 7.1; needed for generic substitution, conditional type evaluation
+
+---
+
+3. Files and Code Sections:
+
+**CREATED: `docs/type-checker-integration.md`** (148 lines)
+- Documents which 5 gaps are fixable now (structural) vs 4 deferred (need type checker)
+- Covers TS 7.0 / tsgo ecosystem status: Strada API dropped, Corsa targeting TS 7.1
+- Integration architecture: opt-in `--features=type-checker`, step 5.5 in chain.rs
+- Specific Corsa operations needed per gap
+
+**CREATED: `docs/superpowers/plans/2026-06-28-structural-gap-fixes.md`** (658 lines)
+- 6-task implementation plan with exact Rust code for each fix
+- Task 1: TSMethodSignature params (2 sites in `extractor/mod.rs:359-374` and `476-492`)
+- Task 2: React namespace recognitions (`react_types.rs` + `resolver/named.rs` + svg-icon fixture)
+- Task 3: `Readonly<T>` transparent wrapper (`extractor/alias.rs` before `_ =>` wildcard)
+- Task 4: Inline `Pick<T,K>` in extends (`resolver/chain.rs` step 0.5 with `parse_string_union_keys`)
+- Task 5: Snapshot regeneration + coverage matrix updates
+- Task 6: Link type-checker-integration.md from coverage matrix
+
+**Key code in the plan:**
+
+Task 4 helper (types confirmed: `picked_keys: Vec<String>`, `file_path: Utf8PathBuf`):
+```rust
+fn parse_string_union_keys(raw: &str) -> Vec<String> {
+    raw.split('|')
+        .map(|s| s.trim().trim_matches('\'').trim_matches('"').to_owned())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+```
+
+Step 0.5 in `resolver/chain.rs`:
+```rust
+if !type_args.is_empty() {
+    let fp = Utf8PathBuf::from(consuming_file);
+    let synthetic = match type_name_bare {
+        "Pick" if type_args.len() >= 2 => {
+            let base = CollectedType::Named { name: type_args[0].as_str().into(), args: vec![] };
+            Some(CollectedTypeAlias::Pick {
+                base, picked_keys: parse_string_union_keys(&type_args[1]), file_path: fp,
+            })
+        }
+        // ... Omit, Partial, Readonly arms
+        _ => None,
+    };
+    if let Some(alias) = synthetic {
+        return resolve_type_alias_chain(&alias, consuming_file, mapping, ctx, state, depth);
+    }
+}
+```
+
+**CREATED: `docs/adversarial-analysis-2026-06-28.md`**
+- Full adversarial analysis report: 3 Critical, 9 Important, 5 Minor bugs + 6 design differences
+- Priority fix order table
+- What RDT does better vs what we do better
+
+**MODIFIED: `apps/validate/src/types.ts`**
+Added `notableInheritedNames?: string[]` to `ToolResult` interface:
+```typescript
+export interface ToolResult {
+  tool: 'react-docgen' | 'react-docgen-typescript' | 'oxc-react-docgen'
+  fixture: string
+  durationMs: number
+  output: NormalizedOutput
+  inheritedElements?: string[]
+  notableInheritedNames?: string[]  // ADDED
+  error?: string
+}
+```
+
+**MODIFIED: `apps/validate/src/run-ours.ts`**
+Three changes:
+1. Added `existsSync` import
+2. Fixed CLI path to prefer release binary:
+```typescript
+const CLI = existsSync(resolve(__dirname, '../../../target/release/oxc-react-docgen'))
+  ? resolve(__dirname, '../../../target/release/oxc-react-docgen')
+  : resolve(__dirname, '../../../target/debug/oxc-react-docgen')
+```
+3. Fixed fixture key collision + added notableInheritedNames:
+```typescript
+// Changed from:
+fixture: `${lib}/${c.filePath.split('/').pop()?.replace(/\.tsx?$/, '').replace(/\.d$/, '') ?? c.displayName}`,
+// To:
+const basename = c.filePath.split('/').pop()?.replace(/\.tsx?$/, '').replace(/\.d$/, '') ?? c.displayName
+results.push({
+  tool: 'oxc-react-docgen',
+  fixture: `${lib}/${basename}/${c.displayName}`,  // per-component key
+  durationMs,
+  output: normalize({ components: { [c.displayName]: c } }),
+  inheritedElements,
+  notableInheritedNames,  // ADDED
+})
+```
+
+**MODIFIED: `apps/validate/src/compare.ts`**
+Two changes:
+1. Replaced coarse htmlPropPattern with notableInheritedNames-based classification:
+```typescript
+const ourNotableNames = new Set(r_ours?.notableInheritedNames ?? [])
+if (rdtOnly.length) {
+  const coveredByInheritance = rdtOnly.filter(p => ourNotableNames.has(p))
+  const trueMisses = rdtOnly.filter(p => !ourNotableNames.has(p) && !oursProps.includes(p))
+  if (trueMisses.length) {
+    console.log(`    ❗ rdt-only REAL MISSES (${trueMisses.length}): ...`)
+    misses += trueMisses.length
+  }
+  // ...
+}
+```
+2. Fixed win/miss logic:
+```typescript
+const rdtOnlyRealCount = rdtOnly.filter(p => !ourNotableNames.has(p) && !oursProps.includes(p)).length
+```
+
+**MODIFIED: `apps/validate/src/run-react-docgen-typescript.ts`**
+Changed from one-entry-per-file to one-entry-per-component with matching key format:
+```typescript
+for (const comp of raw) {
+  results.push({
+    tool: 'react-docgen-typescript',
+    fixture: `${fixture.name}/${comp.displayName}`,  // matches our ${lib}/${basename}/${displayName}
+    durationMs,
+    output: { [comp.displayName]: { /* normalized comp */ } },
+  })
+}
+```
+
+**KEY SOURCE FILES READ (not modified):**
+
+`crates/core/src/extractor/mod.rs`:
+- Lines 359-374: TSMethodSignature in `ts_signature_to_object_field` — hardcodes `vec![CollectedType::Raw("...")]`
+- Lines 476-492: TSMethodSignature in `collect_property_signature` — same hardcoding
+- Lines 220-236: TSFunctionType pattern (correct template to follow)
+- Lines 413-430: `extract_type_name_from_type` — only handles TSTypeReference and TSParenthesizedType, NOT TSUnionType (root cause of Accordion silent drop)
+
+`crates/core/src/resolver/extends.rs` (confirmed exists, 3.5KB):
+- Lines 50-53: ComponentPropsWithoutRef returns layer in BOTH ResolvedChain.inheritance AND Some(layer) → duplicate InheritedLayer bug
+
+`crates/core/src/resolver/chain.rs`:
+- Line 154: `_type_args: &[String]` — silently ignored in `resolve_interface_chain`
+- Lines 165-170: calls `resolve_extends_ref` then BOTH `chain.inheritance.push(layer)` AND `chain.merge_parent(parent_chain)` → layer appears twice
+- Lines 226-228: `find_discriminant_prop` only iterates `members[0].1` as candidates
+
+`crates/core/src/resolver/mod.rs`:
+- Line 194: `self.inherited_by_name.entry(prop.name.clone()).or_insert(prop)` (or_insert)
+- Line 203: `self.inherited_by_name.extend(parent.inherited_by_name)` (extend overwrites!)
+- Lines 198-200: `merge_parent` — prepends parent.inheritance before self.inheritance
+
+`crates/core/src/resolver/alias.rs`:
+- Lines 153-218: `resolve_union_alias` — filters only Named members; non-Named silently dropped when ≥2 Named
+- Line 160: `&[]` hardcoded — type_args always empty for union members
+- Line 137: `_ => ResolvedChain::default()` — Union base type returns empty silently
+
+`crates/core/src/extractor/jsdoc.rs`:
+- Lines 12-28: `find_jsdoc` with `PROXIMITY_THRESHOLD: u32 = 120` — no consumed tracking → same comment matched by multiple nodes
+
+`crates/core/src/extractor/component.rs`:
+- Line 122: `let (props_name, type_args) = self.extract_type_name_from_type(&type_params.params[1])?;` — `?` returns None for inline union → Accordion silently dropped
+
+`crates/core/src/known.rs`:
+- Lines 153-168: `| null` on VariantProps intentional: "CVA/tv/defineRecipe VariantProps adds `| null` to every variant key (passing null opts out of the variant, using the default)"
+
+---
+
+4. Errors and Fixes:
+
+**Error: pnpm WARN pollution in JSON output**
+- Running `pnpm run:ours` added `WARN  Cannot switch to pnpm@10` prefix to output
+- Fix: Run with `npx tsx src/run-ours.ts` instead of `pnpm run:ours`
+
+**Error: JSON parse failure from pnpm warnings**
+- Even after grep filtering, files were still invalid JSON
+- Fix: Used `npx tsx` directly (bypasses pnpm wrapper)
+
+**Error: Fixture key collision (C3)**
+- `chakra/Button` appeared twice in baseline (Button and ButtonGroup from same file)
+- `chakra/Input` appeared 6 times
+- `Map(results.map(r => [r.fixture, r]))` silently overwrites duplicates
+- Fix: Changed fixture key to `${lib}/${basename}/${displayName}` — unique per component
+
+**Error: RDT fixture keys didn't match ours after fix**
+- After fixing our keys to `${lib}/${basename}/${displayName}`, RDT still used `${lib}/${basename}` (file-level)
+- Fix: Updated `run-react-docgen-typescript.ts` to emit one entry per component with matching key format
+
+**Error: Stale debug binary**
+- `run-ours.ts` hardcoded `target/debug/oxc-react-docgen`
+- Debug binary was pre-arg-index-fix, so panda showed only `asChild` (not size/visual)
+- Fix: Changed CLI path to prefer release binary using `existsSync` check
+
+**Error: Plan used wrong types for CollectedTypeAlias fields**
+- Initial plan used `Vec<CompactString>` for picked_keys
+- Actual type: `picked_keys: Vec<std::string::String>`, `file_path: Utf8PathBuf`
+- Fix: Updated plan code to use `Vec<String>` and `Utf8PathBuf::from(consuming_file)`
+
+**Error: Plan had `CollectedType::Raw(a.into())` but `a: String` and `Raw(String)` don't need `.into()`**
+- Fix: Changed to `CollectedType::Raw(a)` directly
+
+---
+
+5. Problem Solving:
+
+**Problem: Multiple components per file breaking comparison**
+- Solved by using `${lib}/${basename}/${displayName}` as fixture key in both `run-ours.ts` and `run-react-docgen-typescript.ts`
+
+**Problem: HTML attribute noise in comparison (RDT inlines 250-300 HTML attrs; we use notableInherited)**
+- Solved by using `notableInheritedNames` from our tool output to properly classify which RDT props we cover via inheritance vs true misses
+- Old approach: coarse regex `^(on[A-Z]|aria-|data-|class|style|id|tab|ref|key$|role$)` missed ~200 HTML attrs
+
+**Problem: Coverage numbers fabricated upward by blanket inheritance ✅**
+- Old logic: any component with `ourInheritedElements.length > 0` got `wins++` regardless of actual notableInherited coverage
+- Fixed: Only win if `rdtOnlyRealCount === 0` where real count uses `!ourNotableNames.has(p)`
+
+**Problem: Accordion (discriminated-union) completely missing from output**
+- Root cause confirmed: `component.rs:122` — `extract_type_name_from_type` returns None for TSUnionType inline in forwardRef generic → `?` short-circuits → no ComponentMapping → componentsSkipped=0, no diagnostics
+- RDT correctly handles this by merging props with discriminant detection
+- Not yet fixed (Critical C1 — needs medium effort)
+
+**Structural gap fixes plan finalized** with correct Rust types:
+- `picked_keys/omitted_keys: Vec<String>` (not CompactString)
+- `file_path: Utf8PathBuf` (from `camino`)
+- `CollectedType::Named { name: CompactString, args: Vec<CollectedType> }`
+- `CollectedType::Raw(a)` where `a: String`
+
+---
+
+6. All User Messages:
+
+- **(Session start - resumed from prior context, no explicit first message)**
+- "Do an adversarial analysis of the archietcture, RDT spec and what we need to support. Build and test output against the real codebases, compare to typescript-react-docgen and look for bugs and shortcomings."
+- **(Final summary request - current message)**
+
+---
+
+7. Pending Tasks:
+
+**From the implementation plan (`docs/superpowers/plans/2026-06-28-structural-gap-fixes.md`):**
+- Task 1: Fix TSMethodSignature param extraction — 2 sites in `extractor/mod.rs:359-374` and `476-492`
+- Task 2: Add React namespace recognitions (SVGAttributes, HTMLProps, ComponentRef, JSXElementConstructor) + svg-icon fixture
+- Task 3: Add `Readonly<T>` transparent wrapper in `extractor/alias.rs`
+- Task 4: Fix inline `Pick<T,K>`/`Omit<T,K>` in extends position (`resolver/chain.rs` step 0.5)
+- Task 5: Regenerate all snapshots + update coverage matrix
+- Task 6: Link type-checker-integration.md from coverage matrix and STATUS doc
+
+**From the adversarial analysis (new bugs, prioritized):**
+- **C1 (Critical)**: Fix inline union props type in `forwardRef<E, A | B>` silently dropping component — `component.rs:122`, `mod.rs:413-430`
+- **C2 (Critical)**: Fix duplicate InheritedLayer for ComponentPropsWithoutRef — `extends.rs:50-53`
+- **I1 (Important)**: Fix `find_discriminant_prop` to scan all members not just members[0] — `chain.rs:226`
+- **I2 (Important)**: Fix non-Named union members silently dropped in `resolve_union_alias` — `alias.rs:163-164`
+- **I4 (Important)**: Fix `resolve_base_as_chain` returning empty for Union base type — `alias.rs:137`
+- **I5 (Important)**: Fix `merge_parent` `extend()` overwriting `or_insert()` — `mod.rs:194,203`
+- **I7 (Important)**: Fix JSDoc 120-byte proximity leak — `jsdoc.rs:13`
+
+**From coverage matrix (ongoing):**
+- `discriminated-union.tsx` Accordion needs union-of-interfaces support (linked to C1)
+- `pick-source.tsx` IconButton needs inline Pick resolution (linked to structural-gap-fixes Task 4)
+- `controlled.tsx` onValueChange needs TSMethodSignature fix (linked to structural-gap-fixes Task 1)
+
+---
+
+8. Current Work:
+
+The session was completing the adversarial analysis and was in the process of verifying that panda now correctly shows `size` and `visual` props after fixing the CLI binary path to use the release build.
+
+The last action taken was re-running `run-ours.ts` with the release binary fix:
+```bash
+npx tsx src/run-ours.ts 2>/dev/null > /tmp/ours_release.json
+```
+And checking the panda output to verify `size` and `visual` appeared:
+```json
+{
+  "Button": {
+    "props": {
+      "asChild": { "type": "boolean" },
+      "size": { ... }  // partially shown, confirming fix works
+```
+
+The comparison output was also run and showed (after all harness fixes):
+- `rdt-compat/memo/Avatar`: ✅ PERFECT MATCH (1 win)
+- `rdt-compat/controlled/Select`: 8 vs 9 props — type diffs: onValueChange=`(event: ...) => void` vs `((value: string) => void)`, onOpenChange=`(event: boolean) => void` vs `((open: boolean) => void)`; missing ref, key
+- `rdt-compat/discriminated-union/Accordion`: ❌ 0 vs 7 (C1 bug)
+- `rdt-compat/pick-source/IconButton`: ❌ 2 vs 7 (missing disabled, type, form, ref, key)
+- `rdt-compat/types/TypeSampler`: 9 vs 11 — missing ref, key; 5 type format diffs
+- Summary: Coverage 219/1197 (18%), Identical matches: 1, Misses: 1120 (these numbers are misleading because ~1000 of the 1197 RDT props are HTML attrs we represent via inheritance)
+
+The adversarial analysis report was fully written and committed to `docs/adversarial-analysis-2026-06-28.md`. The compare harness fixes were applied to `run-ours.ts`, `compare.ts`, `run-react-docgen-typescript.ts`, and `types.ts`. Updated baselines were saved.
+
+Non-negotiables that must remain in effect:
+1. No `unwrap()` outside `#[cfg(test)]` — use `?`
+2. `FxHashMap` for internal maps; `BTreeMap` for JSON-output maps
+3. `CompactString` for type/prop names in hot paths
+4. No AST refs escape `parse_file()` — allocator is local per call
+5. No terminal/display code in `crates/core`
+6. Always emit `Diagnostic` when degrading — never fail silently
+7. No Co-Authored-By in commits
+8. Succinct commit messages, no line wrapping, no AI slop
+
+---
+
+9. Optional Next Step:
+
+The most recent work was the adversarial analysis, which is now complete (the report is written, harness is fixed, baselines are updated). The next logical step per the user's adversarial analysis request would be to begin fixing the most critical bugs discovered:
+
+**C1 (highest priority)**: Fix inline union props type silently dropping components:
+- `crates/core/src/extractor/component.rs:122` — handle TSUnionType in `extract_type_name_from_type` by generating synthetic anonymous alias
+- `crates/core/src/extractor/mod.rs:413-430` — `extract_type_name_from_type` needs to handle TSUnionType and TSIntersectionType
+
+This would fix the Accordion (`discriminated-union.tsx`) silent drop, which RDT correctly handles as a merged discriminated union. This is the most impactful single fix: it unblocks all Radix Accordion-style components that use inline union as props type in `forwardRef`.
+
+However, the user hasn't explicitly requested these fixes yet — they only asked for the adversarial analysis. The structural-gap-fixes plan (already written) covers different bugs. The next step should be confirmed with the user before proceeding.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

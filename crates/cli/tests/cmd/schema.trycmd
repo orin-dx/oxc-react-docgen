@@ -58,12 +58,56 @@ $ oxc-react-docgen schema
                     "string",
                     "null"
                   ]
+                },
+                "defaultValue": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "tags": {
+                  "type": "object"
+                },
+                "parent": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "declarations": {
+                  "type": "array"
                 }
               }
             }
           },
           "inheritance": {
-            "type": "array"
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "typeName": {
+                  "type": "string"
+                },
+                "fileName": {
+                  "type": "string"
+                },
+                "omitted": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "htmlElement": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "totalProps": {
+                  "type": "integer"
+                }
+              }
+            }
           },
           "notableInherited": {
             "type": "object"
@@ -79,6 +123,12 @@ $ oxc-react-docgen schema
             "items": {
               "type": "string"
             }
+          },
+          "tags": {
+            "type": "object"
+          },
+          "methods": {
+            "type": "array"
           }
         }
       }
@@ -113,6 +163,24 @@ $ oxc-react-docgen schema
               "null"
             ]
           },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "column": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "help": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "code": {
             "type": "string"
           }
@@ -130,13 +198,28 @@ $ oxc-react-docgen schema
         "componentsExtracted": {
           "type": "integer"
         },
+        "componentsSkipped": {
+          "type": "integer"
+        },
         "filesParsed": {
+          "type": "integer"
+        },
+        "dtsFilesParsed": {
           "type": "integer"
         },
         "dtsCacheHits": {
           "type": "integer"
         },
         "durationMs": {
+          "type": "integer"
+        },
+        "tier1Count": {
+          "type": "integer"
+        },
+        "tier3Count": {
+          "type": "integer"
+        },
+        "opaqueCount": {
           "type": "integer"
         }
       }

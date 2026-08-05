@@ -24,6 +24,25 @@ fn check_content_length(len: usize) -> Result<()> {
     Ok(())
 }
 
+/// The `initialize` response's `result` payload — factored out so capability
+/// advertisement is testable without driving the stdin/stdout loop.
+fn initialize_result() -> serde_json::Value {
+    serde_json::json!({
+        "capabilities": {
+            "textDocumentSync": 1,
+            // No textDocument/hover handler exists in the method dispatch
+            // below (it falls into the `_ => {}` catch-all) — advertising
+            // `true` would make a client's hover request, which carries an
+            // `id`, hang forever waiting for a response that never comes.
+            "hoverProvider": false
+        },
+        "serverInfo": {
+            "name": "oxc-react-docgen-lsp",
+            "version": env!("CARGO_PKG_VERSION")
+        }
+    })
+}
+
 pub fn cmd_lsp() -> Result<()> {
     let stdin = io::stdin();
     let mut stdin_lock = stdin.lock();
@@ -70,16 +89,7 @@ pub fn cmd_lsp() -> Result<()> {
                         let response = serde_json::json!({
                             "jsonrpc": "2.0",
                             "id": id,
-                            "result": {
-                                "capabilities": {
-                                    "textDocumentSync": 1,
-                                    "hoverProvider": true
-                                },
-                                "serverInfo": {
-                                    "name": "oxc-react-docgen-lsp",
-                                    "version": env!("CARGO_PKG_VERSION")
-                                }
-                            }
+                            "result": initialize_result()
                         });
                         send_response(&mut stdout_lock, &response);
                     }
@@ -126,5 +136,16 @@ mod tests {
     fn test_content_length_at_cap_is_accepted() {
         let result = check_content_length(MAX_LSP_MESSAGE_BYTES);
         assert!(result.is_ok(), "expected a Content-Length exactly at the cap to be accepted, got {:?}", result);
+    }
+
+    #[test]
+    fn test_hover_not_advertised_without_a_handler() {
+        let result = initialize_result();
+        assert_eq!(
+            result["capabilities"]["hoverProvider"],
+            serde_json::json!(false),
+            "hoverProvider must stay false until a textDocument/hover handler exists — a client hover \
+             request carries an id and nothing replies to it today"
+        );
     }
 }

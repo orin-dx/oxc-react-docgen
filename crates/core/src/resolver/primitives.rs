@@ -169,7 +169,7 @@ pub(super) fn resolve_indexed_access(
     }
 
     let expression = format!("{}[{}]", obj.to_raw_string(), key.to_raw_string());
-    state.diagnostics.push(Diagnostic {
+    let diagnostic = Diagnostic {
         severity: DiagnosticSeverity::Info,
         message: format!("Indexed access type '{}' could not be statically resolved", expression),
         file: Some(consuming_file.to_string()),
@@ -177,8 +177,8 @@ pub(super) fn resolve_indexed_access(
         column: None,
         help: Some("Enable typescript-go to resolve indexed access types.".into()),
         code: DiagnosticCode::IndexedAccessOpaque,
-    });
-    OpaqueDetail::new(expression.clone(), OpaqueReason::IndexedAccess { expression })
+    };
+    OpaqueDetail::give_up(state, expression.clone(), OpaqueReason::IndexedAccess { expression }, diagnostic)
 }
 
 /// Search an interface's `extends` chain (depth-first) for a field, returning
@@ -209,4 +209,30 @@ fn find_field_in_ancestors<'g>(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::pipeline::PipelineOptions;
+
+    #[test]
+    fn indexed_access_on_an_unresolvable_object_gives_up_with_a_diagnostic() {
+        let ctx = ResolutionContext::new(Arc::new(GlobalSourceData::default()), &PipelineOptions::default());
+        let mut state = ResolveState::default();
+        let obj = CollectedType::Named { name: "TotallyUnknownType".into(), args: vec![] };
+        let key = CollectedType::StringLiteral("whatever".into());
+
+        let result = resolve_indexed_access(&obj, &key, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
+
+        let PropType::Opaque(detail) = &result else { panic!("expected Opaque, got {:?}", result) };
+        assert!(matches!(detail.reason(), OpaqueReason::IndexedAccess { .. }));
+        assert!(
+            state.diagnostics.iter().any(|d| d.code == DiagnosticCode::IndexedAccessOpaque),
+            "expected an IndexedAccessOpaque diagnostic, got {:?}",
+            state.diagnostics
+        );
+    }
 }

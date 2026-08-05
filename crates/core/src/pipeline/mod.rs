@@ -232,7 +232,17 @@ pub(crate) fn extract_with_global(
     // result — see CLAUDE.md non-negotiable #6.
     let missing_src_dirs: Vec<&Utf8PathBuf> =
         options.src_dirs.iter().filter(|dir| !dir.as_std_path().is_dir()).collect();
-    if !options.src_dirs.is_empty() && missing_src_dirs.len() == options.src_dirs.len() {
+    if options.src_dirs.is_empty() {
+        diagnostics.push(Diagnostic {
+            severity: DiagnosticSeverity::Error,
+            message: "No source directories configured — src_dirs is empty".into(),
+            file: None,
+            line: None,
+            column: None,
+            help: Some("Set --src (or docgen.config.ts srcDirs) to at least one directory to scan.".into()),
+            code: DiagnosticCode::IoError,
+        });
+    } else if missing_src_dirs.len() == options.src_dirs.len() {
         diagnostics.push(Diagnostic {
             severity: DiagnosticSeverity::Error,
             message: format!(
@@ -835,6 +845,40 @@ mod tests {
             .find(|d| matches!(d.severity, DiagnosticSeverity::Error) && d.code == DiagnosticCode::IoError)
             .expect("missing src dir should produce an Error/IoError diagnostic");
         assert!(error.message.contains(missing.as_str()), "message should name the missing path");
+    }
+
+    // ── test_extract_empty_src_dirs_produces_diagnostic ───────────────────────
+    //
+    // Bug B (root-cause-analysis.md): the guard
+    // `!options.src_dirs.is_empty() && missing_src_dirs.len() == options.src_dirs.len()`
+    // short-circuits to `false` when `src_dirs` itself is empty (`!true` is
+    // `false`), so an explicitly empty `src_dirs` bypassed both the "all
+    // missing" diagnostic and the per-dir "missing" loop — a silent zero-file,
+    // zero-diagnostic run.
+
+    #[test]
+    fn test_extract_empty_src_dirs_produces_diagnostic() {
+        let tmp = TempDir::new().unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        assert!(output.components.is_empty());
+        assert_eq!(output.stats.files_parsed, 0);
+        let error = output
+            .diagnostics
+            .iter()
+            .find(|d| matches!(d.severity, DiagnosticSeverity::Error) && d.code == DiagnosticCode::IoError)
+            .expect("empty src_dirs should produce an Error/IoError diagnostic, not a silent empty run");
+        assert!(
+            error.message.to_lowercase().contains("no source director"),
+            "expected the diagnostic to explain that no source directories were configured, got: {}",
+            error.message
+        );
     }
 
     // ── test_html_attribute_mode_full_resolves_real_button_attrs_end_to_end ───

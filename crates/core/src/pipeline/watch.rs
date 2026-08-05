@@ -222,11 +222,18 @@ mod tests {
     use std::sync::{Arc, Barrier};
     use std::thread;
 
+    use camino::Utf8PathBuf;
+
     use super::WatchSession;
     use crate::pipeline::PipelineOptions;
 
+    // Points at a real, empty directory rather than an empty `src_dirs` list —
+    // the latter is now its own error case (see
+    // pipeline::tests::test_extract_empty_src_dirs_produces_diagnostic), distinct
+    // from "a configured directory that happens to contain no files".
     fn empty_options() -> PipelineOptions {
-        PipelineOptions { src_dirs: vec![], ..Default::default() }
+        let dir = tempfile::TempDir::new().unwrap().keep();
+        PipelineOptions { src_dirs: vec![Utf8PathBuf::from_path_buf(dir).unwrap()], ..Default::default() }
     }
 
     #[test]

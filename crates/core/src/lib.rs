@@ -4,6 +4,7 @@ pub(crate) mod cache;
 pub(crate) mod extractor;
 pub(crate) mod import_map;
 pub(crate) mod known;
+pub mod panic_guard;
 pub mod pipeline;
 pub mod react_types;
 pub(crate) mod resolver;

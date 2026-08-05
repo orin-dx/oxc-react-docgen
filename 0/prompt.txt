@@ -1,0 +1,1 @@
+Any other GH actions we can leverage to simplify our CI? we also want to build, test, lint and check coverage. Any other rust best practices we should adopt? We want a quick build

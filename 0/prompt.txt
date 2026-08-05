@@ -1,0 +1,31 @@
+<task-notification>
+<task-id>a343b4c73ecd27ad1</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a343b4c73ecd27ad1.output</output-file>
+<status>completed</status>
+<summary>Agent "Build Blueprint Table fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Summary
+
+**Files created** (all under `/Users/gabe/Projects/oxc-react-codegen/fixtures/blueprint/`, nothing else touched):
+- `Table.tsx` (519 lines) — real `TableProps`/`TablePropsDefaults`/`TablePropsWithDefaults` verbatim from [packages/table/src/tableProps.ts](https://github.com/palantir/blueprint/blob/develop/packages/table/src/tableProps.ts), trimmed `Table` shell adapted from [packages/table/src/table.tsx](https://github.com/palantir/blueprint/blob/develop/packages/table/src/table.tsx) (~1639 lines upstream)
+- `Column.tsx` (83 lines) — real `ColumnProps` verbatim from [packages/table/src/column.tsx](https://github.com/palantir/blueprint/blob/develop/packages/table/src/column.tsx)
+- `blueprintTypes.ts` (314 lines) — local stand-ins for `@blueprintjs/core`/`@blueprintjs/icons` and ~10 sibling table-package modules, sourced from `common/cellTypes.ts`, `common/grid.ts`, `common/renderMode.ts`, `headers/columnHeader.tsx`, `headers/rowHeader.tsx`, `headers/columnHeaderCell.tsx`, `interactions/resizable.tsx`, `interactions/selectable.tsx`, `interactions/menus/menuContext.ts`, `regions.ts`
+
+Default branch is `develop`, not `main`; all paths verified current via raw fetch.
+
+**Trimming**: `TableProps`/`ColumnProps` kept 100% real and complete (all fields, JSDoc, `@deprecated` tags). Cross-package imports stubbed with real, verbatim-where-cheap type definitions; only types 2+ hops removed from the actual props surface (`CellProps`, `HeaderCellProps`, `ColumnHeaderCellProps`, `RowHeaderCellProps`) were trimmed of their own nested deps (icons, popovers). Render bodies, ~50 private methods, and all lifecycle logic dropped.
+
+**Important adaptation, called out**: real `Table`/`Column` are ES6 class components. This tool's extractor has **zero class-component support** — confirmed by reading `crates/core/src/extractor/visit.rs` (no `visit_class_declaration` exists) and by direct test (a minimal `class Foo extends React.Component&lt;FooProps&gt;` yields 0 components). This is an intentional, documented non-goal (`MIGRATING.md:16`, `docs/rdt-coverage.md`), not a bug. A literal class-based port would always yield 0 props regardless of scale, which would test "do we support classes" (already known: no) instead of the actual point of this fixture. I converted `Table`/`Column` to function components (destructured-parameter defaults replacing static `defaultProps`) while leaving `TableProps`/`ColumnProps` untouched — documented prominently in Table.tsx's header comment.
+
+**Results**: exit 0, no crash, 11ms for the fixture alone, 7ms/39 components/0 errors for the full `fixtures/` run.
+- **Our tool**: Table = **45 props**, Column = 7 props
+- **Real RDT**: Table = **48 props**, Column = 7 props
+
+**Key finding — real, reproducible resolver bug, not a scale/perf issue**: our tool silently drops all 3 fields (`defaultColumnWidth`, `maxColumnWidth`, `minColumnWidth`) from `Partial&lt;ColumnWidths&gt;`, the *second* `Partial&lt;X&gt;` mixin in `TableProps extends Props, Partial&lt;RowHeights&gt;, Partial&lt;ColumnWidths&gt;` — the first mixin (`Partial&lt;RowHeights&gt;`) merges fine. Zero diagnostics emitted for the drop, violating this repo's own CLAUDE.md rule ("Always emit Diagnostic when degrading — never fail silently"). Reproduced with a 10-line minimal case (two `Partial&lt;Interface&gt;` extends targets on one interface) — confirms it's a general resolver bug (likely a visited-type/dedup key collision on the generic name `Partial` itself, ignoring type args), not fixture-specific. Worth a bug report/fix independent of this fixture work.
+
+Separately, 15 warnings ("Cannot resolve type X... will appear as opaque") fire for cross-file type references, but the affected props still resolve correctly as named types (not actually opaque) — the warning text appears to be a stale/inaccurate diagnostic message, a minor secondary finding.
+
+No files outside `fixtures/blueprint/` were modified; no git commands were run.</result>
+<usage><subagent_tokens>177782</subagent_tokens><tool_uses>108</tool_uses><duration_ms>1038751</duration_ms></usage>
+</task-notification>

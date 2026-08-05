@@ -1,0 +1,3 @@
+Let’s appropriately document what we’ll do later when the API is available.
+
+And let’s plan out what we can do now, how we’ll document and test it.

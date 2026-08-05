@@ -1,0 +1,1 @@
+Once we have a CLI we should validate out outputs against the codebases we chose and decide on what we accomplished and identify bugs or misses

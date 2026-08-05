@@ -1,0 +1,283 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   Building `oxc-react-docgen`, a Rust-powered React prop extraction tool (OXC-based, no TypeScript compiler). The session started by resuming from a prior context. The user's explicit requests this session:
+   - Fix the critical Radix Button "0 props" bug (`ComponentPropsWithoutRef<'button'>` not expanding)
+   - Fix any other issues found during review
+   - Run extensive tests against identified/representative codebases (shadcn, Radix, MUI, Chakra, Mantine)
+   - Audit optional/null/undefined handling: "Are we not considering optional, null and undefined properly?"
+   - "How does RDT distinguish between null and/or optional?"
+   - "We want to make sure we provide equal or better output, never worse"
+   - "What if we parse the codebases of chakra, MUI and Radix?" → install real packages and test
+
+2. Key Technical Concepts:
+   - OXC 0.135 for Rust-native TypeScript/TSX parsing
+   - `CollectedType` / `PropType` — structured AST representation vs. resolved semantic output
+   - `InheritedLayer` — inheritance chain entry with `html_element`, `omitted`, `total_props`
+   - `resolve_props_chain` — chain-level prop resolution (what the component exposes)
+   - `resolve_base_as_chain` — resolves `CollectedType` as a props chain (for intersection/alias bases)
+   - `resolve_named` — single-type-level resolution (what a prop's type IS)
+   - `resolve_type_alias_chain` — handles Omit/Pick/Intersection/Union/Passthrough aliases
+   - `KnownPatternResult` — {Props | Type | Alias} from `resolve_known`
+   - `ArcSwap::rcu` — read-copy-update for atomic GlobalSourceData updates in watch mode
+   - CVA (`class-variance-authority`) VariantProps includes `| null` for all variant keys
+   - Three-way comparison: react-docgen / react-docgen-typescript / oxc-react-docgen
+   - pnpm workspace with proto-managed Node 26 and pnpm 10
+
+3. Files and Code Sections:
+
+   - **`crates/core/src/resolver.rs`** (most modified file):
+     
+     **Fix 1 — `resolve_base_as_chain` passes type args (was `args: _`):**
+     ```rust
+     CollectedType::Named { name, args } => {
+         let raw_args: Vec<String> = args.iter().map(|a| a.to_raw_string()).collect();
+         resolve_props_chain(name.as_str(), &raw_args, file_path, mapping, ctx, visited, depth + 1, diagnostics)
+     }
+     ```
+     
+     **Fix 2 — `resolve_base_as_chain` now handles `CollectedType::Object`:**
+     ```rust
+     CollectedType::Object(fields) => {
+         let mut chain = ResolvedChain::default();
+         for field in fields {
+             let prop_type = resolve_collected_type(&field.collected_type, file_path, ctx, visited, depth, diagnostics);
+             chain.props.push(ParsedProp {
+                 name: field.name.clone(),
+                 prop_type,
+                 required: field.required,
+                 default_value: None,
+                 description: field.description.clone(),
+                 tags: Default::default(),
+                 parent: None,
+                 declarations: vec![],
+             });
+         }
+         chain
+     }
+     ```
+     
+     **Fix 3 — `resolve_props_chain` Step 2: HtmlAttributes creates InheritedLayer:**
+     ```rust
+     KnownPatternResult::Type(PropType::HtmlAttributes { element, omitted }) => {
+         let layer = InheritedLayer {
+             type_name: type_name.to_owned(),
+             file_name: resolve_react_types_file(consuming_file, ctx),
+             omitted,
+             html_element: Some(element),
+             total_props: 0,
+         };
+         ResolvedChain { inheritance: vec![layer], ..Default::default() }
+     }
+     KnownPatternResult::Type(pt) => {
+         ResolvedChain::empty_with_compose(pt.raw_string())
+     }
+     ```
+     
+     **Fix 4 — `resolve_type_alias_chain::Passthrough` passes type args:**
+     ```rust
+     CollectedType::Named { name, args } => {
+         let raw_args: Vec<String> = args.iter().map(|a| a.to_raw_string()).collect();
+         resolve_props_chain(name.as_str(), &raw_args, file_path, mapping, ctx, visited, depth + 1, diagnostics)
+     }
+     ```
+     
+     **Fix 5 — `resolve_named` pre-Step-6 suppression for known unresolvable types:**
+     ```rust
+     let bare = name.strip_prefix("React.").unwrap_or(name.as_str());
+     if matches!(
+         bare,
+         "Partial" | "Required" | "Readonly" | "NonNullable" | "Record"
+             | "ReadonlyArray" | "Array" | "Promise" | "Extract" | "Exclude"
+             | "ReturnType" | "Parameters" | "Awaited" | "Omit" | "Pick"
+             | "object" | "Object" | "Function" | "Symbol" | "BigInt"
+             | "HTMLAttributes" | "InputHTMLAttributes" | "TextareaHTMLAttributes"
+             | "SelectHTMLAttributes" | "ButtonHTMLAttributes" | "AnchorHTMLAttributes"
+             | "FormHTMLAttributes" | "LabelHTMLAttributes" | "ImgHTMLAttributes"
+             | "VideoHTMLAttributes" | "AudioHTMLAttributes" | "DOMAttributes"
+             | "AriaAttributes" | "HTMLInputTypeAttribute" | "HTMLAttributeReferrerPolicy"
+             | "HTMLAttributeAnchorTarget" | "HTMLInputAutoCompleteAttribute"
+     ) || bare.ends_with("HTMLAttributes")
+     {
+         return PropType::Named { name: name.clone(), args: resolved_args };
+     }
+     if bare.starts_with("HTML") && bare.ends_with("Element") {
+         return PropType::Named { name: name.clone(), args: resolved_args };
+     }
+     if bare.starts_with("SVG") && bare.ends_with("Element") {
+         return PropType::Named { name: name.clone(), args: resolved_args };
+     }
+     // ... then the actual warning at Step 7
+     ```
+     
+     **Regression test added:** `test_component_props_without_ref_in_intersection_alias` — builds an interface extending a type alias that is `ComponentPropsWithoutRef<"button"> & { asChild?: boolean }`, asserts asChild is in props, inh=['button'] is in inheritance, composes is empty, no warnings.
+
+   - **`crates/core/src/pipeline.rs`**:
+     
+     **WatchSession race condition fix — rcu instead of load-clone-store:**
+     ```rust
+     // BEFORE:
+     let old_global = self.global.load_full();
+     let mut new_global = (*old_global).clone();
+     new_global.remove_file(changed);
+     new_global.merge(changed, new_data);
+     let new_global = Arc::new(new_global);
+     // ... later: self.global.store(new_global);
+     
+     // AFTER:
+     let new_global = self.global.rcu(|old| {
+         let mut g = (**old).clone();
+         g.remove_file(changed);
+         g.merge(changed, new_data.clone());
+         g
+     });
+     // removed self.global.store(new_global) — rcu already stores
+     ```
+     
+     **Added `WatchSession::snapshot()` method:**
+     ```rust
+     pub fn snapshot(&self) -> ExtractionOutput {
+         let components: std::collections::BTreeMap<String, ComponentEntry> = self
+             .component_cache
+             .iter()
+             .map(|r| (r.key().clone(), r.value().clone()))
+             .collect();
+         let global = self.global.load();
+         let enums: std::collections::BTreeMap<String, Vec<EnumEntry>> =
+             global.enums.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+         ExtractionOutput {
+             components,
+             enums,
+             diagnostics: vec![],
+             stats: ExtractionStats::default(),
+         }
+     }
+     ```
+
+   - **`crates/cli/src/main.rs`**:
+     Watch `--out` now writes real output via snapshot():
+     ```rust
+     // BEFORE:
+     let _ = std::fs::write(p, "{}");
+     
+     // AFTER:
+     let snapshot = session_inner.snapshot();
+     if let Ok(json) = serde_json::to_string(&snapshot) {
+         let _ = std::fs::write(p, json);
+     }
+     ```
+
+   - **`crates/core/src/known.rs`**:
+     CVA variant props now include `| null`:
+     ```rust
+     // BEFORE:
+     PropType::LiteralUnion { members: values, has_default: false }
+     
+     // AFTER:
+     PropType::Union(vec![
+         PropType::LiteralUnion { members: values, has_default: false },
+         PropType::Null,
+     ])
+     ```
+     This applies to all cva/tv/defineRecipe VariantProps. CVA's TypeScript type definition includes `| null` for every variant key (passing null opts out of the variant). Matches what RDT produces.
+
+   - **`packages/validate/src/run-ours.ts`** (new file):
+     Invokes CLI per library directory, normalizes output to `NormalizedOutput` format for comparison. Includes `inheritedElements` from the `inheritance` array. CLI output starts with a spinner line followed by JSON; the runner finds the `{` to locate JSON start.
+
+   - **`packages/validate/src/compare.ts`** (updated):
+     3-way comparison (rdg / rdt / ours). Distinguishes RDT's HTML attr expansion (covered by our inheritance) from true own-prop misses using pattern matching on prop names and checking `inheritedElements`.
+
+   - **`packages/validate/src/types.ts`** (updated):
+     Added `inheritedElements?: string[]` to `ToolResult` interface.
+
+   - **`docs/09-STATUS.md`** (updated):
+     Tests: 89 passing. Radix bug marked as fixed with full root-cause explanation. Adversarial findings all resolved. Warning count updated.
+
+4. Errors and fixes:
+
+   - **Radix Button 0 props (CRITICAL)**: Root cause was three-layer: (a) `resolve_base_as_chain` discarded type args with `args: _`, (b) `resolve_base_as_chain` had no `CollectedType::Object` handler dropping inline object fields, (c) `resolve_props_chain` Step 2 treated `KnownPatternResult::Type(HtmlAttributes)` as `empty_with_compose` instead of InheritedLayer. Fixed all three.
+
+   - **62 false-positive warnings**: TypeScript utility types (`Partial`, `Record`, etc.), DOM element types (`HTMLDivElement`), React HTML attr types (`React.HTMLAttributes`) were reaching Step 6 warning in `resolve_named`. Fixed by adding pre-Step-6 suppression block. Reduced from 62 to 4 legitimate warnings.
+
+   - **Passthrough alias drops type args**: Same `args: _` bug in `resolve_type_alias_chain::Passthrough`. Fixed.
+
+   - **WatchSession race condition**: `ArcSwap` load→clone→store is not atomic under concurrent events. Replaced with `ArcSwap::rcu` which retries if the pointer changed between operations.
+
+   - **Watch `--out` writes `{}`**: `cmd_watch` wrote literal `{}` as placeholder. Added `WatchSession::snapshot()` and wired it into the CLI.
+
+   - **CVA `| null` missing**: CVA's `VariantProps<T>` TypeScript type includes `| null` on all variant keys but we parsed the runtime cva() call and missed it. Fixed by wrapping LiteralUnion in `Union([LiteralUnion, Null])` in `known.rs`.
+
+   - **pnpm requires `-w` flag**: Running `pnpm add` at workspace root requires `-w` / `--workspace-root` flag. Fixed by adding `-w` to the install command.
+
+   - **0 components from real packages**: When running CLI against `node_modules/@radix-ui/react-dialog/dist/` (and similar for MUI, Chakra), the tool returns 0 components. This is the current open bug — bundled `.d.ts` files from published packages use different declaration patterns than our hand-crafted fixtures. This was the state at the time of the summary request.
+
+5. Problem Solving:
+
+   **Solved:**
+   - Radix Button ComponentPropsWithoutRef pattern fully working (3 separate fixes)
+   - Warning noise reduced from 62 to 4
+   - Passthrough alias args preserved
+   - WatchSession race condition eliminated
+   - Watch --out writes real output
+   - CVA `| null` now matches RDT output exactly
+   - 3-way comparison harness written and run against fixtures
+
+   **Open:**
+   - Running CLI against real installed packages (Radix, MUI, Chakra) returns 0 components. Their bundled `dist/index.d.ts` files likely use patterns our extractor doesn't recognize (different component declaration patterns in bundled output vs. hand-crafted .d.ts fixtures). This needs investigation.
+
+   **Understanding optional/null/undefined (user asked):**
+   - RDT uses `shouldRemoveUndefinedFromOptional: true` → strips `| undefined` from types, keeps `| null`
+   - For `asChild?: boolean`: type = "boolean", required = false (no null since boolean|undefined, undefined stripped)
+   - For CVA `variant?: "default" | ... | null | undefined`: type = `"default" | ... | null`, required = false
+   - Our behavior is now identical: optional → required:false, undefined stripped from union, null preserved, CVA gets `| null` via the fix
+
+6. All user messages:
+   - "continue our work" (starting the session, resuming after compaction)
+   - "Any other issues to fix?"
+   - "Have we run extensive tests against our identified/representative codebases?"
+   - "We want to make sure we provide equal or better output, never worse."
+   - "Are we not considering optional, null and undefined properly?"
+   - "How does RDT distinguish between null and/or optional?"
+   - "What if we parse the codebases of chakra, MUI and Radix?"
+   - "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools..." (this summary request)
+
+7. Pending Tasks:
+   - **CRITICAL: Debug 0 components from real installed packages** — CLI returns 0 components when run against `node_modules/@radix-ui/react-dialog/dist/index.d.ts`, `node_modules/@mui/material/Button/Button.d.ts`, and `node_modules/@chakra-ui/react/dist/types/`. The bundled `.d.ts` format differs from hand-crafted fixtures; our extractor likely doesn't recognize the component patterns in bundled output.
+   - Phase 5a: Vite plugin (hotUpdate, moduleType:'js', Plugin[], environment API, preset system)
+   - Phase 5b: Rolldown plugin (native Rust)
+   - Phase 6: Integration tests / `run-ours.ts` against real packages
+   - Wire config file loading (try_load_config still stubs returning None)
+   - Add preset system (presets.shadcn(), presets.mui(), etc.)
+
+8. Current Work:
+   Immediately before the summary request, we had installed real library packages and run the CLI against them:
+   ```
+   CLI="/Users/gabe/Projects/oxc-react-codegen/target/debug/oxc-react-docgen"
+   NM="/Users/gabe/Projects/oxc-react-codegen/node_modules"
+   
+   $CLI extract --src "$NM/@radix-ui/react-dialog/dist/" --out /tmp/radix-dialog.json
+   # Result: ⚡ 0 components · 0 enums · 0 warnings · 0 errors · 24ms
+   
+   $CLI extract --src "$NM/@radix-ui/react-select/dist/"
+   # Result: ⚡ 0 components · 0 enums · 0 warnings · 0 errors · 6ms
+   ```
+   
+   All four Radix packages tested returned 0 components. The packages ARE installed:
+   - `node_modules/@radix-ui/react-dialog/dist/index.d.ts` ✅
+   - `node_modules/@mui/material/Button/Button.d.ts` ✅  
+   - `node_modules/@chakra-ui/react/dist/types/components/button/` ✅
+   
+   The issue is that our extractor doesn't recognize component declaration patterns in the bundled/published `.d.ts` files.
+
+9. Optional Next Step:
+   Investigate why the CLI returns 0 components from real published packages. The key question is what component declaration patterns appear in bundled `.d.ts` files vs. our hand-crafted fixtures. For example, `@radix-ui/react-dialog` dist likely uses:
+   ```typescript
+   declare const Dialog: React.FC<DialogProps>
+   // or
+   export declare const DialogRoot: React.ForwardRefExoticComponent<...>
+   ```
+   rather than the patterns our extractor looks for. Need to read the actual `node_modules/@radix-ui/react-dialog/dist/index.d.ts` content, identify what declaration forms are used, and check if our `extractor.rs` handles them (via `try_forward_ref_exotic_decl`, `try_fc_decl`, etc.). Then either fix the extractor or run against the right sub-path (e.g., `node_modules/@chakra-ui/react/dist/types/components/button/` instead of the top-level dist).
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

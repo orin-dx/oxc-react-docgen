@@ -84,6 +84,11 @@ pub enum DiagnosticCode {
     /// incomplete in a way that made it unsupported — distinct from "wrong shape,
     /// not a candidate at all," which emits no diagnostic.
     SkippedCandidate,
+    /// Two resolved components produced the identical output key (same display
+    /// name, same disambiguated path suffix) — the later one silently overwrote
+    /// the earlier in `ExtractionOutput::components`. Seen with 3+ same-named
+    /// declarations in one file, or with overlapping `src_dirs` configs.
+    ComponentKeyCollision,
 }
 
 #[cfg(test)]

@@ -469,7 +469,7 @@ pub(crate) fn extract_with_global(
                      duplicate declaration."
                         .into(),
                 ),
-                code: DiagnosticCode::Unknown,
+                code: DiagnosticCode::ComponentKeyCollision,
             });
         }
         diagnostics.extend(diags);
@@ -1784,8 +1784,8 @@ Button.defaultProps = { size: 'md' };
         let collision = output
             .diagnostics
             .iter()
-            .find(|d| d.message.contains("Button") && d.message.to_lowercase().contains("duplicate"))
-            .expect("expected a diagnostic naming the colliding component, got none");
+            .find(|d| d.code == DiagnosticCode::ComponentKeyCollision)
+            .expect("expected a ComponentKeyCollision diagnostic, got none");
         assert!(
             collision.message.contains("Button.tsx"),
             "expected the diagnostic to name the colliding file path, got: {}",

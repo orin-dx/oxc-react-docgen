@@ -1,0 +1,202 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   
+   The user's requests in this conversation segment, in chronological order:
+   
+   a) **"Which ones can we tackle?"** (pre-compaction, already answered) — asking which of ~50 remaining diagnostics from earlier validation were tractable to fix.
+   
+   b) **"Let's fix what we know even if not quick or easy but proper. Let's keep considering performance, maintainability, DX, etc"** — explicit authorization to implement the tractable fixes properly (not just quick ones), with an explicit standing directive to weigh performance, maintainability, and DX in all future work, not just correctness.
+   
+   c) **"Shall we do another round looking for issues in our code validation?"** — asking whether to do a fresh validation sweep given how much code had changed.
+   
+   d) **"Let's do that"** — approval to execute the validation sweep plan (full fixture diagnostic dump + apps/validate comparison, clearing all stale caches).
+   
+   e) **"What about code quality, maintainability, DX and performance. Let's do a round of adversarial analysis on our code using agent teams and workflows with the most appropriate model and effort please."** — explicit, unambiguous opt-in to use the `Workflow` tool (multi-agent orchestration) for a comprehensive adversarial code review across four dimensions: code quality, maintainability, DX, performance.
+   
+   f) **"Let's not litter the project with extra MD files right? Let's systematically tackle all of the issues we identified please"** — two explicit instructions: (1) do NOT create/keep standalone documentation files for this kind of tracking — track progress via commits and existing docs instead; (2) systematically fix ALL 44 confirmed findings from the adversarial workflow, not just a subset.
+   
+   No explicit security-relevant constraints were introduced in this segment beyond the standing git-safety protocols already in effect throughout the whole session (never force-push, never skip hooks, stage specific files not `-A`, run `git status` before destructive operations) — followed without exception.
+
+2. Key Technical Concepts:
+   - TDD cycle: RED (write failing test, confirm fails for the right reason) → GREEN (minimal fix) → full test suite + clippy → real fixture verification → commit. Applied rigorously throughout, including several live RED verifications by temporarily reverting fixes.
+   - `rust-style` skill conventions: `FxHashMap` for internal maps, `BTreeMap` for JSON-output maps; `CompactString` for hot-path names; `let...else` for happy path; **no wildcards on project-local enums** (full exhaustive match — this rule caught real compile errors multiple times when adding new enum variants, proving its value); comments only for non-obvious WHY.
+   - `crates/core/CLAUDE.md` non-negotiables: no `unwrap()` outside tests; no AST refs escape `parse_file()`; no terminal code in `crates/core`; **always emit `Diagnostic` when degrading — never fail silently** (this was the single most-cited non-negotiable this segment, driving the entire "silent Opaque diagnostics" cluster).
+   - `Workflow` tool: used for the adversarial code-quality review. Script structure: `export const meta = {...}` (pure literal), `PROJECT_CONTEXT` string baked into every finder prompt (project description, non-negotiables, session churn context), `FINDINGS_SCHEMA` (file/line/dimensions/severity/summary/detail/suggested_fix), `VERDICT_SCHEMA` (refuted/reasoning), `AREAS` array of 7 area-scoped review tasks (resolver, extractor, types-and-support, pipeline, cli, consumer-surface, diagnostics-quality), `pipeline(AREAS, finder, verifier)` pattern with 3-vote adversarial verification per finding (`refutes < 2` survives), final synthesis agent producing a prioritized report. Result: 143 agents, 0 errors, 44/45 confirmed findings. **Critical lesson learned**: literal backticks used for markdown code-quoting inside JS template literal strings terminate the string early — had to replace all inner backticks with single quotes throughout the script.
+   - Adversarial workflow's own verification is not a substitute for personal spot-checking — hand-verified the 3 highest-priority claims directly against source before trusting the report (all 3 held up).
+   - `rmp_serde::to_vec`/`from_slice` — MessagePack encodes Rust structs **positionally** (not by field name) unless the `_named` variants are used; confirmed by reading `rmp-serde-1.3.1`'s source directly (`pub fn to_vec` vs the separate "Serializes... as a map" function). This was the basis for the `CACHE_SCHEMA_VERSION` bump finding.
+   - macOS `/var` → `/private/var` symlink resolution: `ignore` crate's directory walker resolves this, but a raw path (e.g., from `tempfile::tempdir()` or a file-watcher event) does not necessarily match — a real, reproducible bug found via TDD while testing the `ReverseDeps` fix.
+   - `ArcSwap<T>` (from `arc_swap` crate) — used for `WatchSession.global` (pre-existing) and now also `WatchSession.reverse_deps` (converted from a plain `Arc<ReverseDeps>` in this session) so it can be populated post-construction via `&self`.
+   - `std::sync::OnceLock<T>` — used for `WatchSession.ambient_global_files`, a write-once cache to avoid re-walking the filesystem on every `update_file` call.
+   - `std::process::exit()` anti-pattern: calling it deep inside business logic makes that logic untestable (kills the test process). Refactored `cmd_extract`/`cmd_check` to return the intended exit code as a plain `i32` value instead, with `main()` being the only place that calls `std::process::exit()`.
+   - Manual `Serialize`/`Deserialize` for `PropType`/`OpaqueReason` in `crates/core/src/types/output.rs` — a pre-existing design (to avoid recursion-limit compile-time blowup), meaning adding a new `OpaqueReason` variant requires updating a hand-written match in BOTH the serialize (`to_json_value`) and deserialize (`from_json_value`) functions, not just the enum definition. The derived `#[derive(Serialize, Deserialize)]` on `OpaqueReason` itself is present but effectively dead/unused in the real code path (the manual `PropType` serialization never delegates to it).
+   - `TryFrom` vs `From` for fallible conversions — converted `impl From<JsExtractOptions> for PipelineOptions` (in `crates/binding/src/lib.rs`) to `impl TryFrom<JsExtractOptions> for PipelineOptions` (`type Error = String`) so an invalid `reactVersion` string can be rejected instead of silently defaulting; required changing `create_session`'s NAPI return type from bare `u32` to `napi::Result<u32>`.
+   - Shared conversion helper pattern: `crate::react_types::parse_react_version(s: &str) -> Result<ReactVersion, &str>` — single source of truth used by all 3 call sites (docgen.config.ts, `--react-version` CLI flag, NAPI `JsExtractOptions.reactVersion`) that previously each had their own silently-defaulting match arm.
+   - Snapshot test workflow (`insta`): `INSTA_UPDATE=always cargo test -p oxc-react-docgen-core`, review diffs carefully before accepting (confirmed pure additions/no prop changes each time before regenerating).
+   - `rtk proxy <cmd>` — needed repeatedly to bypass the `rtk` hook's output-summarization wrapper and see full `cargo test`/`cargo build` failure output (e.g., panic messages, full diffs).
+   - Real end-to-end verification pattern used throughout: after each fix, ran `cargo build --release` then invoked the actual CLI binary against real fixtures (antd, day-picker, etc.) with a **fresh `--cache-dir`** each time (stale caches at multiple locations — repo root, `crates/core/`, `fixtures/shadcn/`, `apps/validate/node_modules/.cache/` — repeatedly caused false negatives this session; this is a recurring, well-documented pitfall).
+
+3. Files and Code Sections:
+
+   **`crates/core/src/resolver/alias.rs`** — Fixed `resolve_base_as_chain`'s wildcard match arm (`_ => ResolvedChain::default()`) that silently dropped props for every `CollectedType` variant not explicitly listed. Replaced with an exhaustive match naming all 23 remaining variants (grouped via OR-patterns), each pushing a diagnostic:
+   ```rust
+   CollectedType::String | CollectedType::Number | ... | CollectedType::Raw(_) => {
+       state.diagnostics.push(Diagnostic {
+           severity: DiagnosticSeverity::Warning,
+           message: format!("'{}' cannot be used as a component's props base in '{}' — expected an interface, intersection, union, or inline object type", base.to_raw_string(), file_path),
+           ...
+           code: DiagnosticCode::OpaqueType,
+       });
+       ResolvedChain::default()
+   }
+   ```
+
+   **`crates/core/src/resolver/named.rs`** — Two changes:
+   1. Added diagnostic push for `resolve_known`'s Opaque results via `push_known_opaque_diagnostic(&mut state.diagnostics, reason, name.as_str(), consuming_file)` at step 5.
+   2. Fixed misleading diagnostic message at step 7 (final fallback): changed `"— it will appear as opaque"` to `"— it will appear as an unexpanded named reference"` since this function returns `PropType::Named`, not `PropType::Opaque`.
+   3. **STILL PENDING**: the `MAX_DEPTH` guard at the top of `resolve_named` (lines ~27-36) still has its own inline `Diagnostic { ... }` construction with message `"Max resolution depth exceeded for named type '{}'"` — has NOT yet been replaced with the new shared `super::max_depth_diagnostic(&format!("named type '{}'", name), consuming_file)` call. This is the very next thing to do.
+   Import line updated: `use crate::known::{push_known_opaque_diagnostic, resolve_known, KnownPatternResult};`
+
+   **`crates/core/src/resolver/chain.rs`** — Multiple changes:
+   1. `lookup_interface(...).cloned()` → dropped `.cloned()`, passes `iface: &CollectedInterface` directly (perf fix).
+   2. Added diagnostic push for known-opaque results at chain level: `KnownPatternResult::Type(pt) => { if let PropType::Opaque { reason, .. } = &pt { push_known_opaque_diagnostic(&mut state.diagnostics, reason, type_name_bare, consuming_file); } ResolvedChain::empty_with_compose(pt.raw_string()) }`.
+   3. Just replaced the inline `MAX_DEPTH` diagnostic with: `state.diagnostics.push(super::max_depth_diagnostic(&format!("type '{}'", type_name), consuming_file));` (this WAS just done, confirmed via the tool result before summary was requested).
+   Import: `use crate::known::{push_known_opaque_diagnostic, resolve_known, KnownPatternResult};`
+
+   **`crates/core/src/resolver/collected.rs`** — Multiple changes:
+   1. Added `push_opaque_diagnostic(state, what, ct, consuming_file)` helper function (private, at end of file) and calls at 4 sites: `KeyOf`, `Conditional`, `Mapped`, and the Raw-fallback's final else branch.
+   2. Fixed the Raw-fallback's WRONG `OpaqueReason::DepthExceeded` tag to the new `OpaqueReason::UnsupportedExpression`.
+   3. Just replaced the inline `MAX_DEPTH` diagnostic (top of `resolve_collected_type`) with: `state.diagnostics.push(super::max_depth_diagnostic(&format!("type '{}'", ct.to_raw_string()), consuming_file));`
+   The genuine `Conditional`/`Mapped`/top-of-function `MAX_DEPTH` `DepthExceeded` tags remain correct (unchanged).
+
+   **`crates/core/src/resolver/func.rs`** — Fixed `resolve_function_type`'s multi-param-function branch: changed `PropType::Opaque { raw, reason: OpaqueReason::ConditionalType }` (factually wrong) to `PropType::Opaque { raw, reason: OpaqueReason::MultiParamFunction }` (new variant).
+
+   **`crates/core/src/resolver/extends.rs`** — `real_html_attrs_chain`: dropped an unnecessary `.clone()` on the interface lookup (`ctx.global.interfaces.get(...).or_else(...)?.clone()` → `?` without `.clone()`), passing the borrow directly to `resolve_interface_chain(iface, ...)` instead of `resolve_interface_chain(&iface, ...)`.
+
+   **`crates/core/src/resolver/mod.rs`** — Added new shared function right after `const MAX_DEPTH: u8 = 20;`:
+   ```rust
+   pub(super) fn max_depth_diagnostic(what: &str, file: &Utf8Path) -> Diagnostic {
+       Diagnostic {
+           severity: DiagnosticSeverity::Warning,
+           message: format!("Max resolution depth exceeded resolving {what}"),
+           file: Some(file.to_string()),
+           line: None,
+           column: None,
+           help: Some("This may indicate a circular type reference.".into()),
+           code: DiagnosticCode::MaxDepthExceeded,
+       }
+   }
+   ```
+   Also (from earlier clusters this segment): added `test_unhandled_intersection_member_gets_diagnostic_not_silent_drop`, `test_known_opaque_result_emits_diagnostic_at_type_level`, `test_known_opaque_result_emits_diagnostic_at_chain_level`, `test_conditional_type_opaque_emits_diagnostic`, `test_mapped_type_opaque_emits_diagnostic`, `test_keyof_opaque_emits_diagnostic`, `test_complex_raw_fallback_opaque_emits_diagnostic`, `test_function_type_multi_param_tags_multi_param_function_not_conditional_type` (all passing, all part of the diagnostic-quality/silent-opaque clusters).
+
+   **`crates/core/src/known.rs`** — Added shared `pub fn push_known_opaque_diagnostic(diagnostics: &mut Vec<Diagnostic>, reason: &OpaqueReason, type_name: &str, file: &camino::Utf8Path)` with an exhaustive match over all 11 `OpaqueReason` variants (including the 2 newly-added ones, which the compiler forced me to add via the exhaustive-match discipline).
+
+   **`crates/core/src/types/output.rs`** — Added 2 new `OpaqueReason` variants:
+   ```rust
+   /// A function type with more than one parameter...
+   MultiParamFunction,
+   /// A raw type expression the extractor couldn't parse...
+   UnsupportedExpression,
+   ```
+   Updated the manual `to_json_value` match (added `{"type": "multiParamFunction"}` / `{"type": "unsupportedExpression"}` arms) and the manual `from_json_value` match (added `"multiParamFunction" => ...` / `"unsupportedExpression" => ...` arms, before the existing `_ => OpaqueReason::DepthExceeded` deserialization fallback, which is a deliberate/acceptable wildcard for JSON forward-compat, unlike Rust-side matches).
+
+   **`crates/core/src/extractor/interface.rs`** — (from Cluster 2, already committed) Extracted `static_member_assignment` and `as_const_literal` shared helpers; deferred displayName rename via `pending_display_name_renames`; simplified `try_scan_default_props`.
+
+   **`crates/core/src/extractor/component.rs`** — (from Cluster 2, already committed) `try_rename_identifier_wrapped_component` now clones the matched mapping instead of mutating in place, tracks `aliased_away`.
+
+   **`crates/core/src/extractor/mod.rs`** — (from Cluster 2, already committed) Added `pending_display_name_renames: Vec<(String, String)>` and `aliased_away: FxHashSet<CompactString>` fields to `SourceDataCollector`; `finish()` now filters aliased-away mappings first, then applies pending renames.
+
+   **`crates/core/src/pipeline/mod.rs`** — (from Cluster 3, already committed) Factored `extract()` into `pub(crate) fn extract_with_global(options, capture_source_data: bool) -> (ExtractionOutput, Arc<GlobalSourceData>, Vec<(Utf8PathBuf, SourceData)>)`; added shared `merge_cached_dts_file` helper (drains diagnostics before merging); updated a pre-existing test (`test_watch_session_update`) to compare against canonicalized paths.
+
+   **`crates/core/src/pipeline/watch.rs`** — (from Cluster 3, already committed) `reverse_deps` field changed `Arc<ReverseDeps>` → `ArcSwap<ReverseDeps>`; `initialize()` rewritten to use `extract_with_global`, populate `reverse_deps` via `ReverseDeps::build(&global)`, cache `ambient_global_files` via new `OnceLock` field; added `canonicalize_best_effort(path: &Utf8Path) -> Utf8PathBuf` free function (falls back to canonicalizing the parent dir); `update_file` now canonicalizes `changed` at the top and uses `ResolutionContext::new_with_cached_ambient_global_files`. Added 3 new tests: `update_file_re_resolves_files_that_import_the_changed_file`, `update_file_still_resolves_ambient_globals_after_the_first_incremental_change`.
+
+   **`crates/core/src/react_types.rs`** — (from Cluster 4, already committed) Added `PartialEq` derive to `ReactVersion`; added `pub fn parse_react_version(s: &str) -> Result<ReactVersion, &str>` with tests `parse_react_version_accepts_known_values`, `parse_react_version_rejects_a_typo_instead_of_silently_defaulting`.
+
+   **`crates/cli/src/main.rs`** — (from Cluster 4, already committed) Removed global `json: bool` field from `Cli`; added `pub json: bool` to `ExtractArgs` and `CheckArgs`; restructured `main()`'s dispatch to collect an `exit_code` and call `std::process::exit(exit_code)` only if non-zero.
+
+   **`crates/cli/src/commands/extract.rs`** — (from Cluster 4, already committed) `cmd_extract` now returns `Result<i32>` instead of calling `std::process::exit(2)`; `--json` no longer early-returns before the exit-code check; added test module with `json_mode_still_returns_the_error_exit_code`, `non_json_mode_returns_the_same_error_exit_code`.
+
+   **`crates/cli/src/commands/check.rs`** — (from Cluster 4, already committed) `cmd_check` returns `Result<i32>`; added `--json` output of `output.diagnostics`; added test `json_mode_still_returns_the_error_exit_code`.
+
+   **`crates/cli/src/config.rs`** — (from Cluster 4, already committed) `stderr(Stdio::null())` → `Stdio::piped()`, included in error message; `spawn()` wrapped with `.wrap_err("Failed to spawn node...")`; `into_pipeline_options` now returns `Result<PipelineOptions, String>` using `parse_react_version`; `build_options`'s CLI-arg site also uses `parse_react_version`. Added tests `try_load_config_surfaces_the_real_syntax_error_not_just_an_exit_status`, `config_schema_rejects_a_typo_d_react_version_instead_of_defaulting`.
+
+   **`crates/binding/src/lib.rs`** — (from Cluster 4, already committed) `impl From<JsExtractOptions> for PipelineOptions` → `impl TryFrom<...>` with `type Error = String`; `create_session`'s return type changed `u32` → `napi::Result<u32>`; all 4 call sites (`extract_all`, `create_session`, `extract_file_incremental`, `initialize_session`) updated to propagate the conversion error via `.map_err(napi::Error::from_reason)?`.
+
+   **`crates/core/src/cache.rs`** — (from Cluster 5, already committed) `CACHE_SCHEMA_VERSION` bumped 1 → 2 with an expanded doc comment explaining the positional-encoding risk.
+
+4. Errors and fixes:
+   - **Workflow script backtick-in-template-literal parse error**: Used markdown-style backticks (e.g. `` `_ =>` ``) inside JS template literal strings that were ALSO delimited by backticks, terminating them early. Fixed by replacing every inner backtick with single quotes throughout the whole script before re-submitting.
+   - **Component count "regression" false alarm**: After the antd rename fix (batch 2), a full-fixture sweep showed 45 components instead of a previously-captured baseline's 46 (missing `InternalCompoundedButton`). Investigated via `diff` of sorted component-name lists; confirmed the baseline file predated the antd Button rename fix (commit `b33ae41`), so the absence was expected/correct, not a regression.
+   - **Test assumed raw path echoed verbatim (`test_watch_session_update`)**: After adding path canonicalization to `update_file`, this pre-existing test's `assert!(update.affected_files.contains(&button_path), ...)` failed because `affected_files` now contains the canonicalized path. Fixed by canonicalizing the comparison value in the test (`std::fs::canonicalize(button_path.as_std_path())`), not reverting the behavior.
+   - **Canonicalization instability across file create/delete transitions (`update_file_replaces_previous_diagnostics_for_same_file`)**: Naive `std::fs::canonicalize(changed)` with a raw-path fallback produced a DIFFERENT key on the first call (file doesn't exist yet, canonicalize fails, falls back to raw path) vs. the second call (file now exists, canonicalize succeeds, produces `/private/var/...`), breaking the "same file should have the same key across calls" invariant and causing stale diagnostics to linger under the old key. Fixed by adding `canonicalize_best_effort`, which falls back to canonicalizing the PARENT directory (stable, exists in both cases) and rejoining the file name, rather than falling back to the raw path.
+   - **Weak test assertion (`try_load_config_surfaces_the_real_syntax_error_not_just_an_exit_status`)**: Initial assertion compared message length against a hand-typed placeholder string with `...` for the path, which didn't reliably discriminate given the real path's variable length. Fixed by asserting on presence of `"SyntaxError"` — but this ALSO failed because this repo's real `apps/validate` uses `tsx`'s esbuild-based transform (produces `"ERROR: Expected identifier..."` / `"TransformError"`, not Node's native `"SyntaxError"`). Fixed by accepting either `"Expected identifier"` OR `"SyntaxError"` in the assertion, discovered by directly testing with plain `node` (wrong toolchain) vs. reading the ACTUAL panic output from the real test run (correct toolchain, esbuild-based).
+   - **Duplicated logic introduced during `ResolutionContext` refactor**: First attempt at adding `new_with_cached_ambient_global_files` duplicated the entire `resolve_options`/`enum_bare_index`/`const_array_bare_index` computation between `new` and the new constructor. Caught this myself before running tests and refactored to a single private `build()` helper that both public constructors delegate to.
+   - **`typos` pre-commit hook rejections**: `"unparseable"` flagged as should be `"unparsable"` (fixed via `sed`, re-verified tests still pass) — occurred once, in an earlier segment of this same session's work, re-confirmed here as a recurring pattern to watch for.
+   - **Compiler-enforced exhaustive-match catches (validating the "no wildcards" style rule in practice)**: Adding the 2 new `OpaqueReason` variants caused an immediate compile error in `known.rs`'s `push_known_opaque_diagnostic` (`non-exhaustive patterns: MultiParamFunction and UnsupportedExpression not covered`), directly demonstrating the value of the project's "no wildcard matches on project-local enums" convention — fixed by adding the 2 new arms.
+
+5. Problem Solving:
+   Systematically executed a large adversarial-review remediation effort across 6 completed clusters (silent-Opaque diagnostics, component-mapping rename bugs, watch-mode pipeline correctness+performance, CLI `--json`/react-version correctness, resolver clone performance + cache schema safety, and diagnostic-quality/message-accuracy — this last one in progress). Each cluster followed full TDD discipline: write failing test, confirm RED (often via literal git-stash-free "temporarily revert the fix, re-run, confirm fail, restore" verification), implement minimal fix, confirm GREEN, run full workspace test suite + clippy, verify real behavior via the actual CLI binary against real fixtures with fresh caches, then commit with a detailed message explaining root cause and reasoning. Along the way, discovered and fixed a SECOND compounding bug during TDD for the `ReverseDeps` fix (macOS path canonicalization mismatch) that the original adversarial-review finding hadn't identified. Made and clearly documented several deliberate scope-limiting decisions (e.g., not converting `--react-version` to a `clap::ValueEnum`, not doing a full `tracing::*` instrumentation pass, not touching `binding/lib.rs:78`'s hand-built-defaults issue in this batch) to avoid uncontrolled scope creep while still being fully transparent about what was and wasn't addressed.
+
+6. All user messages (this segment, verbatim where practical, excluding tool/system results):
+   - "Let's fix what we know even if not quick or easy but proper. Let's keep considering performance, maintainability, DX, etc"
+   - "Shall we do another round looking for issues in our code validation?"
+   - "Let's do that"
+   - "What about code quality, maintainability, DX and performance. Let's do a round of adversarial analysis on our code using agent teams and workflows with the most appropriate model and effort please."
+   - "Let's not litter the project with extra MD files right? Let's systematically tackle all of the issues we identified please"
+
+7. Pending Tasks:
+   - Finish Cluster 6 (diagnostic-quality): update `named.rs`'s remaining inline `MAX_DEPTH` diagnostic to use `super::max_depth_diagnostic(...)`, then build/test/clippy/commit.
+   - `pipeline/mod.rs:254`-equivalent finding: IoError diagnostic construction duplicated verbatim at 3 call sites (`mod.rs`, `watch.rs` x2) — not yet addressed; report's suggested fix: a `Diagnostic::io_read_error()` constructor.
+   - `chain.rs:185`-equivalent finding: `UnresolvableImport` diagnostic leaks internal "scoped key" jargon into user-facing text — not yet addressed.
+   - `cli/output.rs:68` (low severity): `group_diagnostics` does `format!("{:?}", d.code)` per diagnostic purely for a comparison key when `DiagnosticCode` already derives `PartialEq` — not yet addressed.
+   - Low-severity cluster (not started): `named.rs:100` duplicated/inconsistent TS-utility-type name set across `known.rs`/`chain.rs`/`named.rs`; `primitives.rs:57` dead `(string & {})` special case; `component.rs:16` three separate as-cast-peeling implementations; `interface.rs:111` `try_collect_cva_call` allocates callee name before checking match; `types/collected.rs:436` `CollectedObjectField`'s hand-rolled Serialize/Deserialize fully redundant with `#[derive(...)]`; `pipeline/mod.rs:344` "canonicalize first src_dir" snippet copy-pasted 3x; `types/diagnostic.rs:45` four dead `DiagnosticCode` variants (`PandaCodegenMissing`, `ComponentDetectionFailed`, `BarrelResolutionFailed`, `CallableComponent`) never constructed anywhere.
+   - Consumer-surface (JS) cluster (not started): `binding/lib.rs:78` `From<JsExtractOptions>` hand-builds every default instead of starting from `PipelineOptions::default()` and overriding (unlike `cli/config.rs`'s correct pattern); `binding/lib.rs:63` malformed `extra_paths_json`/`known_type_overrides_json` silently swallowed via `.ok()` + `unwrap_or_default()`; `packages/napi/index.d.ts:109` `Diagnostic` fields typed optional (`?:`) but always present as literal `null`; `packages/napi/index.d.ts:116` `ExtractionStats` missing `dtsFilesParsed` field the Rust struct actually emits; `vite-plugin/src/index.ts:133` production `vite build` never runs cold extraction (virtual module resolves to empty stub); `vite-plugin/src/index.ts:42` `skipHtmlProps` option has no corresponding Rust field, silently ignored by NAPI.
+   - `import_map.rs:27` finding: barrel/re-export chain resolution (`ReExportStep`, `resolve_reexport_chain`, `wildcard_sources_for`, `DiagnosticCode::BarrelResolutionFailed`) is fully scaffolded and tested in isolation but never wired into `resolver/import.rs`'s `resolve_to_canonical` — needs a judgment call: wire it up properly, or explicitly remove the dead code and document the gap in `docs/STATUS.md`.
+   - After all clusters are addressed, a final full-workspace verification pass (build, test, clippy, real fixture check) and a wrap-up summary for the user.
+
+8. Current Work:
+   Immediately before this summary was requested, I was mid-way through Cluster 6 (diagnostic-quality inconsistencies) of the systematic adversarial-review remediation. The specific sequence of actions just completed:
+   1. Added two new `OpaqueReason` variants (`MultiParamFunction`, `UnsupportedExpression`) to `crates/core/src/types/output.rs`, with manual serialize/deserialize match arms.
+   2. Fixed `crates/core/src/resolver/func.rs`'s multi-param-function branch to use `OpaqueReason::MultiParamFunction` instead of the factually-wrong `OpaqueReason::ConditionalType`.
+   3. Fixed `crates/core/src/resolver/collected.rs`'s Raw-fallback branch to use `OpaqueReason::UnsupportedExpression` instead of the factually-wrong `OpaqueReason::DepthExceeded`.
+   4. Updated `crates/core/src/known.rs`'s `push_known_opaque_diagnostic` to handle the 2 new variants (required by the compiler's exhaustive-match enforcement).
+   5. Built and ran tests successfully (`cargo build -p oxc-react-docgen-core` clean; added and passed `test_function_type_multi_param_tags_multi_param_function_not_conditional_type`; full workspace suite green: 21 CLI + 154 core-unit + 8 snapshot, all passing, no snapshot diffs).
+   6. Fixed `crates/core/src/resolver/named.rs`'s step-7 diagnostic message from `"— it will appear as opaque"` to `"— it will appear as an unexpanded named reference"` (since this path returns `PropType::Named`, not `Opaque`) — verified via real CLI run against `fixtures/ark-ui` showing the corrected message text in actual output.
+   7. Added a new shared `pub(super) fn max_depth_diagnostic(what: &str, file: &Utf8Path) -> Diagnostic` function in `crates/core/src/resolver/mod.rs`, right after `const MAX_DEPTH: u8 = 20;`, to consolidate the 3 previously-inconsistent `MaxDepthExceeded` diagnostic constructions (only one of the three previously included the useful "circular type reference" help text).
+   8. Just replaced `crates/core/src/resolver/collected.rs`'s inline `MAX_DEPTH` diagnostic block with a single call: `state.diagnostics.push(super::max_depth_diagnostic(&format!("type '{}'", ct.to_raw_string()), consuming_file));`
+   9. Just replaced `crates/core/src/resolver/chain.rs`'s inline `MAX_DEPTH` diagnostic block with: `state.diagnostics.push(super::max_depth_diagnostic(&format!("type '{}'", type_name), consuming_file));` — **this was the very last tool call whose result was shown before the summary was requested.**
+   
+   `crates/core/src/resolver/named.rs`'s own inline `MAX_DEPTH` diagnostic (at the top of `resolve_named`, using message template `"Max resolution depth exceeded for named type '{}'"`) has **NOT yet** been updated to use the new shared helper — this is the one remaining site in the 3-site `MaxDepthExceeded` consolidation.
+   
+   No build/test/clippy verification has been run yet since the last two edits (collected.rs and chain.rs's `max_depth_diagnostic` call-site updates) — this still needs to happen once named.rs is also updated.
+   
+   All of Cluster 6's work so far (OpaqueReason additions, named.rs message fix, max_depth_diagnostic helper + 2 of 3 call sites) is **uncommitted** — no git commit has been made for this cluster yet.
+
+9. Optional Next Step:
+   Complete the `MaxDepthExceeded` consolidation by updating the third and final call site in `crates/core/src/resolver/named.rs`, replacing:
+   ```rust
+   if depth > MAX_DEPTH {
+       state.diagnostics.push(Diagnostic {
+           severity: DiagnosticSeverity::Warning,
+           message: format!("Max resolution depth exceeded for named type '{}'", name),
+           file: Some(consuming_file.to_string()),
+           line: None,
+           column: None,
+           help: None,
+           code: DiagnosticCode::MaxDepthExceeded,
+       });
+       return PropType::Opaque { raw: name.to_string(), reason: OpaqueReason::DepthExceeded };
+   }
+   ```
+   with the shared helper call, matching the pattern just applied to `collected.rs` and `chain.rs`:
+   ```rust
+   if depth > MAX_DEPTH {
+       state.diagnostics.push(super::max_depth_diagnostic(&format!("named type '{}'", name), consuming_file));
+       return PropType::Opaque { raw: name.to_string(), reason: OpaqueReason::DepthExceeded };
+   }
+   ```
+   Then run `cargo build -p oxc-react-docgen-core`, `cargo fmt --all`, the full workspace test suite (`cargo test --workspace`), and `cargo clippy --workspace -- -D warnings` to confirm everything is green, check for any snapshot diffs (accept if they're clean additions matching intent), and commit this entire Cluster 6 (diagnostic-quality) batch with a descriptive message — following the exact same rigor and commit-message style used for Clusters 1-5 (root cause explanation, "why" not just "what", `Claude-Session:` trailer). This directly continues the user's standing instruction to "systematically tackle all of the issues we identified" from the adversarial analysis, picking up mid-cluster exactly where the last tool call left off.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

@@ -106,16 +106,13 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
                     }
                     if let Ok(utf8) = camino::Utf8PathBuf::from_path_buf(path.to_owned()) {
                         let update = session_inner.update_file(&utf8);
-                        exit_code_inner.store(
-                            oxc_react_docgen_core::types::ExtractionOutput {
-                                components: Default::default(),
-                                enums: Default::default(),
-                                diagnostics: update.diagnostics.clone(),
-                                stats: Default::default(),
-                            }
-                            .exit_code(false),
-                            std::sync::atomic::Ordering::Relaxed,
-                        );
+                        // Source from the session's cumulative snapshot (same
+                        // diagnostics written to `--out`), not just this
+                        // event's delta — otherwise a clean file update can
+                        // reset the exit code to 0 even though an earlier
+                        // file in this session still has an unresolved error.
+                        let snapshot = session_inner.snapshot();
+                        exit_code_inner.store(watch_exit_code(&snapshot), std::sync::atomic::Ordering::Relaxed);
                         if !quiet_inner {
                             use owo_colors::OwoColorize;
                             let names: Vec<_> =
@@ -126,7 +123,6 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
                             print_diagnostics(&update.diagnostics);
                         }
                         if let Some(ref p) = out_path {
-                            let snapshot = session_inner.snapshot();
                             if let Ok(json) = serde_json::to_string(&snapshot) {
                                 let _ = std::fs::write(p, json);
                             }

@@ -1,0 +1,233 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   The session covered several sequential tasks:
+   - Squash 49 commits → logical groups with clean messages, GPG-signed, no AI slop
+   - Update rustfmt (`max_width = 120`) and clippy (`too-many-lines-threshold = 150`) configs and reformat all Rust
+   - Backfill `Signed-off-by: Gabe Castro <gabe@techworx.dev>` to all history commits
+   - Write README, CONTRIBUTING, and ARCHITECTURE docs (friendly, scannable, eng-focused, Mermaid where useful, no AI word salad)
+   - Simplify published package install (single `npm install -D @oxc-react-docgen/vite-plugin`)
+   - CI: Node 24+26 matrix, npm+pnpm install test, nextest, llvm-cov/codecov coverage, cargo-deny, cancel-in-progress
+   - Local moon/justfile parity with CI (test/bench/coverage tasks, `just ci` meta-recipe)
+   - **Currently in progress:** Build an RDT spec coverage matrix — map each react-docgen-typescript output field/pattern to existing fixture coverage, add missing cases
+
+2. Key Technical Concepts:
+   - Non-interactive git rebase using `GIT_SEQUENCE_EDITOR` + `exec git commit --amend -m` pattern (avoids interactive editor for `reword`)
+   - `git filter-branch --msg-filter` for mass message edits (strips GPG sigs, requires a second rebase pass with `-S` to re-sign)
+   - `format.signoff = true` in local git config for automatic `Signed-off-by` trailers
+   - GPG signing with ed25519 key for `gabe@techworx.dev`
+   - OXC 0.135 parses TypeScript natively without a TypeScript Program — no type-checking pass, pure structural extraction
+   - `FxHashMap` for internal maps, `BTreeMap` for JSON output, `CompactString` for type/prop names
+   - `CollectedType` (raw AST from extractor) → `PropType` (resolved semantic type, tagged union) transformation
+   - `GlobalSourceData` wrapped in `Arc<ArcSwap<…>>` for lock-free reads during rayon parallel resolution
+   - `ResolveState` per component call (visited set, depth, diagnostics) — not shared between threads
+   - Manual serde for `CollectedType`/`PropType` (recursive enum recursion limit workaround via `serde_json::Value` intermediary)
+   - DTS cache at `node_modules/.cache/oxc-react-docgen/` (msgpack + atomic write, mtime+size keyed)
+   - `hotUpdate` returns `undefined` not `[]` (returning `[]` suppresses React Fast Refresh)
+   - `taiki-e/install-action` for prebuilt cargo tool binaries (nextest, cargo-llvm-cov) — much faster than `cargo install`
+   - `EmbarkStudios/cargo-deny-action@v2` — pre-built deny binary, no Rust toolchain needed
+   - `concurrency.cancel-in-progress` to kill stale PR runs
+   - `CARGO_INCREMENTAL=0` with Swatinem/rust-cache for smaller, more reliable cache
+   - `cargo-nextest` for parallel Rust test execution
+   - `cargo-llvm-cov` with `--branch` for meaningful branch coverage on match-heavy code
+   - RDT (react-docgen-typescript) compatible output shape
+
+3. Files and Code Sections:
+   - **`.typos.toml`** — Added `[files] extend-exclude = ["apps/validate/baselines/"]` to prevent spell-checker from flagging `onSeeked` (valid HTML media event) in generated JSON
+     ```toml
+     [files]
+     extend-exclude = ["apps/validate/baselines/"]
+     [default.extend-words]
+     afe = "afe"
+     sme = "sme"
+     ratatui = "ratatui"
+     ```
+
+   - **`.rustfmt.toml`** — Changed `max_width = 100` → `max_width = 120`
+     ```toml
+     edition = "2021"
+     max_width = 120
+     use_small_heuristics = "Max"
+     ```
+
+   - **`.clippy.toml`** — Changed `too-many-lines-threshold = 100` → `too-many-lines-threshold = 150`
+     ```toml
+     msrv = "1.94"
+     too-many-arguments-threshold = 6
+     too-many-lines-threshold = 150
+     ```
+
+   - **`crates/core/Cargo.toml`** — Added `license.workspace = true` (was missing, caused cargo-deny unlicensed error)
+   - **`crates/cli/Cargo.toml`** — Added `license.workspace = true`
+   - **`crates/binding/Cargo.toml`** — Added `license.workspace = true`
+
+   - **`deny.toml`** — Complete rewrite to add missing licenses and OXC duplicate skip entries:
+     ```toml
+     [advisories]
+     version = 2
+     ignore = []
+
+     [licenses]
+     version = 2
+     allow = [
+         "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception",
+         "ISC", "BSD-2-Clause", "BSD-3-Clause",
+         "Unicode-3.0",  # unicode-ident, unicode-id-start
+         "Zlib",         # foldhash (via simd-json → oxc_resolver)
+         "CC0-1.0",      # notify (via watchexec)
+         "MPL-2.0",      # option-ext (via dirs)
+     ]
+
+     [bans]
+     multiple-versions = "warn"
+     skip = [
+         { name = "oxc_allocator" }, { name = "oxc_ast" },
+         { name = "oxc_ast_macros" }, { name = "oxc_ecmascript" },
+         { name = "oxc_regular_expression" }, { name = "oxc_span" },
+         { name = "oxc_str" }, { name = "oxc_syntax" },
+     ]
+
+     [sources]
+     unknown-registry = "deny"
+     unknown-git = "deny"
+     ```
+
+   - **`.moon/tasks.yml`** — Added `test`, `bench`, `coverage`; fixed `lint` and `deny`:
+     ```yaml
+     lint:
+       command: cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings
+       options: { runFromWorkspaceRoot: true, cache: false }
+     deny:
+       command: cargo deny check
+       options: { runFromWorkspaceRoot: true, cache: false }
+     test:
+       command: cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked
+       options: { runFromWorkspaceRoot: true, cache: false }
+     bench:
+       command: cargo bench --workspace --exclude oxc-react-docgen-napi
+       options: { runFromWorkspaceRoot: true, cache: false }
+     coverage:
+       command: cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --html --open
+       options: { runFromWorkspaceRoot: true, cache: false }
+     ```
+
+   - **`.moon/workspace.yml`** — Fixed pre-commit hook (added `--exclude oxc-react-docgen-napi --locked`, full `cargo deny check`):
+     ```yaml
+     pre-commit:
+       - '. "$HOME/.cargo/env"'
+       - "cargo fmt --check"
+       - "cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings"
+       - "typos"
+       - "cargo deny check"
+     ```
+
+   - **`justfile`** — Complete rewrite with `install-tools`, `test`, `test-ts`, `test-all`, `bench`, `coverage`, `lint`, `deny`, `typos`, `ci` meta-recipe, `compare`:
+     ```justfile
+     install-tools:
+         cargo install cargo-nextest --locked
+         cargo install cargo-llvm-cov --locked
+         rustup component add llvm-tools-preview
+
+     test:
+         cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked
+
+     test-ts:
+         pnpm --filter @oxc-react-docgen/vite-plugin test
+
+     ci: lint test deny typos test-ts
+
+     coverage:
+         cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --html --open
+     ```
+
+   - **`.github/workflows/ci.yml`** — Full 7-job parallel CI:
+     ```yaml
+     concurrency:
+       group: ${{ github.workflow }}-${{ github.ref }}
+       cancel-in-progress: true
+
+     env:
+       CARGO_TERM_COLOR: always
+       CARGO_INCREMENTAL: "0"
+       RUST_BACKTRACE: 1
+
+     jobs:
+       lint:         # cargo fmt --check + clippy --locked -D warnings
+       test:         # taiki-e/install-action@nextest + cargo nextest run --locked
+       deny:         # EmbarkStudios/cargo-deny-action@v2
+       coverage:     # taiki-e/install-action@{cargo-llvm-cov,nextest} + codecov/codecov-action@v5
+       bench:        # main only, uploads bench-results.txt artifact
+       typescript:   # Node 24+26 matrix, pnpm, vitest
+       install:      # Node 24+26 × npm+pnpm, pack tarball, verify napi transitive dep
+     ```
+
+   - **`README.md`** — Created: value prop (32ms), Vite quickstart, output JSON shape, supported patterns table, repo layout
+   - **`CONTRIBUTING.md`** — Created: prerequisites, build/test commands, where code goes, code style rules, commit conventions
+   - **`ARCHITECTURE.md`** — Created with two Mermaid diagrams:
+     - Pipeline flowchart: `src files → OXC parser → SourceData → GlobalSourceData → ComponentEntry → ExtractionOutput`
+     - Crate/package graph: core → binding → napi → vite-plugin; core → cli
+     - Module layouts, key types, design decisions, "not yet implemented" table
+
+4. Errors and Fixes:
+   - **typos pre-commit hook failing on `onSeeked`** in `apps/validate/baselines/react-docgen-typescript.json`: Added `extend-exclude = ["apps/validate/baselines/"]` to `.typos.toml`. Had to stage the fix and `git commit --amend -S` mid-rebase, then `git rebase --continue`.
+
+   - **Squash dropped crates/napi and packages/rolldown-plugin deletions**: The `Phase 5a prep` squash commit created `crates/binding/` but didn't delete `crates/napi/` — both remained in HEAD. Fixed by staging `git rm -r --cached crates/napi/ packages/rolldown-plugin/` as part of the rustfmt commit.
+
+   - **filter-branch strips GPG signatures**: Known behavior — after using `--msg-filter` to add sign-offs, all commits showed `N` (no signature). Fixed with second rebase pass: `GIT_SEQUENCE_EDITOR` todo with `exec git commit --amend -S --no-edit` after every `pick`.
+
+   - **cargo deny check finding multiple issues** when pre-commit hook changed from `cargo deny check advisories` to `cargo deny check`:
+     1. `Zlib` (foldhash), `CC0-1.0` (notify), `MPL-2.0` (option-ext) not in allow list → added to deny.toml
+     2. `Unicode-3.0` accidentally omitted from new deny.toml → added back
+     3. Our crates (`oxc-react-docgen-core`, `oxc-react-docgen`, `oxc-react-docgen-napi`) had no `license` field → added `license.workspace = true` to all three Cargo.toml files
+     4. OXC dual versions (0.38 + 0.135) due to `oxc_module_lexer` having independent versioning → added `skip` entries for 8 OXC crates in deny.toml bans section
+
+5. Problem Solving:
+   - Non-interactive rebase for 49→19 commit squash: Used `GIT_SEQUENCE_EDITOR` to inject pre-written todo + `exec git commit --amend -m` pattern instead of `reword` (which would require interactive editor). This is the key insight for scripting rebase with custom messages.
+   - Two-pass history rewrite (filter-branch for messages + rebase for re-signing) is the standard pattern when needing both text changes and GPG signatures.
+   - `cargo deny check` (full) vs `cargo deny check advisories` (partial) — the pre-commit hook was only checking advisories, missing license/ban/source checks. CI now runs full check; local hook matches.
+   - `taiki-e/install-action` eliminates the biggest CI speed problem: `cargo install` from source takes minutes; prebuilt binaries take seconds.
+
+6. All User Messages:
+   - "Are we using sign-offs?"
+   - "yes please" (to adding sign-offs)
+   - "Can we make sure the prior commits are signed off?"
+   - "Let's write a README and CONTRIBUTING AND ARCHITECTURE doc borrowing from the best tools in the rust and oxc realm. Best practices, etc. Friendly, scannable, succinct and eng focused. Devoid of AI slop and AI word salad please. Leverage all that is available in MD, including mermaid diagrams where appropriate to make it more readable. Don't just add diagrams for the sake of doing it."
+   - "How can we simplify the install instructions/steps by having dependencies installed?" (about published package end-user experience, not dev setup)
+   - "I mean for published, the instructions in the readme for using this with vite for example" (clarifying: end-user npm install, not contributor setup)
+   - "npm and pnpm installs right? Can we make sure we produce and test with a matrix of node 24 and 26?"
+   - "Any other GH actions we can leverage to simplify our CI? we also want to build, test, lint and check coverage. Any other rust best practices we should adopt? We want a quick build"
+   - "Do we have these setup locally too via moon so we can run them easily locally for verification prior to CI?"
+   - "This is a critical tool and we should have a way to validate that we cover a good amount of the RDT spec" (mid-task, while working on moon/justfile)
+   - "yes, build the RDT spec coverage matrix"
+
+7. Pending Tasks:
+   - **RDT spec coverage matrix** (explicitly requested, in progress): Build a matrix mapping each react-docgen-typescript output field and component pattern to existing fixture coverage; identify gaps; add missing fixture cases and/or a `rdt_compat.rs` test file with per-pattern assertions.
+   - **README update**: Remove `@oxc-react-docgen/napi` from the install command (it's already a transitive dep of vite-plugin). User confirmed this was the right direction but the edit was not made before pivoting.
+   - **CodSpeed** for benchmark regression detection on PRs (recommended but not implemented)
+   - **NAPI integration tests** using real compiled binary (scaffold only, no native binary in CI yet)
+   - **`codecov.yml`** with coverage thresholds and ignores for `crates/binding/` and `crates/cli/`
+
+8. Current Work:
+   The most recent task was building the RDT spec coverage matrix. The user said: "This is a critical tool and we should have a way to validate that we cover a good amount of the RDT spec" and then explicitly "yes, build the RDT spec coverage matrix."
+
+   The assistant had just listed the 7 existing snapshot files and 7 fixture directories:
+   
+   Snapshots: `snapshots__snapshot_chakra.snap`, `snapshots__snapshot_mantine.snap`, `snapshots__snapshot_mui.snap`, `snapshots__snapshot_panda.snap`, `snapshots__snapshot_radix.snap`, `snapshots__snapshot_react_aria.snap`, `snapshots__snapshot_shadcn.snap`
+   
+   Fixtures directories: `chakra/`, `mantine/`, `mui/`, `panda/`, `radix/`, `react-aria/`, `shadcn/`
+
+   The next step was to read the actual snapshot and fixture content to understand what RDT patterns are already covered, identify gaps, and then create the coverage matrix + missing test cases.
+
+9. Optional Next Step:
+   Continue building the RDT spec coverage matrix. The user explicitly requested: "yes, build the RDT spec coverage matrix."
+
+   This requires:
+   1. Reading the existing 7 snapshot files to understand what's currently tested
+   2. Reading key fixture files (shadcn/button.tsx, mui/Button.d.ts, radix/button.d.ts, etc.)
+   3. Reading `packages/napi/index.d.ts` (already seen — defines the full RDT-compatible output shape with all fields)
+   4. Building a matrix document (likely `docs/rdt-coverage.md` or a test file) mapping each RDT output field (`displayName`, `filePath`, `props.*`, `inheritance`, `notableInherited`, `discriminantProp`, `composes`, `tags`, `description`) and each component pattern (forwardRef, HOC, intersection alias, Omit/Pick, VariantProps, discriminated union, JSDoc tags, etc.) to which fixture/snapshot covers it
+   5. Adding fixture files for uncovered patterns and/or a `crates/core/tests/rdt_compat.rs` with explicit per-pattern snapshot assertions
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

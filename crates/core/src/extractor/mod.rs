@@ -220,7 +220,6 @@ impl<'src> SourceDataCollector<'src> {
     /// `classify_type_alias`'s Omit/Pick/Partial/Required/Readonly arms and the
     /// component-detector chains in `visit.rs` when a shape matches a known
     /// pattern but is missing/malformed pieces the pattern requires.
-    #[allow(dead_code)] // call sites land in classify_type_alias and visit.rs (later tasks)
     pub(super) fn record_skip(&mut self, code: DiagnosticCode, message: impl Into<String>, span: Span) {
         let _ = span; // no line/column conversion helper exists yet; kept for future use and call-site documentation
         self.data.diagnostics.push(Diagnostic {

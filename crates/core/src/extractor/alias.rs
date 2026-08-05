@@ -1,8 +1,9 @@
 //! Type alias classification: Omit, Pick, Partial, Required, Union, Intersection, Passthrough.
 
 use oxc_ast::ast::*;
+use oxc_span::GetSpan;
 
-use crate::types::{CollectedType, CollectedTypeAlias};
+use crate::types::{CollectedType, CollectedTypeAlias, DiagnosticCode};
 
 use super::SourceDataCollector;
 
@@ -16,11 +17,30 @@ impl<'src> SourceDataCollector<'src> {
                 let ref_name = self.extract_type_ref_name(tr);
                 match ref_name.as_str() {
                     "Omit" => {
-                        let tp = tr.type_arguments.as_ref()?;
+                        let Some(tp) = tr.type_arguments.as_ref() else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}' uses Omit<> with no type arguments"),
+                                tr.span,
+                            );
+                            return None;
+                        };
                         if tp.params.len() < 2 {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}' uses Omit<> with fewer than 2 type arguments"),
+                                tp.span,
+                            );
                             return None;
                         }
-                        let (base_name, base_args) = self.extract_type_name_from_type(&tp.params[0])?;
+                        let Some((base_name, base_args)) = self.extract_type_name_from_type(&tp.params[0]) else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}': Omit<>'s base type argument is not a recognizable type reference"),
+                                tp.params[0].span(),
+                            );
+                            return None;
+                        };
                         let base = CollectedType::Named {
                             name: base_name,
                             args: base_args.into_iter().map(CollectedType::Raw).collect(),
@@ -29,11 +49,30 @@ impl<'src> SourceDataCollector<'src> {
                         Some(CollectedTypeAlias::Omit { base, omitted_keys, omitted_keys_of, file_path: fp })
                     }
                     "Pick" => {
-                        let tp = tr.type_arguments.as_ref()?;
+                        let Some(tp) = tr.type_arguments.as_ref() else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}' uses Pick<> with no type arguments"),
+                                tr.span,
+                            );
+                            return None;
+                        };
                         if tp.params.len() < 2 {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}' uses Pick<> with fewer than 2 type arguments"),
+                                tp.span,
+                            );
                             return None;
                         }
-                        let (base_name, base_args) = self.extract_type_name_from_type(&tp.params[0])?;
+                        let Some((base_name, base_args)) = self.extract_type_name_from_type(&tp.params[0]) else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}': Pick<>'s base type argument is not a recognizable type reference"),
+                                tp.params[0].span(),
+                            );
+                            return None;
+                        };
                         let base = CollectedType::Named {
                             name: base_name,
                             args: base_args.into_iter().map(CollectedType::Raw).collect(),
@@ -42,8 +81,30 @@ impl<'src> SourceDataCollector<'src> {
                         Some(CollectedTypeAlias::Pick { base, picked_keys, file_path: fp })
                     }
                     "Partial" => {
-                        let tp = tr.type_arguments.as_ref()?;
-                        let (base_name, base_args) = self.extract_type_name_from_type(tp.params.first()?)?;
+                        let Some(tp) = tr.type_arguments.as_ref() else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}' uses Partial<> with no type arguments"),
+                                tr.span,
+                            );
+                            return None;
+                        };
+                        let Some(first) = tp.params.first() else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}' uses Partial<> with an empty type argument list"),
+                                tp.span,
+                            );
+                            return None;
+                        };
+                        let Some((base_name, base_args)) = self.extract_type_name_from_type(first) else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}': Partial<>'s type argument is not a recognizable type reference"),
+                                first.span(),
+                            );
+                            return None;
+                        };
                         let base = CollectedType::Named {
                             name: base_name,
                             args: base_args.into_iter().map(CollectedType::Raw).collect(),
@@ -51,8 +112,30 @@ impl<'src> SourceDataCollector<'src> {
                         Some(CollectedTypeAlias::Partial { base, file_path: fp })
                     }
                     "Required" => {
-                        let tp = tr.type_arguments.as_ref()?;
-                        let (base_name, base_args) = self.extract_type_name_from_type(tp.params.first()?)?;
+                        let Some(tp) = tr.type_arguments.as_ref() else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}' uses Required<> with no type arguments"),
+                                tr.span,
+                            );
+                            return None;
+                        };
+                        let Some(first) = tp.params.first() else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}' uses Required<> with an empty type argument list"),
+                                tp.span,
+                            );
+                            return None;
+                        };
+                        let Some((base_name, base_args)) = self.extract_type_name_from_type(first) else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}': Required<>'s type argument is not a recognizable type reference"),
+                                first.span(),
+                            );
+                            return None;
+                        };
                         let base = CollectedType::Named {
                             name: base_name,
                             args: base_args.into_iter().map(CollectedType::Raw).collect(),
@@ -60,8 +143,30 @@ impl<'src> SourceDataCollector<'src> {
                         Some(CollectedTypeAlias::Required { base, file_path: fp })
                     }
                     "Readonly" => {
-                        let tp = tr.type_arguments.as_ref()?;
-                        let (base_name, base_args) = self.extract_type_name_from_type(tp.params.first()?)?;
+                        let Some(tp) = tr.type_arguments.as_ref() else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}' uses Readonly<> with no type arguments"),
+                                tr.span,
+                            );
+                            return None;
+                        };
+                        let Some(first) = tp.params.first() else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}' uses Readonly<> with an empty type argument list"),
+                                tp.span,
+                            );
+                            return None;
+                        };
+                        let Some((base_name, base_args)) = self.extract_type_name_from_type(first) else {
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!("'{_name}': Readonly<>'s type argument is not a recognizable type reference"),
+                                first.span(),
+                            );
+                            return None;
+                        };
                         let target = CollectedType::Named {
                             name: base_name,
                             args: base_args.into_iter().map(CollectedType::Raw).collect(),
@@ -154,5 +259,33 @@ impl<'src> SourceDataCollector<'src> {
             CollectedType::KeyOf(inner) => (vec![], Some(inner)),
             other => (other.as_string_union_keys(), None),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use camino::Utf8Path;
+
+    use crate::extractor::parse_file;
+    use crate::types::DiagnosticCode;
+
+    #[test]
+    fn malformed_omit_missing_second_arg_records_skipped_candidate() {
+        let source = r#"
+            interface Foo { a: string; }
+            type BadOmit = Omit<Foo>;
+        "#;
+        let path = Utf8Path::new("/test/bad-omit.ts");
+        let data = parse_file(path, source);
+
+        assert!(
+            !data.type_aliases.contains_key("/test/bad-omit.ts:BadOmit"),
+            "malformed Omit should still not produce a usable alias"
+        );
+        assert!(
+            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::SkippedCandidate),
+            "expected a SkippedCandidate diagnostic, got: {:?}",
+            data.diagnostics
+        );
     }
 }

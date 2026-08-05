@@ -24,6 +24,37 @@ fn check_content_length(len: usize) -> Result<()> {
     Ok(())
 }
 
+/// Reads header lines up to the blank-line terminator and returns the parsed
+/// `Content-Length`, if any.
+///
+/// `Err(())` means the stream ended before any header line was read at all —
+/// a normal, expected way for a client to close the connection.
+/// `Ok(None)` means a header block *was* read (the loop reached the blank
+/// line) but it contained no usable `Content-Length` — missing header or an
+/// unparsable value. That body's byte length is unknowable, so the caller
+/// must not keep reading from the stream as if nothing happened: doing so
+/// desyncs every subsequent frame, since the unconsumed body bytes get read
+/// as the start of the *next* header block.
+fn read_content_length<R: BufRead>(reader: &mut R) -> Result<Option<usize>, ()> {
+    let mut content_length: Option<usize> = None;
+    let mut line = String::new();
+
+    loop {
+        line.clear();
+        if reader.read_line(&mut line).unwrap_or(0) == 0 {
+            return Err(());
+        }
+        if line == "\r\n" || line == "\n" {
+            break;
+        }
+        if let Some(header) = line.strip_prefix("Content-Length: ") {
+            content_length = header.trim().parse().ok();
+        }
+    }
+
+    Ok(content_length)
+}
+
 /// The `initialize` response's `result` payload — factored out so capability
 /// advertisement is testable without driving the stdin/stdout loop.
 fn initialize_result() -> serde_json::Value {
@@ -50,24 +81,16 @@ pub fn cmd_lsp() -> Result<()> {
     let mut stdout_lock = stdout.lock();
 
     loop {
-        let mut content_length: Option<usize> = None;
-        let mut line = String::new();
-
-        loop {
-            line.clear();
-            if stdin_lock.read_line(&mut line).unwrap_or(0) == 0 {
-                return Ok(()); // EOF
-            }
-            if line == "\r\n" || line == "\n" {
-                break;
-            }
-            if let Some(header) = line.strip_prefix("Content-Length: ") {
-                content_length = header.trim().parse().ok();
-            }
-        }
+        let content_length = match read_content_length(&mut stdin_lock) {
+            Err(()) => return Ok(()), // EOF
+            Ok(v) => v,
+        };
 
         let Some(len) = content_length else {
-            continue;
+            tracing::error!(
+                "LSP frame's header block had no usable Content-Length; closing connection to avoid a desynced stream"
+            );
+            return Err(miette::miette!("received an LSP frame without a usable Content-Length header"));
         };
 
         check_content_length(len)?;
@@ -147,5 +170,30 @@ mod tests {
             "hoverProvider must stay false until a textDocument/hover handler exists — a client hover \
              request carries an id and nothing replies to it today"
         );
+    }
+
+    #[test]
+    fn test_headerless_frame_is_reported_as_malformed_not_eof() {
+        // Blank line reached with no Content-Length header at all — the
+        // pre-fix code left `content_length: None` and `continue`d straight
+        // past the body that frame's sender still wrote, permanently
+        // desyncing every header block read afterward.
+        let mut reader = std::io::Cursor::new(b"X-Some-Other-Header: value\r\n\r\n".to_vec());
+        assert_eq!(read_content_length(&mut reader), Ok(None));
+    }
+
+    #[test]
+    fn test_unparsable_content_length_is_reported_as_malformed() {
+        let mut reader = std::io::Cursor::new(b"Content-Length: not-a-number\r\n\r\n".to_vec());
+        assert_eq!(read_content_length(&mut reader), Ok(None));
+    }
+
+    #[test]
+    fn test_true_stream_eof_is_distinct_from_a_malformed_header_block() {
+        // No bytes at all (client closed the connection) is a normal,
+        // expected way to end the loop — must not be conflated with a
+        // header block that was read but had no usable Content-Length.
+        let mut reader = std::io::Cursor::new(Vec::new());
+        assert_eq!(read_content_length(&mut reader), Err(()));
     }
 }

@@ -1,0 +1,1 @@
+index.d.ts should be generated? Are you getting confused again?

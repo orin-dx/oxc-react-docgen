@@ -1,0 +1,1 @@
+If the package doesn't have a types should it try to automatically look for @types/xxx? How does RDT does it?

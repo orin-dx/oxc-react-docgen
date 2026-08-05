@@ -1,0 +1,27 @@
+<task-notification>
+<task-id>a18280a3c4f689746</task-id>
+<tool-use-id>toolu_01SVPofU52kB27UNyb7BUdU7</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/45b9a47b-5f62-4e04-a9aa-d8a71dab3bfe/tasks/a18280a3c4f689746.output</output-file>
+<status>completed</status>
+<summary>Agent "Test real @types/react HTML attribute resolution" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Report: Full HTML Attribute Expansion — Path B Feasibility
+
+**Verdict: Path (B) is tractable today, and cheap.** The "genuine wall" the type-checker doc worried about — generic param substitution through `DOMAttributes&lt;T&gt;`/`HTMLAttributes&lt;T&gt;`/`AriaAttributes` — turns out not to bite in practice. Every place `T` flows into is wrapped in a named `*EventHandler&lt;T&gt;` alias, and docgen only needs the *name* (e.g. "this is a MouseEvent handler"), never the substituted value. Recommend B; skip A entirely — a hand-authored table would drift from whatever `@types/react` version is installed, the exact problem B solves.
+
+**Method:** Bypassed the shortcut at `crates/core/src/react_types.rs::html_element_for` (the only caller is `classify_extends` in `crates/core/src/extractor/mod.rs:181-200`, which is what routes `extends ButtonHTMLAttributes&lt;T&gt;` into an `InheritedLayer` stub via `crates/core/src/resolver/extends.rs:23-34` instead of real resolution). With it neutered, parsed the actually-installed `@types/react@19.2.17/index.d.ts` (4369 lines) through the real `extractor::parse_file`, merged into `GlobalSourceData`, and resolved a synthetic interface extending `ButtonHTMLAttributes&lt;HTMLButtonElement&gt;` through the normal `resolve_component` path. Test added/run/reverted in `crates/core/src/resolver/mod.rs`; repo left clean (verified via `git status`/`git diff`).
+
+**Resolved cleanly: 220/289 props (76%)** — all ~50 `AriaAttributes` props with correct scalar/enum types, `role` as the full 71-member `AriaRole` union plus trailing bare `string` (matching the `(string &amp; {})` idiom via the existing normalizer in `resolver/primitives.rs::resolve_intersection`), ~24 DOM event handlers via `MouseEventHandler`/`KeyboardEventHandler`/etc., and `ButtonHTMLAttributes`'s own `type: "submit"|"reset"|"button"`.
+
+**Failed: 69/289 (24%)**, three distinct root causes:
+1. **66 of 69** — DOM handlers typed via `ReactEventHandler&lt;T&gt;`/`SubmitEventHandler&lt;T&gt;`/`InputEventHandler&lt;T&gt;`/`ToggleEventHandler&lt;T&gt;` (onAbort, onLoad, onSubmit, onInput, onToggle, ~30 media events). `is_react_builtin` (`react_types.rs`) hardcodes ~19 `*EventHandler` names but is missing exactly these 4, even though `@types/react` defines all ~19 identically (`type XEventHandler&lt;T&gt; = EventHandler&lt;XEvent&lt;T&gt;&gt;`). Trivial fix — not a type-checker problem at all.
+2. **2/69** — `defaultValue`/`value`: `readonly string[]`. `extractor/mod.rs`'s `TSTypeOperatorType` arm (keyof/unique/readonly, lines 357-361) captures raw source text unconditionally instead of peeling the modifier; downstream Raw-fallback heuristics reject it (contains a space) → Opaque. Same category as the already-fixed `Readonly&lt;T&gt;` transparent alias, just the array-keyword form instead of the utility-type form.
+3. **1/69** — `formAction`'s indexed access into React's own `DO_NOT_USE_OR_YOU_WILL_BE_FIRED_EXPERIMENTAL_FORM_ACTIONS[keyof &lt;same empty interface&gt;]` (an intentional internal escape hatch). `resolve_indexed_access` only extracts `key_str` for `StringLiteral` keys, not `keyof`-as-Raw. This is the one real (if low-value, deliberately obscure) reasoning gap.
+
+No crash, no infinite loop, no `MAX_DEPTH` hit — the "mutual extension" cycle worry was unfounded; `DOMAttributes`/`AriaAttributes`/`HTMLAttributes` form a strict DAG.
+
+**Timing:** cold parse of the full file: **15.6ms**; same-process re-parse: **15.6ms** (`parse_file` has no internal cache — identical cost every call). `resolve_component` for the test interface: **2.5ms**. The existing mtime+size DTS cache (`cache.rs`) applies exactly as for any file: pay ~16ms once per `@types/react` version, reuse from msgpack thereafter. Not a real cost concern.
+
+**Surprising finding:** a genuine *prerequisite* gap, independent of the resolver logic tested above — `import { X } from 'react'` cannot resolve to the `.d.ts` at all today. Verified `oxc_resolver.resolve("react", ...)` returns `react/index.js` (react's package.json has no "types"/"typings" field); the codebase's only existing `@types/react` path (`resolver/react.rs::resolve_react_types_file`) sidesteps this by hardcoding a resolve of `"@types/react"` directly. Real cross-file usage needs a small static specifier-remap table (`react`→`@types/react`, etc.) — far smaller than option A's ~250-attribute table, but separate work from the interface-chain-walking question tested here.</result>
+<usage><subagent_tokens>206188</subagent_tokens><tool_uses>64</tool_uses><duration_ms>853304</duration_ms></usage>
+</task-notification>

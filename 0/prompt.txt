@@ -1,0 +1,1 @@
+We should not be duplicating code in TS/JS. We should be calling out to it. What kind of CLI does react-docgen and RDT provides?

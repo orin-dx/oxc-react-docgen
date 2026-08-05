@@ -1,0 +1,199 @@
+<task-notification>
+<task-id>abe915f205226bebc</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/8659ece6-b660-4616-9f1d-5c547b9c57c2/tasks/abe915f205226bebc.output</output-file>
+<status>completed</status>
+<summary>Agent "Analyze which oxc-react-docgen gaps require a type checker vs structural analysis" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Now I have a complete picture of all 6 gaps. Let me compile the full analysis.
+
+---
+
+## Gap-by-Gap Analysis
+
+---
+
+### Gap 1: TSMethodSignature param hard-coding
+
+**Requires type checker?** NO
+
+**Why**: The OXC 0.135 `TSMethodSignature` AST node (confirmed in `~/.cargo/registry/.../oxc_ast-0.135.0/src/ast/ts.rs:1112`) has:
+- `params: Box&lt;'a, FormalParameters&lt;'a&gt;&gt;` — identical structure to `TSFunctionType.params`
+- `return_type: Option&lt;Box&lt;'a, TSTypeAnnotation&lt;'a&gt;&gt;&gt;` — optional (vs non-optional on `TSFunctionType`)
+
+The fix exists within the same file. `TSFunctionType` is already handled at `mod.rs:220-236`:
+```rust
+let params: Vec&lt;CollectedType&gt; = f.params.items.iter()
+    .map(|p| p.type_annotation.as_ref()
+        .map(|ta| self.ts_type_to_collected(&amp;ta.type_annotation))
+        .unwrap_or(CollectedType::Any))
+    .collect();
+let return_type = self.ts_type_to_collected(&amp;f.return_type.type_annotation);
+```
+
+This exact pattern applies to `ms.params.items` and `ms.return_type.as_ref().map(|rt| self.ts_type_to_collected(&amp;rt.type_annotation)).unwrap_or(CollectedType::Any)`. The change is needed in TWO places: `ts_signature_to_object_field` (lines 359-374) and `collect_property_signature` (lines 476-493) — they duplicate the same hard-coding.
+
+**What's feasible without a type checker**: Full param types and return type for all `TSMethodSignature` nodes.
+
+**What tsgo/tsc would add**: Nothing material here. Method overloads (multiple `TSMethodSignature` for the same key) are a separate complication — a type checker merges them; we'd just take the last one.
+
+**Estimated effort**: Small. Two identical edits in `crates/core/src/extractor/mod.rs`.
+
+---
+
+### Gap 2: React namespace recognition completeness
+
+**Requires type checker?** NO for table extension; PARTIAL for SVGAttributes generic arg meaning
+
+**Why**: `classify_extends` (mod.rs:107-126) classifies extends targets by checking two tables in `react_types.rs`:
+1. `html_element_for` — maps to a specific element string or `None`
+2. `is_react_builtin` — terminal types that need no further resolution
+
+`AriaAttributes` is already in `html_element_for` returning `None` (line 22 of react_types.rs), making it `ExtendsRef::Builtin { element: None }`. The missing entries: `SVGAttributes`, `HTMLProps`, `JSXElementConstructor`, `ComponentRef`.
+
+For `SVGAttributes&lt;SVGSVGElement&gt;`: the generic argument `SVGSVGElement` only matters if we want to emit a different `notable_html_attrs` set for SVG vs HTML. The TypeScript type signature of SVGAttributes itself (`interface SVGAttributes&lt;T&gt; extends AriaAttributes, DOMAttributes&lt;T&gt;`) doesn't affect whether we *recognize* it as a builtin. We can add it to `html_element_for` returning `None`, and separately add SVG-notable-attrs to `notable_html_attrs` in the `_` arm (or a new `"svg"` arm).
+
+`HTMLProps&lt;T&gt;` was deprecated in React 16 but is still in @types/react as an alias for `HTMLAttributes&lt;T&gt; &amp; ClassAttributes&lt;T&gt;`. Pure table entry.
+
+`ComponentRef` is a React 19 type. Pure table entry.
+
+`JSXElementConstructor&lt;P&gt;` is not a prop provider — it's a component type. Pure table entry.
+
+**What's feasible without a type checker**: All four missing entries can be added as match arms in `html_element_for`/`is_react_builtin`. Generic arg of SVGAttributes can be used structurally to look up element-specific attrs if desired (e.g., if arg is `SVGCircleElement` return "circle"), but the generic arg is already captured in `type_args`.
+
+**What tsgo/tsc would add**: Knowing exactly which SVG attributes are available for a specific SVGElement subtype (via structural subtype checking of the generic constraint).
+
+**Estimated effort**: Small. Four new match arms in `crates/core/src/react_types.rs`.
+
+---
+
+### Gap 3: Transparent wrappers (Readonly&lt;T&gt;)
+
+**Requires type checker?** NO
+
+**Why**: `Readonly&lt;T&gt;` has no semantic effect on our output. Props being readonly or mutable is not part of the JSON prop documentation format we emit (react-docgen-typescript doesn't distinguish them either).
+
+The bug's path: `classify_type_alias` in `extractor/alias.rs` handles `Partial`/`Required`/`Omit`/`Pick` explicitly (lines 18-60) but falls through to the `_` wildcard for `Readonly` (line 62), producing `CollectedTypeAlias::Passthrough { target: Named { name: "Readonly", args: [T] } }`. Then `resolve_type_alias_chain` follows that passthrough to `resolve_props_chain("Readonly", ...)` which hits step 1's utility-type short-circuit (chain.rs:51-71) and returns empty.
+
+Note: `extract_type_name_from_type` (mod.rs:413-431) already correctly unwraps `Readonly&lt;P&gt;` in the FC annotation path (line 419). The same unwrapping logic just doesn't reach type alias classification.
+
+**Fix**: In `classify_type_alias` (alias.rs), add a `"Readonly"` arm before the wildcard that does exactly what `"Partial"` does (extract inner type as base) but returns `CollectedTypeAlias::Passthrough { target: base, file_path: fp }` rather than `Partial`. This makes `type Props = Readonly&lt;BaseProps&gt;` resolve to BaseProps's chain.
+
+**What's feasible without a type checker**: Complete fix. `Readonly&lt;T&gt;` is semantically transparent for prop docs.
+
+**What tsgo/tsc would add**: Nothing — `Readonly` wrapping is invisible to prop documentation.
+
+**Estimated effort**: Small. One new match arm in `extractor/alias.rs`, mirroring the `"Partial"` arm.
+
+---
+
+### Gap 4: `typeof` expression resolution depth
+
+**Requires type checker?** NO for the common .d.ts case; YES for inferred-value cases
+
+**Why**: The AST capture already works correctly. `ts_type_query_name` (mod.rs:335-341) uses the span to extract the source text, so `typeof Primitive.button` correctly produces `CollectedType::TypeOf("Primitive.button")`.
+
+The resolver (`resolve_typeof` in func.rs:60-87) only checks `ctx.global.enums`. It doesn't:
+1. Split `"Primitive.button"` on `"."` into `["Primitive", "button"]`
+2. Resolve `"Primitive"` to its canonical (file, name)
+3. Look up `Primitive`'s declared type in any data structure
+4. Read the `button` property from that object type
+
+**The missing piece**: We don't collect `const` variable type annotations into `SourceData`. The extractor's `try_collect_const_enum` (interface.rs:12-54) only picks up `{ ... } as const` object expressions — it reads the VALUE, not the declared TYPE annotation.
+
+For Radix's case, the .d.ts contains something like:
+```typescript
+declare const Primitive: {
+    button: PrimitiveForwardRefComponent&lt;"button"&gt;;
+    a: PrimitiveForwardRefComponent&lt;"a"&gt;;
+    // ...
+};
+```
+This is a plain `TSTypeAnnotation` on a `VariableDeclarator` with no initializer — fully readable via AST.
+
+**What needs to be built**:
+1. New data collection: add `const_var_types: FxHashMap&lt;String, CollectedType&gt;` to `SourceData`. In `visit_variable_declaration`, for declarators with no initializer (or with `declare` modifier), if `declarator.id` is a `BindingIdentifier` with a `type_annotation`, collect it.
+2. Resolver changes in `resolve_typeof` (func.rs): if `name` contains `"."`, split into `[base, prop]`, resolve `base` to canonical, look up in `ctx.global.const_var_types`, match on `CollectedType::Object(fields)`, find the field named `prop`, and recursively resolve.
+
+**Where it breaks down (genuine type checker territory)**: When the variable type is *inferred* from its initializer (no explicit annotation in .d.ts, which is rare), or when it's defined via conditional/mapped types. In practice, published .d.ts files always annotate const variables explicitly.
+
+**What tsgo/tsc would add**: Resolution of inferred variable types, deeply nested conditional types in property values, namespace-qualified paths like `React.ComponentPropsWithoutRef`.
+
+**Estimated effort**: Medium. Two changes: (1) add const_var_types collection to extractor (~30 lines in `visit.rs` + `SourceData` + `GlobalSourceData`), (2) add dotted-path lookup to `resolve_typeof` in `func.rs` (~40 lines). Also requires updating the cache serialization format.
+
+---
+
+### Gap 5: Inline utility types in extends position
+
+**Requires type checker?** NO for same-file/resolvable base types; PARTIAL for cross-package base types
+
+**Why**: The asymmetry between `type Foo = Pick&lt;T, Keys&gt;; interface X extends Foo` (works) and `interface X extends Pick&lt;T, Keys&gt;` (silent empty) is a routing accident.
+
+The working path: `type Foo = Pick&lt;T, Keys&gt;` registers a `CollectedTypeAlias::Pick` in `ctx.global.type_aliases`, found at step 4 of `resolve_props_chain` → `resolve_type_alias_chain` correctly filters props.
+
+The failing path: `interface X extends Pick&lt;T, Keys&gt;` → `collect_extends` produces `ExtendsRef::SameFile { name: "Pick", type_args: ["T", "'key1' | 'key2'"] }` → `resolve_extends_ref` → `resolve_props_chain("Pick", ...)` → step 1 matches "Pick" as a utility type → returns empty chain.
+
+The type_args are already captured as serialized strings at the point where `collect_extends` calls `extract_type_args` (mod.rs:142-150), which calls `ts_type_to_collected(p).to_raw_string()`. So we already have the raw strings for the base type and keys.
+
+**Fix**: In `resolve_props_chain` (chain.rs), BEFORE step 1 (or as a special case within it), detect `"Pick"/"Omit"/"Partial"/"Required"/"Readonly"` with non-empty `type_args` and construct a synthetic `CollectedTypeAlias`:
+- For "Pick": `CollectedTypeAlias::Pick { base: CollectedType::Named { name: type_args[0] }, picked_keys: collect_string_union_keys_from_raw(type_args[1]) }`
+- The `collect_string_union_keys` function in `extractor/alias.rs` works on `TSType` AST nodes; we'd need a raw-string equivalent that parses `'key1' | 'key2'` — basically splitting on ` | ` and stripping quotes. This is a lossy but practical approximation.
+
+Alternative: Change `ExtendsRef` to capture a new variant `InlineUtility { name, base_type: CollectedType, keys: Vec&lt;String&gt; }` at the extractor level, where the structured CollectedType is captured before serialization. This is cleaner but requires an `ExtendsRef` schema change.
+
+**For `Pick&lt;LibraryType, Keys&gt;` specifically**: This resolves correctly if `LibraryType` is in `ctx.global` (project types or cached .d.ts). If not, it fails at step 6 ("Cannot resolve type") — same failure mode as any other unresolvable type, no worse than before.
+
+**What tsgo/tsc would add**: Resolving Pick/Omit when the base type is a complex library type not in our AST cache; handling of key widening (`keyof T` in the key position).
+
+**Estimated effort**: Medium. Either (a) add raw-string key parsing + synthetic alias construction in `resolver/chain.rs`, or (b) add an `ExtendsRef::InlineUtility` variant + handle in extractor and resolver. Option (b) is architecturally cleaner.
+
+---
+
+### Gap 6: Generic parameter substitution
+
+**Requires type checker?** NO for simple literal args; PARTIAL for propagated type variables; YES for constrained/higher-kinded generics
+
+**Why**: `CollectedInterface` (types/collected.rs:499-508) has no `type_params` field. `resolve_interface_chain` (chain.rs:152) takes `_type_args: &amp;[String]` but never uses it. This means `BaseProps&lt;"dialog"&gt;` and `BaseProps&lt;"input"&gt;` always produce the same output — the unsubstituted form with `T` exposed as `Named { name: "T" }`.
+
+**What needs to be built**:
+
+1. **Collect type parameter names** in `CollectedInterface`: In `visit_ts_interface_declaration` (visit.rs:113-139), `node.type_parameters` is `Option&lt;Box&lt;TSTypeParameterDeclaration&gt;&gt;`. Extract param names: `node.type_parameters.as_ref().map(|tp| tp.params.iter().map(|p| p.name.name.as_str().to_owned()).collect()).unwrap_or_default()`. Store as `pub type_params: Vec&lt;String&gt;` on `CollectedInterface`.
+
+2. **Build substitution map** in `resolve_interface_chain`: When `iface.type_params` is non-empty and `type_args` are provided, build `HashMap&lt;&amp;str, CollectedType&gt;` where `type_params[i] → parse_raw_to_collected(type_args[i])`.
+
+3. **Apply substitution** when resolving each `raw_prop.collected_type`: A recursive walk that replaces `CollectedType::Named { name, args }` where `name` is in the substitution map with the corresponding arg value.
+
+**Breakdown boundary (type checker territory)**:
+- `interface X&lt;T extends Option&gt; extends BaseProps&lt;T&gt;`: The type arg `T` itself is a type parameter from the outer interface. At the resolving callsite we'd have `type_args = ["T"]` — a raw reference that can't be substituted without knowing the usage-site instantiation. This requires following the type parameter through multiple levels of generic instantiation.
+- `interface Props&lt;T = string&gt;` (default params): We'd need to supply the default when the arg list is shorter than the param list.
+- Conditional types over type params: `type Result&lt;T&gt; = T extends string ? "yes" : "no"` — inherently needs a type checker.
+
+**For the common case** (`BaseProps&lt;"dialog"&gt;`, `BaseProps&lt;"input"&gt;`, `ThemeableProps&lt;"md"&gt;`), NO type checker needed.
+
+**What tsgo/tsc would add**: Full generic instantiation including higher-order generics, recursive generics, constrained type params (`T extends Foo`), and propagated type variables.
+
+**Estimated effort**: Medium. Requires adding `type_params` to `CollectedInterface` (serialization format change — cache must be invalidated or versioned), plus substitution logic in `resolver/chain.rs` (~60-80 lines). The substitution walk is straightforward for `Named` types but needs care for nested `CollectedType` variants.
+
+---
+
+## Summary Table
+
+| Gap | Requires Type Checker? | Core Reason | Effort |
+|-----|----------------------|-------------|--------|
+| 1. TSMethodSignature params | NO | AST fields already present (`ms.params`, `ms.return_type`) — just not read | Small |
+| 2. React namespace table | NO | Pure match-arm additions to `react_types.rs` | Small |
+| 3. Readonly&lt;T&gt; wrapper | NO | Readonly is semantically transparent for prop docs; one alias.rs arm | Small |
+| 4. typeof Primitive.button | PARTIAL | Dotted-path: needs new const_var_types collection; inferred types need checker | Medium |
+| 5. Inline Pick/Omit in extends | PARTIAL | Structural fix feasible; breaks only when base type itself is unresolvable | Medium |
+| 6. Generic param substitution | PARTIAL | Literal args feasible; propagated type vars need checker | Medium |
+
+### The genuine type-checker boundary
+
+Only three operations in this codebase genuinely require semantic type information that AST analysis cannot provide:
+1. **Conditional types** (`T extends U ? X : Y`) — already marked `OpaqueReason::ConditionalType`
+2. **Mapped types** (`{ [K in Keys]: Value }`) — already marked `OpaqueReason::MappedType`
+3. **Multi-level generic propagation** — where a type variable `T` flows through multiple interface boundaries before being instantiated
+
+Everything else in the 6 gaps is structural: reading AST nodes that are already parsed, adding table entries, and following explicit type annotations in .d.ts files. The AST is already there; the gaps are in which fields are read and which patterns are routed correctly.</result>
+<usage><subagent_tokens>71252</subagent_tokens><tool_uses>26</tool_uses><duration_ms>285528</duration_ms></usage>
+</task-notification>

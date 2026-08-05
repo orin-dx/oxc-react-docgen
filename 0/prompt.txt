@@ -1,0 +1,145 @@
+<task-notification>
+<task-id>a3c074ea1a8678ec1</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/a3c074ea1a8678ec1.output</output-file>
+<status>completed</status>
+<summary>Agent "Research Vite and Rolldown roadmap" completed</summary>
+<result>Perfect. Now let me compile the comprehensive findings with proper sourcing.
+
+## Vite &amp; Rolldown Roadmap Report for Plugin Authors (2026)
+
+### 1. Vite 6 → 7 → 8 Plugin API Evolution
+
+**Released Timeline:**
+- **Vite 6** (2024): Formalized the Environment API for multi-environment support (client, SSR, custom)
+- **Vite 7** (2025): Major stability push on Environment API
+- **Vite 8** (March 2026): Full Rolldown integration as replacement for Rollup + esbuild
+
+**Critical Plugin Hook Changes:**
+
+The biggest shift is **`this.environment` context** replacing the old `ssr` boolean. Hooks now receive:
+- `this.environment.name` - environment identifier
+- `this.environment.config` - environment-specific configuration
+- `this.environment.moduleGraph` - module graph for that environment
+
+This affects: `resolveId`, `load`, `transform`, `transform`, `moduleParsed`, `renderChunk`, `generateBundle`, etc.
+
+### 2. Rolldown Integration Status
+
+**Timeline Met:** Rolldown was integrated into Vite 8 (March 12, 2026) with 10–30x faster builds. The temporary `rolldown-vite` repository was archived March 19, 2026, indicating the work is complete.
+
+**For Plugin Authors:**
+- Rolldown's plugin API is **nearly 100% compatible with Rollup** but with key differences:
+  - **Sequential execution:** Parallel hooks run sequentially
+  - **Output handling:** Each output generates separately (affects plugin state)
+  - **Watch mode:** The `options` hook runs once at watcher creation, not per rebuild
+  - **Missing hooks:** `shouldTransformCachedModule`, `resolveImportMeta`, `resolveFileUrl`, `renderDynamicImport` are unsupported
+
+### 3. Vite Environment API (Critical for TSDoc Analysis Plugin)
+
+The Environment API allows a single Vite dev server to handle multiple concurrent environments:
+
+**For Your Use Case (TypeScript Source Analysis):**
+- Use `configEnvironment` hook to configure environment-specific settings (e.g., which environments should have `__docgenInfo` injected)
+- Use `applyToEnvironment` hook to control which environments your plugin operates on
+- Access `this.environment.moduleGraph` to inspect the module dependency tree for docgen purposes
+- Store per-environment state using `Map&lt;Environment, State&gt;` to separate client vs. SSR docgen metadata
+
+**Breaking Pattern:** The old pattern of checking `ssr` option is deprecated. Replace with:
+```javascript
+// Old (deprecated)
+if (options.ssr) { ... }
+
+// New
+if (this.environment.name === 'ssr') { ... }
+```
+
+### 4. Rolldown Native Rust Plugin API
+
+**Stability:** Rolldown 1.0 RC signals API stability with semantic versioning lock. The `^1.0.0` API is backward-compatible with no breaking changes planned pre-1.0.
+
+**Performance Features:**
+- Hook filters skip the Rust-to-JS boundary when filters don't match (no linear slowdown per plugin)
+- Native MagicString (Rust) generates source maps in background threads
+- Built-in plugins in Rust (replace, esmExternalRequire) avoid JavaScript overhead
+
+**Important:** When implementing for Rolldown, you're constrained by the hook subset above—you cannot rely on missing Rollup hooks.
+
+### 5. Hook Changes: handleHotUpdate → hotUpdate
+
+**Timeline:** `hotUpdate` introduced in v6.0; `handleHotUpdate` deprecation planned for a future major (not yet enforced).
+
+**Migration Path Available:** Set `future.removePluginHookHandleHotUpdate: "warn"` in config to preview the deprecation.
+
+**Key Differences:**
+- **`hotUpdate`** is called once per environment with environment-specific module nodes
+- **`hotUpdate`** handles `create`, `delete`, and `update` watch events (not just `update`)
+- **`handleHotUpdate`** is environment-agnostic and mixed across all environments
+
+For a multi-environment docgen plugin, `hotUpdate` is essential—you need to invalidate docgen metadata per environment when source files change.
+
+### 6. Module Federation in Vite/Rolldown
+
+**Status:** Multiple implementations exist in 2026:
+- `@module-federation/vite` supports Vite 8 + Rolldown
+- `vite-plugin-federation` supports Vite 5–8 with Rolldown
+
+**Native Support Planned:** When Vite fully switched to Rolldown, a plan emerged for native MF support integrated directly into Vite (status: in progress).
+
+**Impact on Your Plugin:** If used with Module Federation, be aware that named exports for remote modules now preserve correctly in Rolldown (fixed in 2026).
+
+### 7. Virtual Module API (Stable, No Changes)
+
+The virtual module pattern remains stable:
+- Prefix resolved IDs with `\0` to prevent other plugins from processing them
+- Use `resolveId` hook to detect virtual module patterns and return `\0` prefixed IDs
+- Use `load` hook to return module content
+- Convention: prefix user-facing IDs with `virtual:` (e.g., `virtual:my-plugin:docgen-info`)
+
+**Encoding:** In dev, `\0{id}` becomes `/@id/__x00__{id}` in the browser but is decoded before the plugin pipeline.
+
+### 8. Deprecations Your Plugin Must Avoid
+
+**Critical for Vite 8+:**
+
+1. **`moduleType` in load/transform:** If your `load` or `transform` hook returns content, you **must** add `moduleType: 'js'` to the return value. Rolldown requires this.
+
+2. **`options.esbuild` → `options.oxc`:** JavaScript transformation now uses Oxc instead of esbuild. If you call `transformWithEsbuild` directly, switch to `transformWithOxc`.
+
+3. **`build.rollupOptions` → `build.rolldownOptions`:** Config for bundler is now `rolldownOptions`.
+
+4. **`resolve.alias[].customResolver` removed:** Implement a custom plugin with `resolveId` hook + `enforce: 'pre'` instead.
+
+5. **CJS Node API deprecated:** If your plugin uses Vite's Node API, migrate to ESM-only imports.
+
+### 9. Recommendations for Your TypeScript Docgen Plugin
+
+**For Vite 8+ Compatibility:**
+1. Add `moduleType: 'js'` to all transform/load hook returns
+2. Use `this.environment` to manage per-environment docgen metadata
+3. Implement `hotUpdate` hook (not `handleHotUpdate`) for environment-aware invalidation
+4. Use `configEnvironment` hook if you need environment-specific docgen settings
+5. Avoid the missing Rolldown hooks; implement custom solutions if needed
+6. Consider native Rust plugin if performance becomes critical (future-proofing)
+
+**For Virtual Module Approach:**
+Keep your `virtual:plugin-name:docgen-info` pattern—it's stable and widely used.
+
+---
+
+### Sources:
+
+- [Vite 6 Discussion #15886](https://github.com/vitejs/vite/discussions/15886)
+- [Environment API for Plugins (main branch)](https://main.vitejs.dev/guide/api-environment-plugins)
+- [this.environment in Hooks](https://main.vitejs.dev/changes/this-environment-in-hooks)
+- [HMR hotUpdate Hook Documentation](https://main.vitejs.dev/changes/hotupdate-hook)
+- [Vite Migration Guide](https://main.vitejs.dev/guide/migration)
+- [Vite Plugin API (main branch)](https://main.vitejs.dev/guide/api-plugin.html)
+- [Rolldown Plugin API](https://rolldown.rs/apis/plugin-api)
+- [rolldown-vite Repository](https://github.com/vitejs/rolldown-vite)
+- [Rolldown Releases](https://github.com/rolldown/rolldown/releases)
+- [Module Federation/Vite Integration](https://github.com/module-federation/vite)
+- [Vite Plugin Federation](https://github.com/originjs/vite-plugin-federation)
+- [Announcing Rolldown 1.0](https://voidzero.dev/posts/announcing-rolldown-1-0)</result>
+<usage><subagent_tokens>18595</subagent_tokens><tool_uses>15</tool_uses><duration_ms>61362</duration_ms></usage>
+</task-notification>

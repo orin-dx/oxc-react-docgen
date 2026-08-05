@@ -1,0 +1,26 @@
+<task-notification>
+<task-id>aab064ad31565def2</task-id>
+<tool-use-id>toolu_013YfcyK6KNuqKFNLfBpue21</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/8659ece6-b660-4616-9f1d-5c547b9c57c2/tasks/aab064ad31565def2.output</output-file>
+<status>completed</status>
+<summary>Agent "Add 3 rdt-compat fixture files + update snapshot" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Done. Here is a summary of what was done and what the snapshot reveals:
+
+**Three fixtures created and committed:**
+
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/rdt-compat/controlled.tsx`
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/rdt-compat/pick-source.tsx`
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/rdt-compat/discriminated-union.tsx`
+
+**Observed resolver behaviour (documented in fixture comments):**
+
+1. **Select (controlled.tsx)**: All value/open/disabled props extracted correctly. However method-shorthand handler syntax (`onValueChange?(value: string): void`) produces `eventType: "..."` instead of `"string"`, while arrow-function syntax (`onOpenChange?: (open: boolean) =&gt; void`) correctly produces `eventType: "boolean"`. The two forms behave differently.
+
+2. **IconButton (pick-source.tsx)**: `Pick&lt;SourceInterface, Keys&gt;` is not unwrapped — only the component's own props (`icon`, `label`) appear in output. The picked props `disabled`, `type`, and `form` are absent even though `ButtonBaseProps` is source-defined.
+
+3. **Accordion (discriminated-union.tsx)**: Component is not extracted at all. The resolver silently skips components whose root props type is a union of interfaces. No `discriminantProp` detection, no prop merging, no diagnostic emitted.
+
+All 8 snapshot tests pass. The snapshot is committed at `crates/core/tests/snapshots/snapshots__snapshot_rdt_compat.snap`.</result>
+<usage><subagent_tokens>33946</subagent_tokens><tool_uses>19</tool_uses><duration_ms>126837</duration_ms></usage>
+</task-notification>

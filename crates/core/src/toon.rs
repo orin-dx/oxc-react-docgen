@@ -91,6 +91,18 @@ pub fn render_output_toon(output: &ExtractionOutput) -> String {
     out
 }
 
+/// Truncate `parts` to `limit` items, appending a `"...(+N)"` marker for the
+/// remainder instead of silently dropping them. Shared by every
+/// `format_type_compact` branch that renders a bounded member list.
+fn truncate_with_indicator(parts: &[String], limit: usize, sep: &str) -> String {
+    if parts.len() <= limit {
+        return parts.join(sep);
+    }
+    let mut shown: Vec<String> = parts[..limit].to_vec();
+    shown.push(format!("...(+{})", parts.len() - limit));
+    shown.join(sep)
+}
+
 /// Format a [`PropType`] as a compact string representation for TOON.
 fn format_type_compact(prop_type: &PropType) -> String {
     match prop_type {
@@ -106,14 +118,7 @@ fn format_type_compact(prop_type: &PropType) -> String {
         PropType::StringLiteral(s) => format!("\"{s}\""),
         PropType::NumberLiteral(n) => n.to_string(),
         PropType::BoolLiteral(b) => b.to_string(),
-        PropType::LiteralUnion { members, .. } => {
-            let mut formatted: Vec<String> = members.to_vec();
-            formatted.truncate(6);
-            if members.len() > 6 {
-                formatted.push(format!("...(+{})", members.len() - 6));
-            }
-            formatted.join("|")
-        }
+        PropType::LiteralUnion { members, .. } => truncate_with_indicator(members, 6, "|"),
         PropType::EventHandler { event_type, .. } => format!("handler({event_type})"),
         PropType::ReactNode => "ReactNode".into(),
         PropType::CssProperties => "CSSProperties".into(),
@@ -123,12 +128,12 @@ fn format_type_compact(prop_type: &PropType) -> String {
         PropType::Array(element_type) => format!("Array<{}>", format_type_compact(element_type)),
         PropType::Tuple(_) => prop_type.raw_string(),
         PropType::Union(members) => {
-            let formatted: Vec<String> = members.iter().take(4).map(format_type_compact).collect();
-            formatted.join("|")
+            let formatted: Vec<String> = members.iter().map(format_type_compact).collect();
+            truncate_with_indicator(&formatted, 4, "|")
         }
         PropType::Intersection(members) => {
-            let formatted: Vec<String> = members.iter().take(4).map(format_type_compact).collect();
-            formatted.join("&")
+            let formatted: Vec<String> = members.iter().map(format_type_compact).collect();
+            truncate_with_indicator(&formatted, 4, "&")
         }
         PropType::HtmlAttributes { element, .. } => format!("HTMLAttributes<{element}>"),
         PropType::Named { name, args } => {
@@ -268,5 +273,32 @@ mod tests {
             has_default: false,
         };
         assert_eq!(format_type_compact(&large_union), "a|b|c|d|e|f|...(+2)");
+    }
+
+    #[test]
+    fn test_format_type_compact_union_truncates_with_indicator() {
+        let union = PropType::Union(vec![
+            PropType::StringLiteral("a".into()),
+            PropType::StringLiteral("b".into()),
+            PropType::StringLiteral("c".into()),
+            PropType::StringLiteral("d".into()),
+            PropType::StringLiteral("e".into()),
+            PropType::StringLiteral("f".into()),
+        ]);
+        let out = format_type_compact(&union);
+        assert!(out.contains("...(+2)"), "expected a truncation indicator for the 2 dropped members, got: {out}");
+    }
+
+    #[test]
+    fn test_format_type_compact_intersection_truncates_with_indicator() {
+        let intersection = PropType::Intersection(vec![
+            PropType::Named { name: "A".into(), args: vec![] },
+            PropType::Named { name: "B".into(), args: vec![] },
+            PropType::Named { name: "C".into(), args: vec![] },
+            PropType::Named { name: "D".into(), args: vec![] },
+            PropType::Named { name: "E".into(), args: vec![] },
+        ]);
+        let out = format_type_compact(&intersection);
+        assert!(out.contains("...(+1)"), "expected a truncation indicator for the 1 dropped member, got: {out}");
     }
 }

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use super::collected::{EnumEntry, TypeName};
-use super::diagnostic::Diagnostic;
+use super::diagnostic::{Diagnostic, DiagnosticSeverity};
 use super::global::ResolveState;
 
 // ─── Top-level output ─────────────────────────────────────────────────────────
@@ -23,6 +23,45 @@ pub struct ExtractionOutput {
     pub diagnostics: Vec<Diagnostic>,
     /// Extraction statistics
     pub stats: ExtractionStats,
+}
+
+impl ExtractionOutput {
+    /// Highest-severity diagnostic present, if any — `Error` outranks
+    /// `Warning` outranks `Info`. Ranked explicitly rather than via derived
+    /// `Ord` on `DiagnosticSeverity`, since that enum has no ordering today
+    /// and its declaration order isn't a promise about severity ranking.
+    pub fn max_severity(&self) -> Option<DiagnosticSeverity> {
+        self.diagnostics.iter().map(|d| d.severity.clone()).max_by_key(severity_rank)
+    }
+
+    /// Process exit code for this output: `2` if any diagnostic is
+    /// `Error`-severity, `1` if `strict` and any diagnostic is at least
+    /// `Warning`-severity, `0` otherwise. This is the CLI's shared exit-code
+    /// contract — `oxc-react-docgen check --strict`'s mapping, reused as-is
+    /// by `extract`, `watch`, and `inspect`.
+    pub fn exit_code(&self, strict: bool) -> i32 {
+        match self.max_severity() {
+            Some(DiagnosticSeverity::Error) => 2,
+            Some(DiagnosticSeverity::Warning) => {
+                if strict {
+                    1
+                } else {
+                    0
+                }
+            }
+            Some(DiagnosticSeverity::Info) => 0,
+            None => 0,
+        }
+    }
+}
+
+/// Explicit worst-first rank for `DiagnosticSeverity` — `Error` > `Warning` > `Info`.
+fn severity_rank(severity: &DiagnosticSeverity) -> u8 {
+    match severity {
+        DiagnosticSeverity::Error => 2,
+        DiagnosticSeverity::Warning => 1,
+        DiagnosticSeverity::Info => 0,
+    }
 }
 
 /// One step in a component's resolved inheritance chain.
@@ -696,6 +735,58 @@ mod tests {
             },
         ]);
         assert_eq!(ty.raw_string(), "{ label: string; 'data-testid'?: string }");
+    }
+
+    #[test]
+    fn exit_code_is_zero_with_no_diagnostics() {
+        let output = ExtractionOutput {
+            components: BTreeMap::new(),
+            enums: BTreeMap::new(),
+            diagnostics: vec![],
+            stats: ExtractionStats::default(),
+        };
+        assert_eq!(output.exit_code(false), 0);
+        assert_eq!(output.exit_code(true), 0);
+    }
+
+    #[test]
+    fn exit_code_is_two_when_any_diagnostic_is_error_severity() {
+        let output = ExtractionOutput {
+            components: BTreeMap::new(),
+            enums: BTreeMap::new(),
+            diagnostics: vec![crate::types::diagnostic::Diagnostic {
+                severity: DiagnosticSeverity::Error,
+                message: "boom".into(),
+                file: None,
+                line: None,
+                column: None,
+                help: None,
+                code: crate::types::diagnostic::DiagnosticCode::Unknown,
+            }],
+            stats: ExtractionStats::default(),
+        };
+        assert_eq!(output.exit_code(false), 2);
+        assert_eq!(output.exit_code(true), 2);
+    }
+
+    #[test]
+    fn exit_code_is_one_only_when_strict_and_a_warning_is_present() {
+        let output = ExtractionOutput {
+            components: BTreeMap::new(),
+            enums: BTreeMap::new(),
+            diagnostics: vec![crate::types::diagnostic::Diagnostic {
+                severity: DiagnosticSeverity::Warning,
+                message: "heads up".into(),
+                file: None,
+                line: None,
+                column: None,
+                help: None,
+                code: crate::types::diagnostic::DiagnosticCode::Unknown,
+            }],
+            stats: ExtractionStats::default(),
+        };
+        assert_eq!(output.exit_code(false), 0, "non-strict must not fail on warnings");
+        assert_eq!(output.exit_code(true), 1, "strict must fail on warnings");
     }
 }
 

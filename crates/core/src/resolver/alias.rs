@@ -103,7 +103,7 @@ pub(super) fn resolve_type_alias_chain(
 
         CollectedTypeAlias::Intersection { members, file_path } => {
             // Merge all members' props.
-            let mut chain = ResolvedChain::default();
+            let mut chain = ResolvedChain::empty();
             for member in members {
                 let member_chain = resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
                 chain.merge_parent(member_chain);
@@ -111,9 +111,25 @@ pub(super) fn resolve_type_alias_chain(
             chain
         }
 
-        CollectedTypeAlias::LiteralUnion { .. } => {
-            // Pure string union used as a type alias — not a props provider.
-            ResolvedChain::default()
+        CollectedTypeAlias::LiteralUnion { members, file_path } => {
+            // Pure string union used directly as a component's props base — malformed
+            // usage, mirroring the diagnostic `resolve_base_as_chain`'s non-object-like
+            // fallback pushes for the same "this isn't shaped like props" situation.
+            let diag = Diagnostic {
+                severity: DiagnosticSeverity::Warning,
+                message: format!(
+                    "'{}' is a literal union and can't be used as a component's props base in '{}' — \
+                     expected an interface, intersection, union, or inline object type",
+                    members.join(" | "),
+                    file_path
+                ),
+                file: Some(file_path.to_string()),
+                line: None,
+                column: None,
+                help: Some("Check that this type resolves to an object-like shape.".into()),
+                code: DiagnosticCode::OpaqueType,
+            };
+            ResolvedChain::give_up(members.join(" | "), Some(diag), state)
         }
     }
 }
@@ -165,7 +181,7 @@ pub(super) fn resolve_base_as_chain(
         // declared in a different file. Switch file context and continue.
         CollectedType::AtFile { file, inner } => resolve_base_as_chain(inner, file, mapping, ctx, state, depth),
         CollectedType::Intersection(members) => {
-            let mut chain = ResolvedChain::default();
+            let mut chain = ResolvedChain::empty();
             for member in members {
                 let sub = resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
                 chain.merge_parent(sub);
@@ -175,7 +191,7 @@ pub(super) fn resolve_base_as_chain(
         CollectedType::Object(fields) => {
             // Inline object type in an intersection: `ComponentPropsWithoutRef<'button'> & { asChild?: boolean }`
             // Expand the object fields directly as own props.
-            let mut chain = ResolvedChain::default();
+            let mut chain = ResolvedChain::empty();
             for field in fields {
                 let prop_type = resolve_collected_type(&field.collected_type, file_path, ctx, state, depth);
                 chain.props.push(ParsedProp {
@@ -288,7 +304,7 @@ pub(super) fn resolve_union_alias(
 
     if named_members.len() < 2 {
         // Not a discriminated union — just merge all.
-        let mut chain = ResolvedChain::default();
+        let mut chain = ResolvedChain::empty();
         for member in members {
             let sub = resolve_base_as_chain(member, file_path, mapping, ctx, state, depth);
             chain.merge_parent(sub);
@@ -377,7 +393,11 @@ pub(super) fn resolve_union_alias(
         });
     }
 
-    ResolvedChain { props: merged_props.into_values().collect(), discriminant_prop: discriminant, ..Default::default() }
+    ResolvedChain {
+        props: merged_props.into_values().collect(),
+        discriminant_prop: discriminant,
+        ..ResolvedChain::empty()
+    }
 }
 
 /// Record one union member's props into the shared merge accumulators: the

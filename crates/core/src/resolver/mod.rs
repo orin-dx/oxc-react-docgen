@@ -342,7 +342,6 @@ pub fn resolve_component(mapping: &ComponentMapping, ctx: &ResolutionContext) ->
 // ─── Intermediate Resolution Result ──────────────────────────────────────────
 
 /// Result of resolving a props chain (including extends).
-#[derive(Default)]
 struct ResolvedChain {
     /// Resolved props (may include inherited props).
     props: Vec<ParsedProp>,
@@ -357,8 +356,37 @@ struct ResolvedChain {
 }
 
 impl ResolvedChain {
+    /// The base empty chain. Deliberately not `Default` — every accumulator
+    /// site (`resolve_interface_chain`, `resolve_base_as_chain`, ...) that
+    /// wants "start empty, then push into" calls this directly instead; the
+    /// two *give-up* entry points (`empty_with_compose`, `give_up`) are the
+    /// only public-facing "this type contributes nothing" signals. Visible to
+    /// `chain`/`alias`/`extends` since they're child modules of `resolver`.
+    fn empty() -> Self {
+        Self {
+            props: Vec::new(),
+            inheritance: Vec::new(),
+            inherited_by_name: FxHashMap::default(),
+            composes: Vec::new(),
+            discriminant_prop: None,
+        }
+    }
+
     fn empty_with_compose(type_name: String) -> Self {
-        Self { composes: vec![type_name], ..Default::default() }
+        Self { composes: vec![type_name], ..Self::empty() }
+    }
+
+    /// Give up resolving `type_name` — record it in `composes` (same as
+    /// `empty_with_compose`) and, if `diag` is given, push it onto `state`
+    /// first. The sanctioned "give up" entry point for every "this type
+    /// couldn't be followed further, stop here" path. Replaces the bare
+    /// `ResolvedChain::default()` the cycle-detected branch used to return,
+    /// which let that one give-up site skip explaining why.
+    fn give_up(type_name: String, diag: Option<Diagnostic>, state: &mut ResolveState) -> Self {
+        if let Some(d) = diag {
+            state.diagnostics.push(d);
+        }
+        Self::empty_with_compose(type_name)
     }
 
     /// Merge a parent chain into self — own props already in `self.props` take priority.
@@ -2217,5 +2245,103 @@ mod tests {
             super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
         assert!(matches!(result, PropType::Opaque { .. }));
         assert!(!state.diagnostics.is_empty(), "expected a diagnostic for an unparsable Raw fallback, got none");
+    }
+
+    // ── Test: self-referential extends must emit a diagnostic, not silently
+    // return an empty chain ──────────────────────────────────────────────────
+    // Regression test for: chain.rs's cycle-detected path returned a bare
+    // `ResolvedChain::default()` with zero diagnostic when a type's own extends
+    // chain referenced itself, silently degrading with no trace — unlike every
+    // other give-up path in the resolver.
+
+    #[test]
+    fn test_self_referential_extends_emits_diagnostic_instead_of_silent_default() {
+        let file_path = Utf8PathBuf::from("/test/cycle.tsx");
+        let scoped_key = format!("{}:LoopProps", file_path);
+
+        let mut global = GlobalSourceData::default();
+        global.interfaces.insert(
+            scoped_key.clone(),
+            CollectedInterface {
+                scoped_key: scoped_key.clone(),
+                name: "LoopProps".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "id".into(),
+                    collected_type: CollectedType::String,
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                // Self-referential — LoopProps extends itself.
+                extends: vec![ExtendsRef::SameFile { name: "LoopProps".into(), type_args: vec![] }],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Loop".into(),
+            props_type_name: "LoopProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, diagnostics) = resolve_component(&mapping, &ctx);
+
+        // Own prop still resolves fine — the cycle is only in the extends chain.
+        assert!(entry.props.contains_key("id"));
+        assert!(
+            diagnostics.iter().any(|d| d.message.to_lowercase().contains("circular")),
+            "Expected a diagnostic about the circular extends reference, got {:?}",
+            diagnostics
+        );
+    }
+
+    // ── Test: a literal union used directly as a component's props base must
+    // emit a diagnostic, not silently return an empty chain ─────────────────
+
+    #[test]
+    fn test_literal_union_as_props_base_emits_diagnostic_instead_of_silent_default() {
+        let file_path = Utf8PathBuf::from("/test/literal_union.tsx");
+        let scoped_key = format!("{}:Props", file_path);
+
+        let mut global = GlobalSourceData::default();
+        global.type_aliases.insert(
+            scoped_key.clone(),
+            CollectedTypeAlias::LiteralUnion {
+                members: vec!["a".into(), "b".into(), "c".into()],
+                file_path: file_path.clone(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Widget".into(),
+            props_type_name: "Props".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (_entry, diagnostics) = resolve_component(&mapping, &ctx);
+
+        assert!(
+            diagnostics.iter().any(|d| d.message.contains("literal union")),
+            "Expected a diagnostic about the literal union props base, got {:?}",
+            diagnostics
+        );
     }
 }

@@ -46,7 +46,7 @@ pub(super) fn resolve_extends_ref(
                     html_element: Some(element_name.clone()),
                     total_props,
                 };
-                (real_chain.unwrap_or_default(), Some(layer))
+                (real_chain.unwrap_or_else(ResolvedChain::empty), Some(layer))
             } else {
                 // Non-HTML-element builtins. ComponentPropsWithoutRef/ComponentProps:
                 // expand directly to HtmlAttributes based on the first type arg.
@@ -62,7 +62,7 @@ pub(super) fn resolve_extends_ref(
                                 html_element: Some(inner.to_lowercase()),
                                 total_props: 0,
                             };
-                            return (ResolvedChain::default(), Some(layer));
+                            return (ResolvedChain::empty(), Some(layer));
                         }
                     }
                 }

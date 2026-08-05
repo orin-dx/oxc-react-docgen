@@ -37,7 +37,22 @@ pub(super) fn resolve_props_chain(
     // extends list) are not the same visit and must not collide on the bare name alone.
     let visit_key: CompactString = format!("{}:{}<{}>", consuming_file, type_name, type_args.join(",")).into();
     if !state.visited.insert(visit_key) {
-        return ResolvedChain::default();
+        return ResolvedChain::give_up(
+            type_name.to_owned(),
+            Some(Diagnostic {
+                severity: DiagnosticSeverity::Info,
+                message: format!(
+                    "Circular type reference detected resolving '{}' in '{}' — stopping here to avoid infinite recursion",
+                    type_name, consuming_file
+                ),
+                file: Some(consuming_file.to_string()),
+                line: None,
+                column: None,
+                help: Some("This type (directly or indirectly) extends or references itself.".into()),
+                code: DiagnosticCode::MaxDepthExceeded,
+            }),
+            state,
+        );
     }
 
     // Strip "React." namespace prefix before all builtin/utility checks.
@@ -86,7 +101,7 @@ pub(super) fn resolve_props_chain(
     // ── Step 1: TypeScript built-in utility types — silent no-op ─────────────
     // Not prop providers; suppress false "unresolvable" warnings.
     if super::is_ts_utility_type(type_name_bare) {
-        return ResolvedChain::default();
+        return ResolvedChain::empty();
     }
 
     // ── Step 2: Known pattern check (SxProps, VariantProps, ComponentProps…) ─
@@ -105,7 +120,7 @@ pub(super) fn resolve_props_chain(
 
         if let Some(result) = resolve_known(type_name_bare, &resolved_args, &ctx.global, &ctx.enum_bare_index) {
             return match result {
-                KnownPatternResult::Props(props) => ResolvedChain { props, ..Default::default() },
+                KnownPatternResult::Props(props) => ResolvedChain { props, ..ResolvedChain::empty() },
                 KnownPatternResult::Type(PropType::HtmlAttributes { element, omitted }) => {
                     // HtmlAttributes from ComponentPropsWithoutRef<'button'> or
                     // HTMLChakraProps<'button'> — record as InheritedLayer so
@@ -117,7 +132,7 @@ pub(super) fn resolve_props_chain(
                         html_element: Some(element),
                         total_props: 0,
                     };
-                    ResolvedChain { inheritance: vec![layer], ..Default::default() }
+                    ResolvedChain { inheritance: vec![layer], ..ResolvedChain::empty() }
                 }
                 KnownPatternResult::Type(pt) => {
                     if let PropType::Opaque { reason, .. } = &pt {
@@ -188,7 +203,7 @@ pub(super) fn resolve_interface_chain(
     state: &mut ResolveState,
     depth: u8,
 ) -> ResolvedChain {
-    let mut chain = ResolvedChain::default();
+    let mut chain = ResolvedChain::empty();
 
     // A generic interface's own declared type parameters (`interface Foo<TData>`)
     // are expected, unexpandable placeholders wherever referenced in its body —

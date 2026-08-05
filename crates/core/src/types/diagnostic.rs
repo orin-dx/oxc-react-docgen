@@ -62,6 +62,12 @@ pub enum DiagnosticCode {
     GenericArgumentMismatch,
     OpaqueType,
     MaxDepthExceeded,
+    /// Deliberately unconstructed within this crate — reserved headroom for
+    /// external consumers synthesizing their own [`Diagnostic`] outside the
+    /// extraction pipeline (e.g. a wrapping tool reporting its own issue
+    /// through this crate's diagnostic shape). Do not remove for being
+    /// "unused"; nothing in `crates/core` or `crates/cli` is expected to
+    /// construct it.
     Unknown,
     /// JSDoc @default conflicts with code default value — code value was used.
     JsDocDefaultMismatch,

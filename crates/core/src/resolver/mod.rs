@@ -1942,16 +1942,31 @@ mod tests {
     #[test]
     fn test_template_literal_opaque_on_unknown_type() {
         let ctx = empty_ctx();
+        let mut state = ResolveState::default();
         // `compact-${UnknownSize}` — UnknownSize is not in global, so opaque.
         let ct = CollectedType::TemplateLiteral(vec![
             CollectedType::StringLiteral("compact-".into()),
             CollectedType::Named { name: "UnknownSize".into(), args: vec![] },
         ]);
-        let result = resolve_type(&ct, &ctx);
+        let result = super::template::resolve_template_literal(
+            match &ct {
+                CollectedType::TemplateLiteral(parts) => parts,
+                _ => unreachable!(),
+            },
+            Utf8Path::new("/test/button.tsx"),
+            &ctx,
+            &mut state,
+            0,
+        );
         assert!(
             matches!(&result, PropType::Opaque(d) if matches!(d.reason(), OpaqueReason::TemplateLiteral { .. })),
             "Expected Opaque TemplateLiteral, got {:?}",
             result
+        );
+        assert!(
+            state.diagnostics.iter().any(|d| d.code == DiagnosticCode::TemplateLiteralOpaque),
+            "expected a TemplateLiteralOpaque diagnostic, got {:?}",
+            state.diagnostics
         );
     }
 

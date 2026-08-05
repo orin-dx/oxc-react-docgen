@@ -27,7 +27,7 @@ pub(super) fn resolve_template_literal(
     }
 
     let raw = CollectedType::TemplateLiteral(parts.to_vec()).to_raw_string();
-    state.diagnostics.push(Diagnostic {
+    let diagnostic = Diagnostic {
         severity: DiagnosticSeverity::Info,
         message: format!("Template literal type '{}' could not be statically expanded", raw),
         file: Some(consuming_file.to_string()),
@@ -35,8 +35,8 @@ pub(super) fn resolve_template_literal(
         column: None,
         help: Some("Enable typescript-go or add explicit string literal union for template literal types.".into()),
         code: DiagnosticCode::TemplateLiteralOpaque,
-    });
-    OpaqueDetail::new(raw.clone(), OpaqueReason::TemplateLiteral { expression: raw })
+    };
+    OpaqueDetail::give_up(state, raw.clone(), OpaqueReason::TemplateLiteral { expression: raw }, diagnostic)
 }
 
 /// Try to fully expand a template literal into a list of concrete string values.

@@ -1,0 +1,1 @@
+we should consider the spec and update it with a similar structure for redability too. Make it friendly, eng focused, scannable, succinct and devoid of AI slop, word salad and filler words. Avoid robotic tone

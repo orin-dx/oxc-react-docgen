@@ -1,0 +1,159 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+
+The user resumed a session that had previously established a comprehensive R1-R11 refactor plan for the `oxc-react-docgen` codebase (in `docs/10-QUALITY-AND-ARCHITECTURE.md`). The primary request was to "fire through" the entire refactor sequence, starting from R1 and proceeding through R11. The user also confirmed RTK is properly set up.
+
+The refactor goals: structural + behavioral improvements to make the codebase pass open-source scrutiny. The four giant files (`resolver.rs` 2,482 lines, `extractor.rs` 1,867 lines, `types.rs` 1,305 lines, `cli/main.rs` 760 lines) need to be split into focused modules, with behavioral changes alongside (ResolveState, ScopedKey, IO error propagation, PropType serde cleanup).
+
+2. Key Technical Concepts:
+
+- **`insta` snapshot tests** — lock JSON output per fixture; any refactor that changes behavior shows as a diff. `INSTA_UPDATE=always` to regenerate, `cargo insta review` to interactively approve.
+- **Path redaction in snapshots** — absolute paths replaced with `[ROOT]/...` prefix so snapshots are machine-portable.
+- **Non-deterministic field normalization** — `durationMs` and `dtsCacheHits` zeroed before snapshotting to prevent flapping.
+- **R1-R11 refactor sequence** — in order: snapshots → types/ split → ResolveState → resolver/ split → extractor/ split → pipeline/ split + IO errors → CLI split → visibility cleanup → PropType serde → cross-package resolution → tooling.
+- **`ScopedKey` newtype** — replaces raw `format!("{}:{}", file_path, name)` map keys with a type-checked constructor.
+- **`ResolveState`** — bundles `visited: FxHashSet<CompactString>`, `depth: u8`, `diagnostics: Vec<Diagnostic>`, `needed_specifiers: Vec<NeededSpecifier>` to replace 8-param function signatures.
+- **IO error propagation** — `unwrap_or_default()` silently drops permission errors; must emit `Diagnostic::io_error` instead.
+- **`PropType` serde** — hand-rolled via `serde_json::Value` intermediary; attempt `#[derive(Serialize, Deserialize)]` to remove 200-line hand-roll (root cause was serde recursion bug, now fixed in recent versions).
+- **Visibility model** — all 8 modules currently `pub mod`; real public API is only `pipeline`, output types, `react_types`. Everything else → `pub(crate)`.
+- **`cargo-semver-checks`** — added to CI after visibility cleanup to prevent accidental API surface expansion.
+- **RTK** — token-optimization proxy, v0.42.4 at `/opt/homebrew/bin/rtk`, properly set up.
+
+3. Files and Code Sections:
+
+- **`crates/core/tests/snapshots.rs`** (CREATED — R1)
+  - Integration test file with 7 tests, one per fixture library
+  - Calls `extract()` on each fixture dir, serializes output to JSON, redacts paths, zeroes non-deterministic stats, then `insta::assert_json_snapshot!()`
+  - Key helper functions:
+    ```rust
+    fn workspace_root() -> Utf8PathBuf {
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let root = std::path::Path::new(manifest).parent().unwrap().parent().unwrap();
+        Utf8PathBuf::from_path_buf(root.to_owned()).unwrap()
+    }
+    
+    fn redact_paths(value: &mut serde_json::Value, workspace: &str) {
+        match value {
+            serde_json::Value::String(s) => {
+                if s.contains(workspace) || s.starts_with('/') {
+                    let trimmed = s.trim_start_matches(workspace).trim_start_matches('/').to_owned();
+                    *s = format!("[ROOT]/{trimmed}");
+                }
+            }
+            // recurse into arrays and objects...
+        }
+    }
+    
+    fn snapshot_fixture(library: &str) -> serde_json::Value {
+        let mut value = run_fixture(library);
+        let root = workspace_root();
+        redact_paths(&mut value, root.as_str());
+        // Zero out non-deterministic stats fields so snapshots don't flap.
+        if let Some(stats) = value.get_mut("stats").and_then(|s| s.as_object_mut()) {
+            stats.insert("durationMs".into(), serde_json::Value::Number(0.into()));
+            stats.insert("dtsCacheHits".into(), serde_json::Value::Number(0.into()));
+        }
+        value
+    }
+    ```
+  - Tests: `snapshot_shadcn`, `snapshot_radix`, `snapshot_mui`, `snapshot_chakra`, `snapshot_mantine`, `snapshot_react_aria`, `snapshot_panda`
+
+- **`crates/core/tests/snapshots/`** (CREATED — 7 .snap files)
+  - `snapshots__snapshot_shadcn.snap`, `snapshots__snapshot_radix.snap`, `snapshots__snapshot_mui.snap`, `snapshots__snapshot_chakra.snap`, `snapshots__snapshot_mantine.snap`, `snapshots__snapshot_react_aria.snap`, `snapshots__snapshot_panda.snap`
+  - All contain real extracted JSON with paths replaced by `[ROOT]/fixtures/...`
+
+- **`crates/core/src/types.rs`** (READ fully — 1,305 lines, ready for R2 split)
+  - Contains two abstraction layers mixed together:
+    - **Collected layer** (extractor output): `CollectedType`, `CollectedObjectField`, `CollectedInterface`, `CollectedTypeAlias`, `ExtendsRef`, `DefaultSource`, `RawDefault`, `ComponentMapping`, `ImportBinding`, `LexedExport`, `SourceData`, `RawProp`
+    - **Output layer** (resolver output): `PropType`, `ComponentEntry`, `ExtractionOutput`, `InheritedLayer`, `ParsedProp`, `ObjectField`, `DefaultValue`, `PropParent`, `EnumEntry`, `EnumValue`, `ExtractionStats`
+    - **Diagnostics**: `Diagnostic`, `DiagnosticSeverity`, `DiagnosticCode`, `OpaqueReason`
+    - **Global**: `GlobalSourceData` (with `merge()` and `remove_file()` methods)
+  - `GlobalSourceData` uses `FxHashMap<String, CollectedInterface>` with raw `"{}:{}"` string keys — target for `ScopedKey` newtype in R2
+
+- **`docs/10-QUALITY-AND-ARCHITECTURE.md`** (READ — full refactor plan)
+  - R1-R11 implementation sequence
+  - Target module structure for types/, extractor/, resolver/, pipeline/, cli/
+  - `ResolveState` struct design
+  - `ScopedKey` newtype design
+  - IO error propagation pattern
+  - Visibility model
+  - Cross-package resolution design
+
+4. Errors and Fixes:
+
+- **Snapshot flapping on `durationMs` and `dtsCacheHits`**: First run with `INSTA_UPDATE=always` created snapshots with specific timing values. Second run (no INSTA_UPDATE) failed because `durationMs` differed (e.g., `14` vs `5`) and MUI's `dtsCacheHits` differed (`0` vs `2` due to parallel test execution order).
+  - Fix: Added normalization in `snapshot_fixture()` to zero both fields before comparing. Regenerated snapshots with `INSTA_UPDATE=always`, then verified they pass without it.
+
+- **Leftover `.snap.new` files**: After the first failed run, insta left `.snap.new` files alongside the `.snap` files.
+  - Fix: `find ... -name "*.snap.new" -delete`
+
+5. Problem Solving:
+
+**R1 complete**: 7 snapshot tests passing stably, covering all fixture libraries. The safety net for the entire refactor is in place.
+
+**R2 ready to start**: `types.rs` has been fully read. The split plan is clear:
+- `types/collected.rs` — raw AST-level types (CollectedType, SourceData, all collected structs)
+- `types/output.rs` — semantic output types (PropType, ComponentEntry, ExtractionOutput, etc.)
+- `types/diagnostic.rs` — Diagnostic, DiagnosticSeverity, DiagnosticCode, OpaqueReason
+- `types/global.rs` — GlobalSourceData + new ScopedKey newtype
+
+**RTK**: Confirmed working (v0.42.4, `/opt/homebrew/bin/rtk`).
+
+6. All User Messages:
+
+- "Let's read the doc and start the work" — kick off R1 after reading the architecture plan
+- "Let's fire through it" — proceed through the entire R1-R11 sequence
+- "Is RTK properly setup?" — check RTK installation
+- "CRITICAL: Respond with TEXT ONLY..." — this summary request
+
+7. Pending Tasks:
+
+The full R1-R11 refactor sequence, with R1 now complete:
+
+- **R1** ✅ — `insta` snapshot tests across all fixtures (safety net)
+- **R2** — Split `types.rs` → `types/collected.rs`, `types/output.rs`, `types/diagnostic.rs`, `types/global.rs`; introduce `ScopedKey` newtype
+- **R3** — Introduce `ResolveState` in `resolver/state.rs`; replace `visited/depth/diagnostics` param threading; change `FxHashSet<String>` → `FxHashSet<CompactString>`
+- **R4** — Split `resolver.rs` → `resolver/` module directory (13 files); move `strip_json_comments` out
+- **R5** — Split `extractor.rs` → `extractor/` module directory (7 files)
+- **R6** — Split `pipeline.rs` → `pipeline/` module; fix `unwrap_or_default()` IO failures to emit diagnostics
+- **R7** — Split `cli/main.rs` → `commands/` submodules
+- **R8** — Visibility cleanup: `pub(crate)` for all internal modules; add `cargo-semver-checks` to CI
+- **R9** — Attempt `#[derive(Serialize, Deserialize)]` for `PropType`; remove 200-line hand-roll if successful
+- **R10** — Cross-package resolution in `pipeline/resolve.rs` using `ResolveState.needed_specifiers`
+- **R11** — `.clippy.toml` thresholds, `cargo-deny`, `proptest`
+
+After refactor: Phase 5a (Vite plugin), Phase 5b (Rolldown plugin), Phase 6 (integration tests), config file loading, preset system.
+
+8. Current Work:
+
+Immediately before the summary request, the assistant had:
+1. Completed R1 (7 snapshot tests, all passing, `.snap.new` files cleaned up)
+2. The user said "Let's fire through it" — signaling to proceed through R2+
+3. The assistant read the full content of `crates/core/src/types.rs` (1,305 lines) in preparation for R2
+4. Was about to begin R2: creating the `types/` module directory and splitting `types.rs` into 4 focused files with the `ScopedKey` newtype introduced in `types/global.rs`
+
+The full `types.rs` content was successfully read — all types identified and categorized for the split.
+
+9. Optional Next Step:
+
+Begin **R2 — `types/` split**. The user said "Let's fire through it" meaning execute all refactor steps in sequence. R1 is done, `types.rs` has been fully read and analyzed. Next action:
+
+1. Create `crates/core/src/types/` directory with `mod.rs`, `collected.rs`, `output.rs`, `diagnostic.rs`, `global.rs`
+2. Introduce `ScopedKey` newtype in `global.rs`:
+   ```rust
+   #[derive(Debug, Clone, Hash, Eq, PartialEq)]
+   pub(crate) struct ScopedKey(CompactString);
+   impl ScopedKey {
+       pub fn new(file: &Utf8Path, name: &str) -> Self { ... }
+       pub fn as_str(&self) -> &str { &self.0 }
+   }
+   ```
+3. Update `GlobalSourceData` maps from `FxHashMap<String, ...>` → `FxHashMap<ScopedKey, ...>`
+4. Update all import paths in `extractor.rs`, `resolver.rs`, `pipeline.rs`, `lib.rs`
+5. Verify: `cargo test -p oxc-react-docgen-core` (90 unit + 7 snapshot = 97 tests, all green)
+6. Verify snapshots unchanged: `cargo test -p oxc-react-docgen-core --test snapshots`
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

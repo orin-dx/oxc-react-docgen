@@ -1,0 +1,1 @@
+are the rust skills part of a plugin or just text? Can we make improvements on them based on the best practices we identified?

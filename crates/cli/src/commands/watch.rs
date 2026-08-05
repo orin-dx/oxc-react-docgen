@@ -27,8 +27,14 @@ fn write_atomic(path: &str, contents: &str) -> std::io::Result<()> {
     tmp_name.push(file_name);
     tmp_name.push(".tmp");
     let tmp_path = dir.join(tmp_name);
-    std::fs::write(&tmp_path, contents)?;
-    std::fs::rename(&tmp_path, target)?;
+    if let Err(e) = std::fs::write(&tmp_path, contents) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, target) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e);
+    }
     Ok(())
 }
 
@@ -186,6 +192,24 @@ mod tests {
     fn write_atomic_surfaces_error_when_parent_dir_is_missing() {
         let result = write_atomic("/nonexistent-rdt-watch-dir-xyz-123/out.json", "{}");
         assert!(result.is_err(), "write to a missing parent directory should surface an error, not succeed silently");
+    }
+
+    #[test]
+    fn write_atomic_cleans_up_temp_file_when_rename_fails() {
+        let dir = std::env::temp_dir().join(format!("rdt-watch-atomic-rename-fail-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        // A directory can't be the rename target of a regular file — forces
+        // the rename step (not the write-to-tmp step) to fail.
+        let target_as_dir = dir.join("out.json");
+        std::fs::create_dir_all(&target_as_dir).expect("create target-as-dir");
+
+        let result = write_atomic(target_as_dir.to_str().expect("utf8 path"), "{\"a\":1}");
+        assert!(result.is_err(), "renaming onto an existing directory should fail");
+
+        let tmp_path = dir.join(".out.json.tmp");
+        assert!(!tmp_path.exists(), "temp file should be cleaned up after a failed rename, found {tmp_path:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

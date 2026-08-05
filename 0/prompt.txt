@@ -1,0 +1,24 @@
+<task-notification>
+<task-id>a02e8c009bfd3072f</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a02e8c009bfd3072f.output</output-file>
+<status>completed</status>
+<summary>Agent "Build Ariakit Menu family fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Summary
+
+Created `/Users/gabe/Projects/oxc-react-codegen/fixtures/ariakit/` with 5 files (565 lines), all adapted from `ariakit/ariakit` (MIT), verified via GitHub API against current `main`:
+
+- `menu-context.ts` — combines real `menu/menu-context.tsx` + `menu/menu-store.ts` (shared context/store substrate, no component itself)
+- `menu-provider.tsx` — near-verbatim from `menu/menu-provider.tsx` (42 real lines)
+- `menu.tsx`, `menu-button.tsx`, `menu-item.tsx` — from `menu/menu.tsx`, `menu-button.tsx`, `menu-item.tsx`
+
+I skipped `menu-list.tsx` and the ~14 other family files (arrow, group, separator, checkbox/radio variants, menubar). Chose Provider→Menu→MenuButton→MenuItem as the 4-level chain because `MenuItem` reads a *different* context accessor (`useMenuScopedContext`) plus a second unrelated context (`MenuListHiddenContext`) from the same shared file — the sharpest cross-contamination test. `MenuButton` both reads and re-provides the context (submenu-button pattern), which is the other interesting case.
+
+Trimmed: the multi-package `extends` chains (Hovercard/Popover/Composite/Dialog options, not part of the Menu family, not fetched) were flattened to each component's real own fields plus the ancestor fields actually destructured in the real source (verified from fetched files, not memory). Generic-tag (`TTag`) polymorphism was dropped since it's already covered by `fixtures/headlessui`. State-machine/focus/floating-ui bodies stubbed to plain elements with `void`-ed unused props (matches existing repo convention).
+
+Our tool: exit 0, 5 files parsed, exactly 4 components extracted (`MenuProvider`:7, `Menu`:7, `MenuButton`:5, `MenuItem`:5 props), 0 skipped. No cross-level contamination — each component's props are exactly its own declared fields; `store: MenuStore` appears independently and correctly in three components without leaking siblings' fields. Two benign warnings: generic `T` on `MenuStoreProps&lt;T&gt;` resolves as opaque (a real, now-documented resolver limitation).
+
+RDT (`react-docgen-typescript@2.4.0`) parsed all 5 files without error, same real per-component prop sets (RDT additionally flattens full DOM attributes and treats `menu-context.ts`'s plain hooks/context objects as pseudo-components — expected RDT heuristics, not a fixture issue). No unresolved problems.</result>
+<usage><subagent_tokens>112357</subagent_tokens><tool_uses>44</tool_uses><duration_ms>492199</duration_ms></usage>
+</task-notification>

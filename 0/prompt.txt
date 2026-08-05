@@ -1,0 +1,1 @@
+Do an adversarial analysis of the archietcture, RDT spec and what we need to support. Build and test output against the real codebases, compare to typescript-react-docgen and look for bugs and shortcomings.

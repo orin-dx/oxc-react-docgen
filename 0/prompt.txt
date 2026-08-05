@@ -1,0 +1,129 @@
+<task-notification>
+<task-id>ac1897ec9fa038e59</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0602cae8-9776-4cab-baaa-67ad00aaf7d1/tasks/ac1897ec9fa038e59.output</output-file>
+<status>completed</status>
+<summary>Agent "Search angle 1: Rolldown native Rust plugin cdylib/dlopen" came to rest</summary>
+<note>A task-notification fires each time this agent comes to rest with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I now have everything needed for a complete, verified synthesis. Here is the full deep-research report:
+
+---
+
+## Rolldown Native Rust Plugin Architecture — Deep Research Report
+
+### Executive Summary
+
+Rolldown does **not** use `cdylib` shared libraries loaded at runtime via `dlopen()` for its Rust plugin system. Native Rust plugins are **statically compiled into the Rolldown binary** (or the NAPI `.node` addon) and exposed through a `Plugin` trait. The only `cdylib` in the project is `rolldown_binding`, which is the NAPI boundary artifact for Node.js — not a plugin loading mechanism. As of mid-2025, there is no public API or documented mechanism for external third-party Rust plugins; the system is internal-only.
+
+---
+
+### 1. The `Plugin` Trait — Static, Compiled-In
+
+**Source:** [`crates/rolldown_plugin/src/plugin.rs`](https://github.com/rolldown/rolldown/blob/main/crates/rolldown_plugin/src/plugin.rs)
+
+The public plugin interface is a Rust trait with supertrait bounds:
+
+```rust
+pub trait Plugin: Any + Debug + Send + Sync + 'static {
+    fn name(&amp;self) -&gt; Cow&lt;'static, str&gt;;
+    // ~40 hook methods: build_start, resolve_id, load, transform,
+    // render_chunk, generate_bundle, write_bundle, close_bundle,
+    // watch_change, transform_ast, ...
+}
+```
+
+The `'static` lifetime bound and `Send + Sync` requirements mean **plugin implementations must be known at compile time and fully owned** — they cannot be foreign structs loaded from a `.so`/`.dylib` at runtime. No `libloading`, `dlopen`, or any dynamic symbol resolution is present in the codebase.
+
+---
+
+### 2. `Pluginable` — The Internal Execution Layer
+
+**Source:** [`crates/rolldown_plugin/src/pluginable.rs`](https://github.com/rolldown/rolldown/blob/main/crates/rolldown_plugin/src/pluginable.rs)
+
+`Pluginable` is an internal undocumented trait that wraps `Plugin` with `async_trait` for actual execution. There is a blanket `impl Pluginable for T where T: Plugin`. Plugins are stored as `Arc&lt;dyn Pluginable&gt;` (type alias: `SharedPluginable`). This is a standard Rust trait-object dispatch pattern — no dynamic library loading involved.
+
+---
+
+### 3. The Only `cdylib` Is the NAPI Boundary
+
+**Source:** [`crates/rolldown_binding/Cargo.toml`](https://github.com/rolldown/rolldown/blob/main/crates/rolldown_binding/Cargo.toml)
+
+```toml
+[lib]
+crate-type = ["lib", "cdylib"]
+```
+
+The `rolldown_binding` crate produces a `cdylib` — but this is the **NAPI-RS artifact** (a `.node` file) for Node.js to `require()`. It is **not** a plugin loading mechanism. It compiles all of rolldown, oxc, and every builtin plugin together into one platform-specific shared library that Node.js loads once at startup. Third parties do not produce their own `.node` files that rolldown then dlopen()s.
+
+---
+
+### 4. Builtin Plugins — Statically Linked Rust Crates
+
+**Source:** [`crates/` directory listing](https://github.com/rolldown/rolldown/tree/main/crates), [rolldown.rs/builtin-plugins](https://rolldown.rs/builtin-plugins)
+
+Every builtin plugin is a separate Rust crate statically linked into `rolldown_binding`:
+
+- `rolldown_plugin_replace`
+- `rolldown_plugin_bundle_analyzer`
+- `rolldown_plugin_esm_external_require`
+- `rolldown_plugin_asset_module`
+- `rolldown_plugin_copy_module`
+- `rolldown_plugin_hmr`
+- `rolldown_plugin_lazy_compilation`
+- `rolldown_plugin_vite_*` (CSS, HTML, JSON, manifest, preload, etc.)
+- `rolldown_plugin_oxc_runtime`
+
+These are listed as workspace dependencies in `rolldown_binding/Cargo.toml` and compiled in. The official docs confirm: *"implemented in Rust, to achieve higher performance."*
+
+---
+
+### 5. JavaScript Plugin Bridge — `parallel_js_plugin_registry.rs`
+
+**Source:** [`crates/rolldown_binding/src/parallel_js_plugin_registry.rs`](https://github.com/rolldown/rolldown/blob/main/crates/rolldown_binding/src/parallel_js_plugin_registry.rs)
+
+JavaScript plugins (Rollup-compatible) cross the boundary via NAPI-RS. The `ParallelJsPluginRegistry` is a global `DashMap` (thread-safe hashmap) keyed by registry ID. JavaScript passes plugin objects via `BindingPluginWithIndex` structs, which NAPI deserializes into Rust types. Plugin hooks are called back into JS via NAPI callbacks — the Rolldown 1.0 announcement notes that *"hook filters keep JavaScript plugins out of the hot path; plugins that declare an `id`, `code`, or `moduleType` filter skip the Rust-to-JS hop when the filter doesn't match."*
+
+---
+
+### 6. External Rust Plugins — Not Yet Supported
+
+**Sources:** [denoland/deno-vite-plugin#65](https://github.com/denoland/deno-vite-plugin/issues/65), [rolldown#3172](https://github.com/rolldown/rolldown/issues/3172)
+
+As of May 2025, a Deno maintainer investigating native Rust plugin support noted: *"there's no docs for doing native plugins yet"* and *"Rolldown doesn't accept external Rust plugins yet."* Vite's internal plugins have been progressively ported to Rust (alias, resolve, etc.) and shipped as first-party builtin plugins, but **there is no public API, no documented mechanism, and no RFC for third parties to write and ship Rust plugins that Rolldown would load at runtime.**
+
+---
+
+### 7. Adversarial Verification
+
+| Claim | Verdict | Evidence |
+|---|---|---|
+| `rolldown_binding` is `cdylib` | **True** | `Cargo.toml` explicitly shows `crate-type = ["lib", "cdylib"]` |
+| cdylib is for NAPI (Node.js .node addon), not plugin loading | **True** | `napi`/`napi-derive` are the primary `rolldown_binding` dependencies; all builtin plugins are listed as static workspace deps |
+| `Plugin` trait requires `'static + Send + Sync` (precludes dlopen) | **True** | Fetched directly from `plugin.rs` |
+| No `libloading`/`dlopen` in the codebase | **True** | No search results found any; `Cargo.toml` contains no `libloading` or `dlopen` dependency |
+| External Rust plugins are unsupported as of 2025 | **True** | Explicit statement in deno-vite-plugin issue; no documentation exists |
+
+---
+
+### Key URLs
+
+- [rolldown/rolldown GitHub](https://github.com/rolldown/rolldown)
+- [`crates/rolldown_plugin/src/plugin.rs`](https://github.com/rolldown/rolldown/blob/main/crates/rolldown_plugin/src/plugin.rs)
+- [`crates/rolldown_binding/Cargo.toml`](https://github.com/rolldown/rolldown/blob/main/crates/rolldown_binding/Cargo.toml) — `crate-type = ["lib", "cdylib"]`
+- [`parallel_js_plugin_registry.rs`](https://github.com/rolldown/rolldown/blob/main/crates/rolldown_binding/src/parallel_js_plugin_registry.rs)
+- [DeepWiki: Rolldown architecture](https://deepwiki.com/rolldown/rolldown)
+- [DeepWiki: Bundling pipeline / JS-Rust bridge](https://deepwiki.com/rolldown/rolldown/2.1-bundling-pipeline)
+- [Rolldown 1.0 announcement (VoidZero)](https://voidzero.dev/posts/announcing-rolldown-1-0)
+- [Rolldown builtin plugins docs](https://rolldown.rs/builtin-plugins)
+- [deno-vite-plugin#65 — "no docs for doing native plugins yet"](https://github.com/denoland/deno-vite-plugin/issues/65)
+- [rolldown#3172 — Native Deno Loader Plugin feature request](https://github.com/rolldown/rolldown/issues/3172)
+- [rolldown/rolldown Discussion #1807 — Builtin plugin API design](https://github.com/rolldown/rolldown/discussions/1807)
+- [Toolchain notes: exploring rolldown bindings](https://topheman.github.io/toolchain-notes/rolldown/explore-rolldown-bindings.html)
+
+---
+
+### Conclusion
+
+Rolldown's "native Rust plugins" are **statically compiled Rust crates** that implement the `Plugin: Any + Debug + Send + Sync + 'static` trait. They are linked directly into the `rolldown_binding` cdylib (the NAPI `.node` addon). The cdylib is loaded once by Node.js at startup via the standard Node.js native addon mechanism — it is not `dlopen()`-ed by Rolldown itself, and Rolldown does not `dlopen()` any plugin `.so` files. There is no cdylib-per-plugin architecture, no `libloading`, and no dynamic plugin loading of any kind. For third parties, only JavaScript plugins (via Rollup-compatible hooks over NAPI) are currently supported.</result>
+<usage><subagent_tokens>32262</subagent_tokens><tool_uses>6</tool_uses><duration_ms>74673</duration_ms></usage>
+</task-notification>

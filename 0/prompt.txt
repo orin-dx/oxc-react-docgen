@@ -1,0 +1,1 @@
+What are the rust best practices to implement what we need for this to work? What can we leverage from the existing architecture? Anything we should consider changing? What other rust tools do something similar that we can learn from? What crates should we use?

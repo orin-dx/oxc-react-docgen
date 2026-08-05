@@ -1547,4 +1547,28 @@ interface ButtonProps {
         assert_eq!(diag.message, "malformed Omit<> arguments");
         assert_eq!(diag.file.as_deref(), Some("/test/skip.tsx"));
     }
+
+    #[test]
+    fn pascal_case_binding_with_no_matching_detector_records_skipped_candidate() {
+        // `const Button = something()` — PascalCase binding, .tsx file, but the
+        // init expression matches none of try_fc_annotation / try_forward_ref /
+        // try_hoc_wrapped / try_rename_identifier_wrapped_component. Previously
+        // the whole chain fell through silently with zero trace it was even
+        // considered a component candidate.
+        let source = r#"
+            const Button = someUnrecognizedFactory();
+        "#;
+        let path = Utf8Path::new("/test/unrecognized.tsx");
+        let data = parse_file(path, source);
+
+        assert!(
+            !data.component_mappings.iter().any(|m| m.component_name == "Button"),
+            "no mapping should have been produced for an unrecognized pattern"
+        );
+        assert!(
+            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::SkippedCandidate),
+            "expected a SkippedCandidate diagnostic, got: {:?}",
+            data.diagnostics
+        );
+    }
 }

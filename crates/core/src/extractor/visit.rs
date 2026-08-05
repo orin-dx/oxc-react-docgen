@@ -5,8 +5,8 @@ use oxc_ast_visit::{walk, Visit};
 use oxc_syntax::scope::ScopeFlags;
 
 use crate::types::{
-    CollectedInterface, ComponentMapping, EnumEntry, EnumValue, ExtendsRef, ImportBinding, LexedExport, RawProp,
-    TypeName,
+    CollectedInterface, ComponentMapping, DiagnosticCode, EnumEntry, EnumValue, ExtendsRef, ImportBinding, LexedExport,
+    RawProp, TypeName,
 };
 
 use super::{declaration_name, is_pascal_case, SourceDataCollector};
@@ -243,7 +243,24 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                         self.data.component_mappings.push(mapping);
                         continue;
                     }
-                    self.try_rename_identifier_wrapped_component(declarator, &name);
+                    // try_rename_identifier_wrapped_component is itself a give-up-quietly
+                    // path (a bare/wrapped identifier re-binding, not a props-bearing
+                    // component candidate) — only record a skip when even that finds
+                    // nothing, so plain aliasing (`const Button = InternalButton;`)
+                    // doesn't spuriously report as an unsupported candidate. Also skip
+                    // no-initializer declarations (`declare var Date: DateConstructor`) —
+                    // those are ambient type-only bindings handled by Pattern 5 below
+                    // (or legitimately not components at all), not failed candidates.
+                    if declarator.init.is_some() && !self.try_rename_identifier_wrapped_component(declarator, &name) {
+                        self.record_skip(
+                            DiagnosticCode::SkippedCandidate,
+                            format!(
+                                "'{name}' is a PascalCase binding but matched no known component pattern \
+                                 (FC annotation, forwardRef, HOC wrapper, or identifier alias)"
+                            ),
+                            declarator.span,
+                        );
+                    }
                 }
             }
             // Pattern 5: declare const Button: React.ForwardRefExoticComponent<ButtonProps & RefAttributes<E>>

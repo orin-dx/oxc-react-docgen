@@ -906,7 +906,17 @@ expression: value
       }
     ]
   },
-  "diagnostics": [],
+  "diagnostics": [
+    {
+      "severity": "info",
+      "message": "'Comp' is a PascalCase binding but matched no known component pattern (FC annotation, forwardRef, HOC wrapper, or identifier alias)",
+      "file": "[ROOT]/fixtures/shadcn/button.tsx",
+      "line": null,
+      "column": null,
+      "help": null,
+      "code": "SKIPPED_CANDIDATE"
+    }
+  ],
   "stats": {
     "componentsExtracted": 3,
     "componentsSkipped": 0,

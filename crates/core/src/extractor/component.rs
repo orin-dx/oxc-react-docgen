@@ -300,24 +300,29 @@ impl<'src> SourceDataCollector<'src> {
     /// base unfindable for that second alias — silently dropping it. The base's
     /// own (implementation-only) name is filtered out of the final output in
     /// `finish()` via `aliased_away`.
-    pub(super) fn try_rename_identifier_wrapped_component<'a>(&mut self, decl: &VariableDeclarator<'a>, name: &str) {
-        let Some(init) = decl.init.as_ref() else { return };
+    pub(super) fn try_rename_identifier_wrapped_component<'a>(
+        &mut self,
+        decl: &VariableDeclarator<'a>,
+        name: &str,
+    ) -> bool {
+        let Some(init) = decl.init.as_ref() else { return false };
         let inner_name = match unwrap_as_expression(init) {
             Expression::CallExpression(call) => match call.arguments.first() {
                 Some(Argument::Identifier(id)) => id.name.as_str(),
-                _ => return,
+                _ => return false,
             },
             Expression::Identifier(id) => id.name.as_str(),
-            _ => return,
+            _ => return false,
         };
 
         let Some(base) = self.data.component_mappings.iter().find(|m| m.component_name == inner_name) else {
-            return;
+            return false;
         };
         let mut alias = base.clone();
         alias.component_name = name.to_owned();
         self.data.component_mappings.push(alias);
         self.aliased_away.insert(inner_name.into());
+        true
     }
 
     /// Extract the callee name of a call expression (simple ident or member expr).

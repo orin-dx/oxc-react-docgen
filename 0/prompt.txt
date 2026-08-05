@@ -1,0 +1,20 @@
+<task-notification>
+<task-id>a071aea80a23859ca</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a071aea80a23859ca.output</output-file>
+<status>completed</status>
+<summary>Agent "Build Ark UI Select fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Summary
+
+**Files created:**
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/ark-ui/Select.tsx` (174 lines) — adapted from `chakra-ui/ark` main branch: [`select-root.tsx`](https://github.com/chakra-ui/ark/blob/main/packages/react/src/components/select/select-root.tsx), [`use-select.ts`](https://github.com/chakra-ui/ark/blob/main/packages/react/src/components/select/use-select.ts)
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/ark-ui/types.ts` (255 lines) — local stand-ins sourced from `chakra-ui/ark`'s `types.ts`/`factory.ts` and `chakra-ui/zag`'s `packages/utilities/collection/src/types.ts`, `packages/machines/select/src/select.types.ts`, `packages/types/src/index.ts`, `packages/utilities/interact-outside/src/index.ts`
+
+Used `SelectRoot` (the intended target) — no deviation needed. Verified paths/branch against the live GitHub API/raw content, not memory.
+
+**What had to change and why:** Real Ark composes `SelectRootProps&lt;T&gt; = Assign&lt;HTMLProps&lt;'div'&gt;, SelectRootBaseProps&lt;T&gt;&gt;` and exports `forwardRef(SelectImpl) as SelectRootComponent`. Both patterns hit genuine tool gaps I found by testing against the release binary: (1) the resolver never substitutes type arguments into user-defined generic type aliases (`Assign&lt;T,U&gt;`, `Optional&lt;T,K&gt;`) — confirmed via `crates/core/src/resolver/chain.rs`/`alias.rs`, `T`/`U` leak as literal unresolved names and props come back empty; (2) `try_forward_ref` in `crates/core/src/extractor/component.rs` requires an explicit 2-arg `forwardRef&lt;Ref,Props&gt;(...)` and never unwraps an outer `as X` cast, so the real export pattern yields zero components. I rewrote the composition as plain interface `extends` chains (proven to flatten correctly through generic interfaces) plus a direct `React.ComponentPropsWithoutRef&lt;'div'&gt;` extends, and used `forwardRef&lt;HTMLDivElement, SelectRootProps&lt;CollectionItem&gt;&gt;(SelectImpl)` for the export — `SelectImpl` and every interface it's built from stay genuinely generic over `T`. Two real fields (`onSelect`, `defaultValue`) were dropped where they'd otherwise collide with native `div` attributes (Ark's `Assign` resolves that via override; plain `extends` can't). All this is documented inline in Select.tsx with exact reasoning.
+
+**Result:** our binary exits 0, extracts 1 component (`SelectRoot`) with 36 own props (`collection`, `disabled`, `multiple`, `value`, `open`, `asChild`, etc.) plus a proper native-`div` inheritance bucket — only 3 benign "opaque" warnings, no errors. Separately verified with real `react-docgen-typescript`: it parses the file fine (314 props, flattening all native attrs). I also confirmed via a throwaway probe that RDT *does* correctly resolve the original `Assign&lt;T,U&gt;`-based composition (314 props including both `onSelect`/`defaultValue`, proving its override semantics work) where our tool currently cannot — a legitimate, now-documented divergence. All throwaway scripts/files were deleted; no git commands were run.</result>
+<usage><subagent_tokens>168309</subagent_tokens><tool_uses>106</tool_uses><duration_ms>1714559</duration_ms></usage>
+</task-notification>

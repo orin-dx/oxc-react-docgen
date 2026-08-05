@@ -1,0 +1,39 @@
+<task-notification>
+<task-id>a466c2cc02e9f44e1</task-id>
+<tool-use-id>toolu_01NTJPerPn7JcHocbis3qDJS</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/a466c2cc02e9f44e1.output</output-file>
+<status>completed</status>
+<summary>Agent "Phase 3b: Implement pipeline.rs with rayon, DTS cache, and watch mode" completed</summary>
+<result>All clean. Here's a summary of what was implemented:
+
+---
+
+## What was implemented
+
+### `/Users/gabe/Projects/oxc-react-codegen/crates/core/src/pipeline.rs` (was a stub)
+
+**`PipelineOptions`** — Full struct with all fields from the spec including the architectural-review additions (`tsconfig_path`, `extra_paths`, `known_type_overrides`, `extra_builtins`, `vanilla_extract`, `cache_dir`, `resolve_complex_types`). `Default` impl sets `variant_functions` to `["cva", "tv", "defineRecipe", "recipe"]`.
+
+**`KnownTypeOverride`** — `Serialize/Deserialize` enum with `Opaque`, `Alias`, `Skip` variants (tagged `kind`/`camelCase`).
+
+**`extract()`** — Cold extraction: discover files → parallel rayon parse → sequential `GlobalSourceData::merge` → parallel resolve (via stub) → collect `BTreeMap&lt;String, ComponentEntry&gt;` + `collect_public_enums` → `DtsCache::save_to_disk`. Returns `ExtractionOutput` with accurate stats.
+
+**`discover_files()`** — Uses the `ignore` crate's `WalkBuilder` (respects `.gitignore`). Filters to `.ts`/`.tsx`, skips `.stories.`, `.test.`, `.spec.`, `__snapshots__`, `node_modules`. User patterns applied on top. Output sorted deterministically.
+
+**`collect_public_enums()`** — Scans `global.enums`, checks each scoped key's name against `re_export_map` `LocalDeclaration` entries; only exports-visible enums are included.
+
+**`ReverseDeps`** — Builds a `FxHashMap&lt;file → importers&gt;` from relative specifiers with approximate extension normalization. `affected()` BFS walks the graph to find all transitively affected files.
+
+**`WatchSession`** — Holds `ArcSwap&lt;GlobalSourceData&gt;`, `DashMap` source/component caches, `Arc&lt;ReverseDeps&gt;`. `initialize()` runs a cold extract and seeds caches. `update_file()` re-parses → patches global → BFS affected → parallel re-resolve → atomic global swap.
+
+**Stub resolver** — `resolve_component_stub` returns an empty `ComponentEntry`; annotated with `// TODO: replace with crate::resolver::{resolve_component, ResolutionContext}` when Phase 3a lands.
+
+### Side fixes
+- `/Users/gabe/Projects/oxc-react-codegen/crates/core/src/react_types.rs` — Added `#[derive(Debug, Clone)]` to `ReactVersion` (required by `PipelineOptions`).
+- `/Users/gabe/Projects/oxc-react-codegen/Cargo.toml` + `crates/core/Cargo.toml` — Added `tempfile = "3.20"` as workspace/crate dev-dependency (already needed by `cache.rs` tests, now also needed by pipeline tests).
+
+### Test results
+- **66 tests pass, 0 fail** across `cache`, `extractor`, `import_map`, `known`, and `pipeline` modules.
+- **Clippy clean** at `-D warnings`.</result>
+<usage><subagent_tokens>58614</subagent_tokens><tool_uses>26</tool_uses><duration_ms>174364</duration_ms></usage>
+</task-notification>

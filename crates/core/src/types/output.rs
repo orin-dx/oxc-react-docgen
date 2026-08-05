@@ -359,12 +359,18 @@ impl OpaqueDetail {
 impl PropType {
     /// True if this type is a pure literal union (all members are literals).
     /// Used by serializers to choose between "enum" and "union" in RDT output.
+    /// Requires at least 2 members — a 0- or 1-member "union" isn't a
+    /// meaningful `<select>` shape, so RDT output falls back to plain
+    /// `raw_string()` for those instead of an empty/single-option enum.
     pub fn is_literal_union(&self) -> bool {
         match self {
-            PropType::Union(members) => members.iter().all(|m| {
-                matches!(m, PropType::StringLiteral(_) | PropType::NumberLiteral(_) | PropType::BoolLiteral(_))
-            }),
-            PropType::LiteralUnion { .. } => true,
+            PropType::Union(members) => {
+                members.len() >= 2
+                    && members.iter().all(|m| {
+                        matches!(m, PropType::StringLiteral(_) | PropType::NumberLiteral(_) | PropType::BoolLiteral(_))
+                    })
+            }
+            PropType::LiteralUnion { members, .. } => members.len() >= 2,
             _ => false,
         }
     }
@@ -959,5 +965,28 @@ mod number_literal_roundtrip_tests {
         let restored: PropType = serde_json::from_value(json).expect("deserialize");
 
         assert_eq!(restored, PropType::NumberLiteral(42.5));
+    }
+}
+
+#[cfg(test)]
+mod is_literal_union_tests {
+    use super::*;
+
+    #[test]
+    fn empty_literal_union_is_not_treated_as_an_enum() {
+        let pt = PropType::LiteralUnion { members: vec![], has_default: false };
+        assert!(!pt.is_literal_union());
+    }
+
+    #[test]
+    fn single_member_literal_union_is_not_treated_as_an_enum() {
+        let pt = PropType::LiteralUnion { members: vec!["only".to_string()], has_default: false };
+        assert!(!pt.is_literal_union());
+    }
+
+    #[test]
+    fn two_member_literal_union_is_still_treated_as_an_enum() {
+        let pt = PropType::LiteralUnion { members: vec!["a".to_string(), "b".to_string()], has_default: false };
+        assert!(pt.is_literal_union());
     }
 }

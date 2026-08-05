@@ -12,7 +12,7 @@ use oxc_allocator::{Allocator, Box as OxcBox};
 use oxc_ast::ast::*;
 use oxc_ast_visit::Visit;
 use oxc_parser::Parser;
-use oxc_span::SourceType;
+use oxc_span::{SourceType, Span};
 use rustc_hash::FxHashSet;
 
 #[cfg(test)]
@@ -213,6 +213,25 @@ impl<'src> SourceDataCollector<'src> {
             pending_display_name_renames: Vec::new(),
             aliased_away: FxHashSet::default(),
         }
+    }
+
+    /// Record that a recognized-but-malformed AST shape was skipped — distinct
+    /// from "wrong shape, not a candidate at all" (which stays silent). Used by
+    /// `classify_type_alias`'s Omit/Pick/Partial/Required/Readonly arms and the
+    /// component-detector chains in `visit.rs` when a shape matches a known
+    /// pattern but is missing/malformed pieces the pattern requires.
+    #[allow(dead_code)] // call sites land in classify_type_alias and visit.rs (later tasks)
+    pub(super) fn record_skip(&mut self, code: DiagnosticCode, message: impl Into<String>, span: Span) {
+        let _ = span; // no line/column conversion helper exists yet; kept for future use and call-site documentation
+        self.data.diagnostics.push(Diagnostic {
+            severity: DiagnosticSeverity::Info,
+            message: message.into(),
+            file: Some(self.file_path.to_string()),
+            line: None,
+            column: None,
+            help: None,
+            code,
+        });
     }
 
     pub(super) fn scoped_key(&self, name: &str) -> String {
@@ -1513,5 +1532,20 @@ interface ButtonProps {
             "expected a ParseError diagnostic; got {:?}",
             data.diagnostics
         );
+    }
+
+    #[test]
+    fn record_skip_pushes_an_info_diagnostic_with_the_given_code() {
+        use oxc_span::Span;
+        let path = Utf8Path::new("/test/skip.tsx");
+        let mut collector = SourceDataCollector::new(path, "", false);
+        collector.record_skip(DiagnosticCode::SkippedCandidate, "malformed Omit<> arguments", Span::new(10, 20));
+
+        assert_eq!(collector.data.diagnostics.len(), 1);
+        let diag = &collector.data.diagnostics[0];
+        assert_eq!(diag.severity, DiagnosticSeverity::Info);
+        assert_eq!(diag.code, DiagnosticCode::SkippedCandidate);
+        assert_eq!(diag.message, "malformed Omit<> arguments");
+        assert_eq!(diag.file.as_deref(), Some("/test/skip.tsx"));
     }
 }

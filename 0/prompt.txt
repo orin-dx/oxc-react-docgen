@@ -1,0 +1,230 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   The overarching, most recent explicit instruction chain from the user:
+   - "What's next?" (after round 2 validation fixes were complete) → I proposed 4 items: update stale docs (`rdt-coverage.md`, `MIGRATING.md`), fix the `PropType::Object`/`Tuple` `raw_string()` placeholder bug, build the previously-scoped-but-unbuilt configurable HTML-attributes feature, and run a third validation round.
+   - User: **"Do it all"** — explicit instruction to execute all 4 items.
+   - After completing items 1-3 (raw_string fix, HTML-attributes feature, docs update) and starting item 4 (round 3 validation), the round-3 research agent got stuck (spawned its own sub-agents instead of researching directly, ran for over a day with zero progress across 3 check-ins).
+   - User: **"Is the research not done? It was running yesterday"** — flagging the stuck agent.
+   - I killed the stuck agent via `TaskStop` and redispatched with explicit "do NOT delegate to further sub-agents" instructions, which worked cleanly.
+   - User: **"Let's do that validation please"** — confirming to proceed with round 3 fixture-building once research was ready.
+   - I presented 5 verified candidates (TanStack Table, react-final-form, react-resizable-panels, Storybook's emotion Button, Ariakit); user selected **"All 5"** via AskUserQuestion.
+   - I dispatched 5 parallel fixture-building agents, all succeeded, found 5 findings (2 fixable structural bugs, 1 likely-hard/type-inference-adjacent gap that's mixed with a discovered RDT-side blind spot, 1 likely-hard/type-inference-adjacent gap, 1 clean confirmation with no bugs).
+   - I presented findings and asked which to fix; recommended fixing just the 2 clearly-scoped ones (#1: spurious diagnostics, #2: named type-only import resolution) and flagged #3/#4 as likely harder.
+   - **User's most recent explicit instruction: "All 4, including the type-inference-adjacent ones"** — meaning I am now expected to attempt fixes/investigations for ALL FOUR round-3 findings: (1) spurious `UNRESOLVABLE_IMPORT` diagnostics on correctly-resolved cross-file generics (TanStack Table), (2) named type-only import resolution from `"react"` (react-resizable-panels), (3) indexed-access opaque for children's function/ReactNode union (react-final-form), (4) `typeof StyledButton`/`ComponentProps<typeof X>` resolution (storybook-emotion) — the last two explicitly acknowledged by the user as possibly harder/investigation-requiring, but still to be attempted.
+
+2. Key Technical Concepts:
+   - TDD discipline: RED (write failing test, confirm it fails for the right reason) → GREEN (minimal fix) → full test suite + clippy → real end-to-end verification against actual fixtures/binary → full `apps/validate` harness regression check → commit with detailed root-cause explanation.
+   - `oxc_resolver`'s `resolve_dts()` — TypeScript-compatible module resolution; has a real gap for packages with an `exports` field but no `"types"` condition (fixed earlier this session via `resolve_package_types_file`/`mangle_scoped_package_name` in `crates/core/src/resolver/react.rs`).
+   - `@types/react`'s real structure: everything (HTMLAttributes, AriaAttributes, DOMAttributes, ButtonHTMLAttributes, etc.) is declared inside a single `declare namespace React { ... }` block — meaning once parsed and merged, these interfaces get stored under NAMESPACE-QUALIFIED keys (`React.ButtonHTMLAttributes`), not bare names.
+   - `HtmlAttributeMode` enum (`Curated` default / `Full` / `None`) — the major feature built this session, threaded through `PipelineOptions`, `ResolutionContext`, CLI (`--html-attributes`), NAPI (`htmlAttributes` field), and `docgen.config.ts`.
+   - `real_html_attrs_chain()` in `crates/core/src/resolver/extends.rs` — Full-mode's core logic: looks up a real interface directly in `GlobalSourceData.interfaces` under `@types/react`'s resolved file path, bypassing normal same-file/import resolution, since a consuming file often has no literal import naming these types.
+   - Diagnostic codes: `UnresolvableImport`/`UNRESOLVABLE_IMPORT`, `IndexedAccessOpaque`/`INDEXED_ACCESS_OPAQUE`, `DiscriminatedUnion`, `MaxDepthExceeded`, `IoError`, `ParseError`, `ExcessiveNesting` — all in `crates/core/src/types/diagnostic.rs`'s `DiagnosticCode` enum.
+   - `CollectedType::KeyOf`, `CollectedType::AtFile { file, inner }` (generic-substitution file-context marker) — added earlier this session for the Ark UI generic type alias substitution fix, in `resolver/substitute.rs`.
+   - Node's `child_process.spawnSync` default `maxBuffer` is 1MB — silently truncates stdout with no thrown error/non-zero exit when exceeded (confirmed empirically this session).
+   - Namespace-stack tracking (`namespace_stack: Vec<CompactString>` on `SourceDataCollector`) — added earlier this session for the Base UI namespace-member-resolution fix, reused/relevant context for the `@types/react` namespace-qualified lookup fix.
+   - `try_rename_identifier_wrapped_component()` — post-hoc component rename mechanism (matches the existing `displayName`-scan pattern) for `customWrapper(NamedFn) as X` identifier-indirection patterns.
+   - Emotion's `styled(tag, options)` two-argument overload (with `shouldForwardProp`) — architecturally distinct type plumbing from styled-components' `.attrs<T>()`.
+   - `TSType::TSTypeOperatorType` for `readonly`/`unique`/`keyof` — `keyof` kept structured (`CollectedType::KeyOf`), `readonly`/`unique` now peeled transparently (fixed this session) instead of captured as raw text.
+   - `is_react_builtin()` in `crates/core/src/react_types.rs` — allowlist-based recognition of React's own type names (EventHandler variants, Ref types, etc.); 4 more EventHandler names added this session.
+   - `oxc_react_docgen_core::pipeline::HtmlAttributeMode` — `#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]`, `#[serde(rename_all = "camelCase")]`, variants `Curated | Full | None`.
+
+3. Files and Code Sections:
+
+   **`crates/core/src/types/output.rs`** — MODIFIED
+   - Fixed `PropType::Tuple`/`Object`'s `raw_string()` from hardcoded `"tuple"`/`"object"` placeholders to real rendering:
+     ```rust
+     PropType::Tuple(members) => {
+         format!("[{}]", members.iter().map(|m| m.raw_string()).collect::<Vec<_>>().join(", "))
+     }
+     PropType::Object(fields) => {
+         let fields_str = fields.iter().map(|f| {
+             let name = if is_valid_identifier(&f.name) { f.name.clone() } else { format!("'{}'", f.name) };
+             let optional = if f.required { "" } else { "?" };
+             format!("{}{}: {}", name, optional, f.prop_type.raw_string())
+         }).collect::<Vec<_>>().join("; ");
+         format!("{{ {} }}", fields_str)
+     }
+     ```
+   - Added `fn is_valid_identifier(name: &str) -> bool` helper.
+   - Added `#[cfg(test)] mod tests` with 3 tests. Committed as `1ecfc8a`.
+
+   **`crates/core/src/react_types.rs`** — MODIFIED
+   - Added `"ReactEventHandler" | "SubmitEventHandler" | "InputEventHandler" | "ToggleEventHandler"` to `is_react_builtin`'s match list. Committed as `b2b1169` (with a new resolver test).
+
+   **`crates/core/src/extractor/mod.rs`** — MODIFIED
+   - `TSType::TSTypeOperatorType` match: `Unique | Readonly` now call `self.ts_type_to_collected(&op.type_annotation)` (peel transparently) instead of capturing raw source text. Committed as `c34de9e`.
+   - Added test `test_readonly_array_type_operator_peeled_transparently`.
+
+   **`crates/core/src/pipeline/mod.rs`** — MODIFIED (major)
+   - Added `HtmlAttributeMode` enum (Curated/Full/None), replacing dead `skip_html_props: bool` field on `PipelineOptions` with `pub html_attributes: HtmlAttributeMode`.
+   - Added Phase 3.5 in `extract()`: when `options.html_attributes == HtmlAttributeMode::Full`, resolves `@types/react`'s real `.d.ts` path via `crate::resolver::resolve_package_dts_path()`, parses via the same DTS cache, merges into `GlobalSourceData` before Phase 4 resolve. Fixed to canonicalize `from_dir` via `std::fs::canonicalize` (critical bug fix — relative `--src` paths were breaking this silently).
+   - Added `test_html_attribute_mode_full_resolves_real_button_attrs_end_to_end` test (uses `TempDir::new_in(manifest_dir)` for real node_modules ancestor-walking).
+
+   **`crates/core/src/resolver/mod.rs`** — MODIFIED (major)
+   - Added `html_attributes: crate::pipeline::HtmlAttributeMode` field to `ResolutionContext`, threaded from `PipelineOptions` in `::new()`.
+   - Added `pub fn resolve_package_dts_path(from_dir: &camino::Utf8Path, package_name: &str) -> Option<String>` — constructs a fresh minimal `Resolver` and delegates to `react::resolve_package_types_file`.
+   - Modified `resolve_component()`'s notable_inherited synthesis loop to skip HTML layers entirely unless mode is `Curated`.
+   - Modified `ResolvedChain::merge_parent()` to propagate `discriminant_prop` when `self.discriminant_prop.is_none()`.
+   - Many new tests added for HtmlAttributeMode (curated/full/none), the Partial<X> collision fix, the intersection-wrapped discriminant fix, EventHandler recognition.
+
+   **`crates/core/src/resolver/extends.rs`** — MODIFIED (major)
+   - Modified `ExtendsRef::Builtin`'s HTML-element arm: when `ctx.html_attributes == HtmlAttributeMode::Full`, calls new `real_html_attrs_chain()` helper; total_props now reflects real count.
+   - Added:
+     ```rust
+     fn real_html_attrs_chain(
+         name: &str,
+         react_file: &str,
+         mapping: &ComponentMapping,
+         ctx: &ResolutionContext,
+         state: &mut ResolveState,
+         depth: u8,
+     ) -> Option<ResolvedChain> {
+         let bare_name = name.strip_prefix("React.").unwrap_or(name);
+         let qualified_key = format!("{react_file}:React.{bare_name}");
+         let bare_key = format!("{react_file}:{bare_name}");
+         let iface = ctx.global.interfaces.get(&qualified_key).or_else(|| ctx.global.interfaces.get(&bare_key))?.clone();
+         let react_file_path = Utf8Path::new(react_file);
+         Some(resolve_interface_chain(&iface, &[], react_file_path, mapping, ctx, state, depth + 1))
+     }
+     ```
+   - This is the SAME file (`resolver/extends.rs`) I was reading/investigating at the moment of interruption for task #13 — but the diagnostic bug being investigated is actually in a DIFFERENT file, `resolver/named.rs` (see Current Work below).
+
+   **`crates/core/src/resolver/alias.rs`** — MODIFIED (round 2)
+   - `resolve_base_as_chain`'s `CollectedType::Union(members)` arm now delegates to `resolve_union_alias(members, file_path, mapping, ctx, state, depth)` instead of a naive per-member merge — fixes intersection-wrapped discriminated unions.
+
+   **`crates/core/src/resolver/chain.rs`** — MODIFIED (round 2)
+   - Cycle-detection visit key changed from `format!("{}:{}", consuming_file, type_name)` to `format!("{}:{}<{}>", consuming_file, type_name, type_args.join(","))` — fixes `Partial<X>` collision.
+   - Line 185 (relevant to current investigation): `message: format!("Cannot resolve type '{}' in '{}' (scoped key: '{}')", type_name, consuming_file, scoped_key)` — one of two "Cannot resolve type" diagnostic emission sites.
+
+   **`crates/core/src/resolver/named.rs`** — relevant to current investigation, NOT yet modified
+   - Line 127: `message: format!("Cannot resolve type '{}' in '{}' — it will appear as opaque", name, consuming_file)` — the SECOND "Cannot resolve type" emission site, and the one whose message text ("will appear as opaque") exactly matches what's seen in the TanStack Table fixture's spurious warnings. I have NOT yet read the surrounding code to see whether this path still returns `PropType::Named` after pushing the diagnostic (which would confirm the diagnostic is simply wrong/misleading given the actual successful outcome) or whether something else is going on.
+
+   **`crates/core/src/extractor/component.rs`** — MODIFIED (round 1/2)
+   - Added `unwrap_as_expression()` helper; `ForwardRefComponent` added to `try_fc_annotation`'s recognized names; `try_forward_ref`/`try_hoc_wrapped` now unwrap `as`-casts before matching CallExpression.
+   - Added `try_rename_identifier_wrapped_component()` for the Headless UI identifier-indirection fix.
+
+   **`crates/core/src/extractor/visit.rs`** — MODIFIED (round 1/2)
+   - Added `visit_ts_module_declaration` override for namespace-stack tracking.
+   - Hooked `try_rename_identifier_wrapped_component` into `visit_variable_declaration`.
+
+   **`crates/core/src/extractor/jsdoc.rs`** — MODIFIED (round 1)
+   - Merged `find_jsdoc`/`extract_jsdoc_tags` into single `find_jsdoc_with_tags()` to fix JSDoc tag bleeding.
+
+   **`crates/core/src/extractor/alias.rs`** — MODIFIED (round 2)
+   - Added `TSType::TSFunctionType` arm to `classify_type_alias`, wrapping in `Passthrough` (same pattern as `TSTypeLiteral`) — fixes bare function-type aliases being dropped.
+
+   **`crates/binding/src/lib.rs`** — MODIFIED
+   - `JsExtractOptions.skip_html_props: Option<bool>` → `html_attributes: Option<String>` with `#[napi(ts_type = "'curated' | 'full' | 'none'")]`, mapped in `From<JsExtractOptions>`.
+
+   **`packages/napi/binding.d.ts`** — REGENERATED via real `napi build --platform --release --manifest-path ../../crates/binding/Cargo.toml --output-dir . --dts binding.d.ts` — `skipHtmlProps?: boolean` → `htmlAttributes?: 'curated' | 'full' | 'none'`. Verified via `tsc --noEmit -p packages/napi/tsconfig.json` (zero errors).
+
+   **`crates/cli/src/main.rs`** — MODIFIED
+   - Added `--html-attributes` flag to `ExtractArgs`, new `HtmlAttributeModeArg` clap ValueEnum.
+
+   **`crates/cli/src/config.rs`** — MODIFIED (major, unstubbed)
+   - Added `DocgenConfigSchema` struct (`#[serde(rename_all = "camelCase", deny_unknown_fields)]`) with fields: `src_dirs, exclude_patterns, exclude_prefixes, react_version, cross_package, pandacss_outdir, variant_functions, html_attributes, tsconfig_path, vanilla_extract, cache_dir`.
+   - Added `into_pipeline_options()` mapping method.
+   - Replaced `try_load_config`'s hard error with real schema deserialization + mapping.
+   - Fixed real bug: added `command.current_dir(dir)` (config file's own parent directory) to the node+tsx subprocess spawn — previously inherited caller's cwd, breaking `tsx` resolution when the CLI is invoked from a directory without `tsx` in its own `node_modules`.
+   - Added 4 tests including a REAL end-to-end test using `TempDir::new_in(apps/validate)` (since `tsx` is only installed there, not hoisted to repo root).
+   - `build_options()` signature gained an `html_attributes: Option<&str>` parameter (6 positional params now); all 4 call sites (`extract.rs`, `check.rs`, `inspect.rs`, `watch.rs`) updated.
+
+   **`crates/cli/Cargo.toml`** — MODIFIED — added `serde.workspace = true` and `tempfile.workspace = true` (dev-dependency).
+
+   **`docs/rdt-coverage.md`** — REWRITTEN (major) — all "known bugs" converted to "Fixed bugs" section with dated writeups and real before/after numbers; added new fixture coverage throughout tables; added new "HtmlAttributeMode: curated / full / none" section. Committed as part of `cc6ddf2`.
+
+   **`MIGRATING.md`** — MODIFIED — HTML attribute inheritance section rewritten to describe the new opt-in Full mode; removed stale "known bugs, not design choices" section (both listed bugs are fixed); updated fixture library count/list (15 libraries).
+
+   **`README.md`** — MODIFIED — status line fixed ("Config file loading is the next milestone" → "...are complete"); added `--html-attributes full` example and a note about `docgen.config.ts` schema to the CLI section.
+
+   **`docs/09-STATUS.md`** — MODIFIED (targeted, not full rewrite) — updated header (date, branch, test counts: 134 Rust tests) with a summary paragraph pointing at `docs/rdt-coverage.md` rather than duplicating the changelog.
+
+   **`apps/validate/src/baseline.ts`** — MODIFIED (round 3 harness fix)
+   ```typescript
+   function runScript(script: string): string {
+     const result = spawnSync('tsx', [resolve(import.meta.dirname, script)], {
+       encoding: 'utf8',
+       stdio: ['ignore', 'pipe', 'inherit'],
+       maxBuffer: 100 * 1024 * 1024,
+     })
+     if (result.error) throw new Error(`${script} failed to spawn: ${result.error.message}`)
+     if (result.status !== 0) throw new Error(`${script} exited with status ${result.status}`)
+     return result.stdout
+   }
+   ```
+   Committed as `e1b5571`.
+
+   **Fixtures created this session** (all real, trimmed, header-commented per `fixtures/radix/button.d.ts` convention):
+   - Round 1: `fixtures/fluentui/`, `fixtures/base-ui/`, `fixtures/antd/`, `fixtures/ark-ui/` (committed `5c70c4e`)
+   - Round 2: `fixtures/zendesk-garden/`, `fixtures/day-picker/`, `fixtures/headlessui/`, `fixtures/blueprint/` (committed `9254436`)
+   - Round 3: `fixtures/tanstack-table/` (types.ts, column.ts, data-table.tsx), `fixtures/react-final-form/` (Field.tsx, types.ts), `fixtures/react-resizable-panels/` (Panel.tsx, usePanelImperativeHandle.ts, types.ts), `fixtures/storybook-emotion/` (Button.tsx, theming.ts), `fixtures/ariakit/` (menu-context.ts, menu-provider.tsx, menu.tsx, menu-button.tsx, menu-item.tsx) — committed as `05f77b3`.
+
+4. Errors and fixes:
+   - **Stuck round-3 research agent**: spawned 5 of its own sub-agents instead of researching directly; ran over a day with zero progress across 3 check-ins ("no active task" each time). User explicitly called this out: "Is the research not done? It was running yesterday". Fixed by `TaskStop`-ing it and redispatching with explicit "do NOT delegate to further sub-agents" instructions — worked cleanly in ~6 minutes.
+   - **Relative `--src` breaking HtmlAttributeMode::Full silently**: `options.src_dirs.first()` used as-typed (relative) for `resolve_package_dts_path`, while discovered file paths are always absolute (the `ignore` walker absolutizes them) — `oxc_resolver`'s ancestor-walk from a 2-component relative path exhausts before reaching the real node_modules tree. Fixed via `std::fs::canonicalize`. Confirmed via direct comparison: `--src fixtures/shadcn` (broken, 3 props) vs `--src $(pwd)/fixtures/shadcn` (worked, 238 props) before the fix; both 238 after.
+   - **Namespace-qualified lookup key mismatch**: `@types/react` declares everything inside `declare namespace React {}`, so `real_html_attrs_chain`'s lookup needed to try `React.{bare_name}` first, not strip "React." — my initial implementation had it backwards. Fixed by trying qualified key first, bare key as fallback.
+   - **Config subprocess missing `current_dir`**: caught via a real end-to-end test failing with "Cannot find package 'tsx'" — the test's TempDir lived under `apps/validate/` (where tsx IS installed) but the subprocess still failed because it never set its own `current_dir`, inheriting whatever cwd `cargo test` happened to run from. Fixed by adding `command.current_dir(dir)` using the config file's own parent directory — a real, separate bug from the test environment issue, confirmed as a general correctness fix (matters for `--config ../other-project/docgen.config.ts`).
+   - **`spawnSync` 1MB `maxBuffer` truncating RDT baseline**: reproduced deterministically (same byte position both times) via `pnpm run compare:all` failing with "Unterminated string in JSON". Traced to Node's default 1MB `spawnSync` buffer being exceeded now that there are 20 fixture libraries. Fixed by raising to 100MB and adding explicit `result.error` checking.
+   - **`clippy::field_reassign_with_default`**: caught in my own test code (`let mut options = PipelineOptions::default(); options.html_attributes = X;`) — fixed by using struct-update syntax `PipelineOptions { html_attributes: X, ..Default::default() }`.
+   - **`cargo fmt` reformatting on commit**: happened repeatedly throughout the session (pre-commit hook exits 1 on first attempt, requiring `cargo fmt` + re-add + re-commit) — an established, expected, non-bypassed pattern (never used `--no-verify`).
+   - **Test design error caught by empirical verification**: my first `test_discriminant_detected_through_intersection_wrapped_union` test used a simplified 2-branch case that passed even BEFORE the real intersection-union fix was implemented — I had to trace into the REAL Day Picker source and discover the union is discriminated JOINTLY on `mode` AND `required` (values repeat across branches), requiring a corrected second test (`test_repeated_discriminant_values_decline_gracefully_but_still_merge_types`) that properly exercises the fix by wrapping in an intersection with a trivial base.
+   - **`CollectedType` doesn't derive `PartialEq`**: caught at compile time when writing a test asserting `**inner == CollectedType::String` — fixed by using nested `matches!()` instead of `==`.
+
+5. Problem Solving:
+   - Successfully diagnosed and fixed 8 real bugs across rounds 1-2, all verified via TDD + real fixture end-to-end testing + full harness regression checks before committing.
+   - Successfully architected and shipped a complete `HtmlAttributeMode` feature (resolver logic, pipeline wiring, CLI flag, NAPI option, config file schema) — the largest single piece of work this session — catching 3 additional real bugs along the way purely through insisting on real end-to-end verification rather than trusting unit tests alone.
+   - Successfully diagnosed and recovered from a stuck/misbehaving background research agent by using `TaskStop` and redispatching with corrected instructions.
+   - Currently mid-investigation on task #13 (spurious `UNRESOLVABLE_IMPORT` diagnostics for TanStack Table's cross-file generics) — confirmed via direct JSON inspection that the actual `PropType` output is CORRECT (`Named` with proper nested args) despite the misleading diagnostic text; just located the two candidate diagnostic-emission sites (`chain.rs:185` and `named.rs:127`) via grep, with `named.rs:127`'s message text ("will appear as opaque") being the exact match for what's observed. Have not yet read the code around `named.rs:127` to confirm the fix approach.
+
+6. All user messages (this segment, verbatim where practical):
+   - "What's next?"
+   - "Do it all"
+   - "What's next?" (repeated, mid-flight, asking for status)
+   - "Let's do that validation please"
+   - "Is the research not done? It was running yesterday"
+   - "Let's do that validation please" (implicitly reconfirmed after the stuck-agent fix, via continuing to wait)
+   - Answers to AskUserQuestion prompts: "All 5" (round 3 fixture scope), "All 4, including the type-inference-adjacent ones" (round 3 fix scope) — this is the most recent explicit instruction.
+   - No security-relevant instructions or sensitive-file-handling constraints were given in this segment beyond the standing system-level git safety protocols already in effect throughout the session (never force-push, never skip hooks/`--no-verify`, always stage specific files not `-A`, etc.), which were followed without exception.
+
+7. Pending Tasks (explicit, tracked via TaskCreate/TaskUpdate, current status):
+   - Task #13 [in_progress]: Fix spurious `UNRESOLVABLE_IMPORT` diagnostics on resolved cross-file generics (TanStack Table) — currently being investigated.
+   - Task #14 [pending]: Resolve named type-only imports from react (`import type { X } from "react"`) — react-resizable-panels gap.
+   - Task #15 [pending]: Investigate indexed-access opaque for children function/ReactNode union — react-final-form gap.
+   - Task #16 [pending]: Investigate `typeof StyledButton` / `ComponentProps<typeof X>` resolution — storybook-emotion gap.
+   - Tasks #9, #10, #11, #12 are marked [completed] (docs update, raw_string fix, HTML-attributes feature, round 3 validation/fixture-building — though #12's "third real-world validation round" task technically still has open follow-up fix work in #13-16, which are separate child tasks).
+
+8. Current Work:
+   Immediately before this summary was requested, I was investigating task #13 (the spurious `UNRESOLVABLE_IMPORT` diagnostic bug on TanStack Table's fixture). Specifically:
+   1. Rebuilt the release binary (`cargo build --release -p oxc-react-docgen`).
+   2. Ran `./target/release/oxc-react-docgen extract --src fixtures/tanstack-table --format canonical` and confirmed 12 warning diagnostics fire, all reading "Cannot resolve type 'TData'/'TValue'/'DisplayColumnDef'/'GroupColumnDef' ... — it will appear as opaque".
+   3. Inspected the actual JSON output for the `columns` prop on `DataTableProps`, and confirmed the REAL resolved type is fully correct and NOT opaque:
+      ```json
+      {
+        "name": "columns",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "union",
+            "members": [
+              {"kind": "named", "name": "DisplayColumnDef", "args": [{"kind": "named", "name": "TData", "args": []}, {"kind": "named", "name": "TValue", "args": []}]},
+              {"kind": "named", "name": "GroupColumnDef", "args": [...]},
+              {"kind": "named", "name": "AccessorColumnDef", "args": [...]}
+            ]
+          }
+        },
+        ...
+      }
+      ```
+      This confirms the bug is PURELY a misleading/incorrect diagnostic message — the actual extraction is correct (a `Named` reference to an unresolvable-but-nameable cross-file generic type, which is a legitimate, useful representation), but the tool still emits a warning claiming it "will appear as opaque" when it does not.
+   4. Ran `grep -n "Cannot resolve type" crates/core/src/resolver/*.rs` and found exactly two emission sites:
+      - `crates/core/src/resolver/chain.rs:185`: `message: format!("Cannot resolve type '{}' in '{}' (scoped key: '{}')", type_name, consuming_file, scoped_key)`
+      - `crates/core/src/resolver/named.rs:127`: `message: format!("Cannot resolve type '{}' in '{}' — it will appear as opaque", name, consuming_file)`
+   The message text at `named.rs:127` is the exact match for what's observed in the fixture's warnings ("will appear as opaque" appears verbatim). This was the last action taken — I have NOT yet read the surrounding code in `named.rs` around line 127 to understand the full context of this diagnostic push (specifically: what does the function return AFTER pushing this diagnostic — does it still produce `PropType::Named` as the final result, confirming the diagnostic is simply wrong/unconditional, or is there a more nuanced fallback path I need to understand before deciding on a fix).
+
+9. Optional Next Step:
+   The immediate, explicit next step — directly continuing the investigation I was mid-way through for task #13 when this summary was requested — is to read `crates/core/src/resolver/named.rs` around line 127 (likely lines ~100-140 to get full function context) to understand exactly what code path pushes this diagnostic and what it returns afterward. This directly continues my own last action ("just located the two candidate diagnostic-emission sites... have not yet read the surrounding code to confirm the fix approach") and stays strictly within the user's most recent explicit instruction ("All 4, including the type-inference-adjacent ones" — meaning task #13, the first and most concrete of the four, should be completed via TDD next: write a failing test reproducing the false-positive diagnostic given a resolvable-but-cross-file-generic type reference, confirm RED, then fix the `named.rs` code path so it does NOT emit the "Cannot resolve... will appear as opaque" diagnostic when the type actually resolves to a valid `PropType::Named` (as opposed to genuinely falling through to `PropType::Opaque`), then verify GREEN, run the full suite + clippy, verify against the real `fixtures/tanstack-table` fixture (expect 0 warnings, or at most legitimate ones, where previously there were 12), run the full `apps/validate` comparison harness for regressions, and commit. After task #13, the same rigor should be applied in order to task #14 (named type-only import resolution from "react"), then task #15 and #16 (the two investigation-style tasks, which may end each in either a fix or a documented-as-hard finding, per the user's explicit acknowledgment that these might not have a clean structural fix).
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

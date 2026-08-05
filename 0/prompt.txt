@@ -1,0 +1,1 @@
+Can we make sure commit messages are NEVER wrapped (at 80 char or anything else)? We want commits to be meaningful, friendlys, scannable, eng focused and succing. Devoid of AI slop and AI word salad.

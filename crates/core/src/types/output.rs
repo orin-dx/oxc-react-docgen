@@ -136,6 +136,77 @@ pub struct ParsedProp {
     pub parent: Option<PropParent>,
     /// All declarations of this prop name (for overloads/merging)
     pub declarations: Vec<PropParent>,
+    /// Private, zero-sized, and unconstructible outside this module — its
+    /// only purpose is to make a bare `ParsedProp { .. }` struct literal
+    /// fail to compile anywhere else, including other modules in this same
+    /// crate, so `required`/`default_value` can only be set together
+    /// through `ParsedProp::new`'s normalization. Skipped in both
+    /// directions of serde so the wire format is unaffected.
+    #[serde(skip)]
+    _seal: Seal,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+struct Seal;
+
+impl ParsedProp {
+    /// Constructs a `ParsedProp`, normalizing the `required`/`default_value`
+    /// relationship: RDT convention is that a supplied default value makes a
+    /// prop effectively optional regardless of what `required` was computed
+    /// as upstream (e.g. a destructured param with both a type annotation
+    /// marking it required and a default expression).
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        name: String,
+        prop_type: PropType,
+        required: bool,
+        default_value: Option<DefaultValue>,
+        description: String,
+        tags: BTreeMap<String, String>,
+        parent: Option<PropParent>,
+        declarations: Vec<PropParent>,
+    ) -> Self {
+        let required = if default_value.is_some() { false } else { required };
+        ParsedProp { name, prop_type, required, default_value, description, tags, parent, declarations, _seal: Seal }
+    }
+}
+
+#[cfg(test)]
+mod parsed_prop_tests {
+    use super::*;
+
+    #[test]
+    fn new_normalizes_required_false_when_default_value_present() {
+        let prop = ParsedProp::new(
+            "variant".to_string(),
+            PropType::String,
+            true, // caller (incorrectly) says required
+            Some(DefaultValue { value: "\"primary\"".to_string(), computed: false }),
+            "desc".to_string(),
+            Default::default(),
+            None,
+            vec![],
+        );
+
+        assert!(!prop.required, "a prop with a default value must not be reported as required");
+        assert!(prop.default_value.is_some());
+    }
+
+    #[test]
+    fn new_preserves_required_true_when_no_default_value() {
+        let prop = ParsedProp::new(
+            "variant".to_string(),
+            PropType::String,
+            true,
+            None,
+            "desc".to_string(),
+            Default::default(),
+            None,
+            vec![],
+        );
+
+        assert!(prop.required);
+    }
 }
 
 /// Default value for a prop.

@@ -295,19 +295,19 @@ pub fn resolve_component(mapping: &ComponentMapping, ctx: &ResolutionContext) ->
                 let prop_type = html::infer_html_attr_prop_type(attr_name);
                 notable_inherited.insert(
                     attr_name.to_string(),
-                    ParsedProp {
-                        name: attr_name.to_string(),
+                    ParsedProp::new(
+                        attr_name.to_string(),
                         prop_type,
-                        required: false,
-                        default_value: None,
-                        description: String::new(),
-                        tags: Default::default(),
-                        parent: Some(PropParent {
+                        false,
+                        None,
+                        String::new(),
+                        Default::default(),
+                        Some(PropParent {
                             name: format!("{}HTMLAttributes", html::capitalize_element(element)),
                             file_name: "node_modules/@types/react/index.d.ts".to_string(),
                         }),
-                        declarations: vec![],
-                    },
+                        vec![],
+                    ),
                 );
             }
         } else {
@@ -923,29 +923,29 @@ mod tests {
         let members: Vec<(&str, Vec<ParsedProp>)> = vec![
             (
                 "ButtonBaseProps",
-                vec![ParsedProp {
-                    name: "variant".into(),
-                    prop_type: PropType::StringLiteral("default".into()),
-                    required: true,
-                    default_value: None,
-                    description: String::new(),
-                    tags: BTreeMap::new(),
-                    parent: None,
-                    declarations: vec![],
-                }],
+                vec![ParsedProp::new(
+                    "variant".into(),
+                    PropType::StringLiteral("default".into()),
+                    true,
+                    None,
+                    String::new(),
+                    BTreeMap::new(),
+                    None,
+                    vec![],
+                )],
             ),
             (
                 "ButtonOutlineProps",
-                vec![ParsedProp {
-                    name: "variant".into(),
-                    prop_type: PropType::StringLiteral("outline".into()),
-                    required: true,
-                    default_value: None,
-                    description: String::new(),
-                    tags: BTreeMap::new(),
-                    parent: None,
-                    declarations: vec![],
-                }],
+                vec![ParsedProp::new(
+                    "variant".into(),
+                    PropType::StringLiteral("outline".into()),
+                    true,
+                    None,
+                    String::new(),
+                    BTreeMap::new(),
+                    None,
+                    vec![],
+                )],
             ),
         ];
         let discriminant = chain::find_discriminant_prop(&members);

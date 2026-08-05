@@ -291,16 +291,16 @@ fn component_props(args: &[PropType], _include_ref: bool) -> Option<KnownPattern
 }
 
 fn simple_prop(name: &str, prop_type: PropType, required: bool, description: &str) -> ParsedProp {
-    ParsedProp {
-        name: name.to_owned(),
+    ParsedProp::new(
+        name.to_owned(),
         prop_type,
         required,
-        default_value: None,
-        description: description.to_owned(),
-        tags: Default::default(),
-        parent: None,
-        declarations: vec![],
-    }
+        None,
+        description.to_owned(),
+        Default::default(),
+        None,
+        vec![],
+    )
 }
 
 #[cfg(test)]

@@ -1816,7 +1816,7 @@ expression: value
               }
             ]
           },
-          "required": true,
+          "required": false,
           "defaultValue": {
             "value": "'outlined'",
             "computed": false

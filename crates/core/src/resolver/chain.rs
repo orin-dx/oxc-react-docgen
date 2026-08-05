@@ -257,16 +257,16 @@ pub(super) fn resolve_interface_chain(
             (None, None) => None,
         };
 
-        chain.props.push(ParsedProp {
-            name: raw_prop.name.clone(),
+        chain.props.push(ParsedProp::new(
+            raw_prop.name.clone(),
             prop_type,
-            required: raw_prop.required,
+            raw_prop.required,
             default_value,
-            description: raw_prop.description.clone(),
-            tags: raw_prop.tags.clone(),
-            parent: Some(parent.clone()),
-            declarations: vec![parent.clone()],
-        });
+            raw_prop.description.clone(),
+            raw_prop.tags.clone(),
+            Some(parent.clone()),
+            vec![parent.clone()],
+        ));
     }
 
     chain

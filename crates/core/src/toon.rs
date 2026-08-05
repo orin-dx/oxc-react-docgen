@@ -169,19 +169,16 @@ mod tests {
         let mut props = BTreeMap::new();
         props.insert(
             "variant".to_string(),
-            ParsedProp {
-                name: "variant".into(),
-                required: false,
-                prop_type: PropType::LiteralUnion {
-                    members: vec!["primary".into(), "secondary".into()],
-                    has_default: true,
-                },
-                default_value: Some(crate::types::DefaultValue { value: "\"primary\"".into(), computed: false }),
-                description: "Visual variant".into(),
-                tags: Default::default(),
-                parent: None,
-                declarations: vec![],
-            },
+            ParsedProp::new(
+                "variant".into(),
+                PropType::LiteralUnion { members: vec!["primary".into(), "secondary".into()], has_default: true },
+                false,
+                Some(crate::types::DefaultValue { value: "\"primary\"".into(), computed: false }),
+                "Visual variant".into(),
+                Default::default(),
+                None,
+                vec![],
+            ),
         );
 
         let entry = ComponentEntry {

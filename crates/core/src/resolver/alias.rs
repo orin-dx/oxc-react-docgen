@@ -194,16 +194,16 @@ pub(super) fn resolve_base_as_chain(
             let mut chain = ResolvedChain::empty();
             for field in fields {
                 let prop_type = resolve_collected_type(&field.collected_type, file_path, ctx, state, depth);
-                chain.props.push(ParsedProp {
-                    name: field.name.clone(),
+                chain.props.push(ParsedProp::new(
+                    field.name.clone(),
                     prop_type,
-                    required: field.required,
-                    default_value: None,
-                    description: field.description.clone(),
-                    tags: Default::default(),
-                    parent: None,
-                    declarations: vec![],
-                });
+                    field.required,
+                    None,
+                    field.description.clone(),
+                    Default::default(),
+                    None,
+                    vec![],
+                ));
             }
             chain
         }

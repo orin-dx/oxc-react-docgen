@@ -124,16 +124,16 @@ mod tests {
         let mut props = BTreeMap::new();
         props.insert(
             "variant".to_string(),
-            ParsedProp {
-                name: "variant".into(),
-                prop_type: PropType::String,
-                required: true,
-                default_value: Some(DefaultValue { value: "\"a\"".into(), computed: false }),
-                description: "desc".into(),
-                tags: BTreeMap::new(),
-                parent: Some(PropParent { name: "ButtonProps".into(), file_name: "Button.tsx".into() }),
-                declarations: vec![],
-            },
+            ParsedProp::new(
+                "variant".into(),
+                PropType::String,
+                true,
+                Some(DefaultValue { value: "\"a\"".into(), computed: false }),
+                "desc".into(),
+                BTreeMap::new(),
+                Some(PropParent { name: "ButtonProps".into(), file_name: "Button.tsx".into() }),
+                vec![],
+            ),
         );
 
         let mut components = BTreeMap::new();

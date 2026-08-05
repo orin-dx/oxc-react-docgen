@@ -23,6 +23,10 @@ When adding a public type, run through the checklist in the `rust-types` skill. 
 
 `resolve_component()` is called in parallel via rayon. All inputs must be owned or `Arc`-wrapped — no borrowed data crosses thread boundaries. `ResolveState` accumulates diagnostics and visited-type tracking for a single resolution call; it is not shared.
 
+## Panic containment
+
+Anything reachable from a rayon `.map()` or a `DocgenPlugin` impl must go through `panic_guard::contain_panic` — see `pipeline/mod.rs` and `plugin.rs` for the call sites, and `docs/adr/0005-panic-containment-boundary.md` for why.
+
 ## Snapshot tests
 
 Seven fixtures in `crates/core/tests/snapshots/`. If a change affects output, regenerate with `/snapshot` before committing.

@@ -39,6 +39,19 @@ mod visit;
 /// standalone parser-only harness). 2000 leaves a wide safety margin.
 const MAX_SOURCE_NESTING_DEPTH: usize = 2000;
 
+/// Maximum AST recursion depth for `ts_type_to_collected` and its mutually
+/// recursive siblings. `max_bracket_nesting_depth` bounds raw-text bracket
+/// depth as a cheap pre-parse proxy for parser stack safety, but chained
+/// conditional types (`A extends B ? C extends D ? ... : ... : ...`) add one
+/// AST level per `? :` with no brackets at all — the proxy metric undercounts
+/// exactly this shape. This counter guards the extractor's own recursion the
+/// same way the resolver's `depth: u8` / `MAX_DEPTH` already guards
+/// `resolve_collected_type` (see `resolver/mod.rs`), just at a higher ceiling
+/// since this walk is a single in-process AST-to-struct conversion, not
+/// cross-file resolution. `MAX_SOURCE_NESTING_DEPTH` (bracket-based) and this
+/// constant (AST-based) are independent knobs and do not need to match.
+const MAX_TYPE_COLLECT_DEPTH: u8 = 200;
+
 /// Cheap linear scan bounding the maximum bracket-nesting depth of `source`.
 ///
 /// Only tracks a running max, not full balance — sufficient to bound recursion depth
@@ -319,7 +332,7 @@ impl<'src> SourceDataCollector<'src> {
         type_params: &Option<OxcBox<'a, TSTypeParameterInstantiation<'a>>>,
     ) -> Vec<String> {
         match type_params {
-            Some(tp) => tp.params.iter().map(|p| self.ts_type_to_collected(p).to_raw_string()).collect(),
+            Some(tp) => tp.params.iter().map(|p| self.ts_type_to_collected_at_depth(p, 0).to_raw_string()).collect(),
             None => vec![],
         }
     }
@@ -327,6 +340,27 @@ impl<'src> SourceDataCollector<'src> {
     // ─── TSType → CollectedType ───────────────────────────────────────────────
 
     pub(super) fn ts_type_to_collected<'a>(&mut self, ty: &TSType<'a>) -> CollectedType {
+        self.ts_type_to_collected_at_depth(ty, 0)
+    }
+
+    fn ts_type_to_collected_at_depth<'a>(&mut self, ty: &TSType<'a>, depth: u8) -> CollectedType {
+        if depth > MAX_TYPE_COLLECT_DEPTH {
+            use oxc_span::GetSpan;
+            let span = ty.span();
+            self.data.diagnostics.push(Diagnostic {
+                severity: DiagnosticSeverity::Warning,
+                message: format!(
+                    "Type nesting exceeds maximum extractor recursion depth ({depth} > {MAX_TYPE_COLLECT_DEPTH})"
+                ),
+                file: Some(self.file_path.to_string()),
+                line: None,
+                column: None,
+                help: Some("This may indicate a deeply chained conditional or mapped type.".into()),
+                code: DiagnosticCode::MaxDepthExceeded,
+            });
+            let raw = self.source[span.start as usize..span.end as usize].to_owned();
+            return CollectedType::Raw(raw);
+        }
         match ty {
             TSType::TSStringKeyword(_) => CollectedType::String,
             TSType::TSNumberKeyword(_) => CollectedType::Number,
@@ -358,7 +392,7 @@ impl<'src> SourceDataCollector<'src> {
                 let args = tr
                     .type_arguments
                     .as_ref()
-                    .map(|ta| ta.params.iter().map(|p| self.ts_type_to_collected(p)).collect())
+                    .map(|ta| ta.params.iter().map(|p| self.ts_type_to_collected_at_depth(p, depth + 1)).collect())
                     .unwrap_or_default();
                 CollectedType::Named { name, args }
             }
@@ -369,26 +403,33 @@ impl<'src> SourceDataCollector<'src> {
             }
 
             TSType::TSUnionType(u) => {
-                let members: Vec<CollectedType> = u.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
+                let members: Vec<CollectedType> =
+                    u.types.iter().map(|t| self.ts_type_to_collected_at_depth(t, depth + 1)).collect();
                 CollectedType::Union(members)
             }
 
             TSType::TSIntersectionType(i) => {
-                let members: Vec<CollectedType> = i.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
+                let members: Vec<CollectedType> =
+                    i.types.iter().map(|t| self.ts_type_to_collected_at_depth(t, depth + 1)).collect();
                 CollectedType::Intersection(members)
             }
 
-            TSType::TSArrayType(a) => CollectedType::Array(Box::new(self.ts_type_to_collected(&a.element_type))),
+            TSType::TSArrayType(a) => {
+                CollectedType::Array(Box::new(self.ts_type_to_collected_at_depth(&a.element_type, depth + 1)))
+            }
 
             TSType::TSTupleType(t) => {
                 let members: Vec<CollectedType> =
-                    t.element_types.iter().map(|el| self.ts_tuple_element_to_collected(el)).collect();
+                    t.element_types.iter().map(|el| self.ts_tuple_element_to_collected(el, depth + 1)).collect();
                 CollectedType::Tuple(members)
             }
 
             TSType::TSTypeLiteral(lit) => {
-                let fields: Vec<CollectedObjectField> =
-                    lit.members.iter().filter_map(|member| self.ts_signature_to_object_field(member)).collect();
+                let fields: Vec<CollectedObjectField> = lit
+                    .members
+                    .iter()
+                    .filter_map(|member| self.ts_signature_to_object_field(member, depth + 1))
+                    .collect();
                 CollectedType::Object(fields)
             }
 
@@ -401,20 +442,20 @@ impl<'src> SourceDataCollector<'src> {
                     .map(|p| {
                         p.type_annotation
                             .as_ref()
-                            .map(|ta| self.ts_type_to_collected(&ta.type_annotation))
+                            .map(|ta| self.ts_type_to_collected_at_depth(&ta.type_annotation, depth + 1))
                             .unwrap_or(CollectedType::Any)
                     })
                     .collect();
                 let param_names: Vec<Option<CompactString>> =
                     f.params.items.iter().map(|p| binding_pattern_name(&p.pattern)).collect();
                 // return_type on TSFunctionType is Box<TSTypeAnnotation> (not Option)
-                let return_type = self.ts_type_to_collected(&f.return_type.type_annotation);
+                let return_type = self.ts_type_to_collected_at_depth(&f.return_type.type_annotation, depth + 1);
                 CollectedType::Function { params, param_names, return_type: Box::new(return_type) }
             }
 
             TSType::TSIndexedAccessType(ia) => CollectedType::IndexedAccess {
-                obj: Box::new(self.ts_type_to_collected(&ia.object_type)),
-                key: Box::new(self.ts_type_to_collected(&ia.index_type)),
+                obj: Box::new(self.ts_type_to_collected_at_depth(&ia.object_type, depth + 1)),
+                key: Box::new(self.ts_type_to_collected_at_depth(&ia.index_type, depth + 1)),
             },
 
             TSType::TSTemplateLiteralType(tl) => {
@@ -425,34 +466,34 @@ impl<'src> SourceDataCollector<'src> {
                         parts.push(CollectedType::StringLiteral(s.into()));
                     }
                     if let Some(ty) = tl.types.get(i) {
-                        parts.push(self.ts_type_to_collected(ty));
+                        parts.push(self.ts_type_to_collected_at_depth(ty, depth + 1));
                     }
                 }
                 CollectedType::TemplateLiteral(parts)
             }
 
             TSType::TSConditionalType(c) => CollectedType::Conditional {
-                check: Box::new(self.ts_type_to_collected(&c.check_type)),
-                extends_type: Box::new(self.ts_type_to_collected(&c.extends_type)),
-                true_type: Box::new(self.ts_type_to_collected(&c.true_type)),
-                false_type: Box::new(self.ts_type_to_collected(&c.false_type)),
+                check: Box::new(self.ts_type_to_collected_at_depth(&c.check_type, depth + 1)),
+                extends_type: Box::new(self.ts_type_to_collected_at_depth(&c.extends_type, depth + 1)),
+                true_type: Box::new(self.ts_type_to_collected_at_depth(&c.true_type, depth + 1)),
+                false_type: Box::new(self.ts_type_to_collected_at_depth(&c.false_type, depth + 1)),
             },
 
             TSType::TSMappedType(m) => {
                 // In OXC 0.135, TSMappedType has `constraint: TSType` directly (not via
                 // type_parameter) and `type_annotation: Option<TSType>` (not Box<TSTypeAnnotation>)
-                let key_type = self.ts_type_to_collected(&m.constraint);
+                let key_type = self.ts_type_to_collected_at_depth(&m.constraint, depth + 1);
                 let value_type = m
                     .type_annotation
                     .as_ref()
-                    .map(|ta| self.ts_type_to_collected(ta))
+                    .map(|ta| self.ts_type_to_collected_at_depth(ta, depth + 1))
                     .unwrap_or(CollectedType::Unknown);
                 CollectedType::Mapped { key_type: Box::new(key_type), value_type: Box::new(value_type) }
             }
 
             TSType::TSParenthesizedType(p) => {
                 // Unwrap parentheses — (Type) → Type
-                self.ts_type_to_collected(&p.type_annotation)
+                self.ts_type_to_collected_at_depth(&p.type_annotation, depth + 1)
             }
 
             // TSTypeOperatorType covers keyof, unique, readonly. `keyof` is kept
@@ -466,10 +507,10 @@ impl<'src> SourceDataCollector<'src> {
             // element type is fully knowable.
             TSType::TSTypeOperatorType(op) => match op.operator {
                 TSTypeOperatorOperator::Keyof => {
-                    CollectedType::KeyOf(Box::new(self.ts_type_to_collected(&op.type_annotation)))
+                    CollectedType::KeyOf(Box::new(self.ts_type_to_collected_at_depth(&op.type_annotation, depth + 1)))
                 }
                 TSTypeOperatorOperator::Unique | TSTypeOperatorOperator::Readonly => {
-                    self.ts_type_to_collected(&op.type_annotation)
+                    self.ts_type_to_collected_at_depth(&op.type_annotation, depth + 1)
                 }
             },
 
@@ -491,16 +532,16 @@ impl<'src> SourceDataCollector<'src> {
     /// Convert a `TSTupleElement` (which is a superset of `TSType`) to a `CollectedType`.
     ///
     /// TSTupleElement inherits all TSType variants and adds TSOptionalType and TSRestType.
-    pub(super) fn ts_tuple_element_to_collected<'a>(&mut self, el: &TSTupleElement<'a>) -> CollectedType {
+    pub(super) fn ts_tuple_element_to_collected<'a>(&mut self, el: &TSTupleElement<'a>, depth: u8) -> CollectedType {
         match el {
             TSTupleElement::TSOptionalType(o) => {
                 // T? in tuple → Union([T, Undefined])
-                let inner = self.ts_type_to_collected(&o.type_annotation);
+                let inner = self.ts_type_to_collected_at_depth(&o.type_annotation, depth + 1);
                 CollectedType::Union(vec![inner, CollectedType::Undefined])
             }
             TSTupleElement::TSRestType(r) => {
                 // ...T[] in tuple → Array(T)
-                CollectedType::Array(Box::new(self.ts_type_to_collected(&r.type_annotation)))
+                CollectedType::Array(Box::new(self.ts_type_to_collected_at_depth(&r.type_annotation, depth + 1)))
             }
             // All TSType variants are inherited — we can safely transmute via span+raw fallback
             // but the cleanest approach is to match the known shared variants.
@@ -532,6 +573,7 @@ impl<'src> SourceDataCollector<'src> {
     pub(super) fn ts_signature_to_object_field<'a>(
         &mut self,
         member: &TSSignature<'a>,
+        depth: u8,
     ) -> Option<CollectedObjectField> {
         match member {
             TSSignature::TSPropertySignature(sig) => {
@@ -543,7 +585,7 @@ impl<'src> SourceDataCollector<'src> {
                 let collected_type = sig
                     .type_annotation
                     .as_ref()
-                    .map(|ta| self.ts_type_to_collected(&ta.type_annotation))
+                    .map(|ta| self.ts_type_to_collected_at_depth(&ta.type_annotation, depth + 1))
                     .unwrap_or(CollectedType::Any);
                 let description = self.find_jsdoc(sig.span.start);
                 Some(CollectedObjectField { name, collected_type, required: !sig.optional, description })
@@ -561,7 +603,7 @@ impl<'src> SourceDataCollector<'src> {
                     .map(|p| {
                         p.type_annotation
                             .as_ref()
-                            .map(|ta| self.ts_type_to_collected(&ta.type_annotation))
+                            .map(|ta| self.ts_type_to_collected_at_depth(&ta.type_annotation, depth + 1))
                             .unwrap_or(CollectedType::Any)
                     })
                     .collect();
@@ -570,7 +612,7 @@ impl<'src> SourceDataCollector<'src> {
                 let return_type = sig
                     .return_type
                     .as_ref()
-                    .map(|rt| self.ts_type_to_collected(&rt.type_annotation))
+                    .map(|rt| self.ts_type_to_collected_at_depth(&rt.type_annotation, depth + 1))
                     .unwrap_or(CollectedType::Void);
                 Some(CollectedObjectField {
                     name,
@@ -1619,6 +1661,41 @@ interface ButtonProps {
         assert!(
             !data.diagnostics.iter().any(|d| d.code == DiagnosticCode::SkippedCandidate),
             "a parameterless component must not be flagged as a skipped candidate, got: {:?}",
+            data.diagnostics
+        );
+    }
+
+    #[test]
+    fn deeply_chained_conditional_types_hit_the_depth_guard_not_the_bracket_heuristic() {
+        // Adversarial case for the depth-tracking gap: chained conditional types
+        // (`A extends B ? C extends D ? ... : ... : ...`) add one AST recursion
+        // level per `? :` with only 2 brackets total (none at all, actually —
+        // conditional types need no parens/braces/brackets per level), so
+        // max_bracket_nesting_depth's proxy metric undercounts this shape badly.
+        // Construct enough chained conditionals to exceed the depth guard while
+        // staying far under MAX_SOURCE_NESTING_DEPTH's bracket-based limit (2000),
+        // proving the depth counter — not the existing bracket guard — is what
+        // catches this.
+        let mut ty = "boolean".to_owned();
+        for i in 0..600 {
+            ty = format!("T{i} extends string ? {ty} : never");
+        }
+        let source = format!("type Deep = {ty};");
+
+        // The bracket-nesting proxy must NOT trip on this source — proves this
+        // test is closing a real gap, not duplicating existing coverage.
+        assert!(
+            max_bracket_nesting_depth(&source) <= MAX_SOURCE_NESTING_DEPTH,
+            "test fixture is invalid: bracket heuristic already catches this, \
+             defeating the purpose of the adversarial case"
+        );
+
+        let path = Utf8Path::new("/test/deep-conditional.ts");
+        let data = parse_file(path, &source);
+
+        assert!(
+            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::MaxDepthExceeded),
+            "expected a MaxDepthExceeded diagnostic from the new depth counter, got: {:?}",
             data.diagnostics
         );
     }

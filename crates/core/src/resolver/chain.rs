@@ -122,7 +122,14 @@ pub(super) fn resolve_props_chain(
 
     match matched {
         Some(super::precedence::SourceOrKnownMatch::TypeAlias { matched_key, alias }) => {
-            let alias = super::substitute::apply_generic_args(alias, &matched_key, type_args, consuming_file, ctx);
+            let alias = super::substitute::apply_generic_args(
+                alias,
+                &matched_key,
+                type_args,
+                consuming_file,
+                ctx,
+                &mut state.diagnostics,
+            );
             return resolve_type_alias_chain(&alias, consuming_file, mapping, ctx, state, depth);
         }
         Some(super::precedence::SourceOrKnownMatch::Interface(iface)) => {

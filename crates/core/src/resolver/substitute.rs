@@ -16,7 +16,9 @@
 use camino::Utf8Path;
 use rustc_hash::FxHashMap;
 
-use crate::types::{CollectedObjectField, CollectedType, CollectedTypeAlias, Diagnostic};
+use crate::types::{
+    CollectedObjectField, CollectedType, CollectedTypeAlias, Diagnostic, DiagnosticCode, DiagnosticSeverity,
+};
 
 use super::import::resolve_to_canonical;
 use super::ResolutionContext;
@@ -30,11 +32,35 @@ pub(super) type Substitution<'a> = FxHashMap<&'a str, CollectedType>;
 /// Build a `Substitution` from declared parameter names and the caller's
 /// arguments, tagging each argument with `origin_file` — the file the *caller*
 /// wrote them in, which is where any further name lookups on them must happen.
+///
+/// If `params` declares more type parameters than `args` supplies (a call site
+/// under-applying a generic alias, e.g. `Foo<string>` for `type Foo<T, U> = ...`),
+/// the trailing unfilled parameters are silently dropped from the substitution —
+/// pushes a `Warning` diagnostic naming them so this doesn't degrade silently.
 pub(super) fn build_substitution<'a>(
     params: &'a [compact_str::CompactString],
     args: &[CollectedType],
     origin_file: &Utf8Path,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Substitution<'a> {
+    if params.len() > args.len() {
+        let unfilled: Vec<&str> = params[args.len()..].iter().map(|p| p.as_str()).collect();
+        diagnostics.push(Diagnostic {
+            severity: DiagnosticSeverity::Warning,
+            message: format!(
+                "Generic alias in '{}' declares {} type parameter(s) but only {} were supplied — '{}' left unsubstituted",
+                origin_file,
+                params.len(),
+                args.len(),
+                unfilled.join("', '")
+            ),
+            file: Some(origin_file.to_string()),
+            line: None,
+            column: None,
+            help: Some("Check the call site supplies a type argument for every declared type parameter.".into()),
+            code: DiagnosticCode::GenericArgumentMismatch,
+        });
+    }
     params
         .iter()
         .map(|p| p.as_str())
@@ -60,6 +86,7 @@ pub(super) fn apply_generic_args(
     type_args: &[String],
     consuming_file: &Utf8Path,
     ctx: &ResolutionContext,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> CollectedTypeAlias {
     let Some(params) = ctx.global.type_alias_params.get(scoped_key) else {
         return alias;
@@ -68,7 +95,7 @@ pub(super) fn apply_generic_args(
         return alias;
     }
     let args: Vec<CollectedType> = type_args.iter().map(|a| raw_arg_to_collected_type(a)).collect();
-    let subst = build_substitution(params, &args, consuming_file);
+    let subst = build_substitution(params, &args, consuming_file, diagnostics);
     substitute_alias(&alias, &subst)
 }
 
@@ -102,7 +129,7 @@ pub(super) fn generic_alias_with_structured_args(
     // `args` were written wherever `name` (the reference being resolved) appears,
     // i.e. `consuming_file` — not `canonical_file` (where the generic alias itself
     // is declared).
-    let subst = build_substitution(params, args, consuming_file);
+    let subst = build_substitution(params, args, consuming_file, diagnostics);
     Some(substitute_alias(alias, &subst))
 }
 
@@ -285,5 +312,45 @@ pub(super) fn synthesize_utility_alias(
             Some(CollectedTypeAlias::Passthrough { target: args[0].clone(), file_path: file_path.to_owned() })
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::DiagnosticSeverity;
+    use compact_str::CompactString;
+
+    #[test]
+    fn build_substitution_diagnoses_unfilled_trailing_type_params() {
+        // `type Foo<T, U> = { a: T; b: U }` called as `Foo<string>` — `U` never
+        // supplied, so it's left as a bare `Named` reference with no diagnostic
+        // today. This should now warn.
+        let params: Vec<CompactString> = vec![CompactString::from("T"), CompactString::from("U")];
+        let args = vec![CollectedType::String];
+        let mut diagnostics: Vec<Diagnostic> = Vec::new();
+
+        let subst = build_substitution(&params, &args, Utf8Path::new("src/foo.ts"), &mut diagnostics);
+
+        assert_eq!(subst.len(), 1, "only T should have been substituted");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Warning);
+        assert!(
+            diagnostics[0].message.contains('U'),
+            "message should name the unfilled param: {}",
+            diagnostics[0].message
+        );
+    }
+
+    #[test]
+    fn build_substitution_is_silent_when_all_params_are_supplied() {
+        let params: Vec<CompactString> = vec![CompactString::from("T")];
+        let args = vec![CollectedType::String];
+        let mut diagnostics: Vec<Diagnostic> = Vec::new();
+
+        let subst = build_substitution(&params, &args, Utf8Path::new("src/foo.ts"), &mut diagnostics);
+
+        assert_eq!(subst.len(), 1);
+        assert!(diagnostics.is_empty());
     }
 }

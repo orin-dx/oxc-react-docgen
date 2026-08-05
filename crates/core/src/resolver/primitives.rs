@@ -141,7 +141,7 @@ pub(super) fn resolve_indexed_access(
             if let Some(field) = iface.props.iter().find(|f| f.name == key_str) {
                 let field_type = match ctx.global.interface_type_params.get(&iface.scoped_key) {
                     Some(params) if !params.is_empty() && !obj_args.is_empty() => {
-                        let subst = build_substitution(params, obj_args, consuming_file);
+                        let subst = build_substitution(params, obj_args, consuming_file, &mut state.diagnostics);
                         substitute_type(&field.collected_type, &subst)
                     }
                     _ => field.collected_type.clone(),

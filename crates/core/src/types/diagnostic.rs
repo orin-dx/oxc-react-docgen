@@ -56,6 +56,10 @@ pub enum DiagnosticSeverity {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DiagnosticCode {
     UnresolvableImport,
+    /// A generic type alias/interface was referenced with fewer type arguments
+    /// than it declares parameters — the trailing, unfilled parameters were
+    /// left as bare unresolved names in the substituted body.
+    GenericArgumentMismatch,
     OpaqueType,
     MaxDepthExceeded,
     Unknown,

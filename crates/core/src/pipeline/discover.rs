@@ -72,6 +72,16 @@ pub(super) fn discover_files(
                 // dropping the file.
                 let canonical = utf8.canonicalize_utf8().unwrap_or(utf8);
                 files.push(canonical);
+            } else {
+                diagnostics.push(Diagnostic {
+                    severity: DiagnosticSeverity::Warning,
+                    message: format!("Skipping non-UTF8 path: {}", path.to_string_lossy()),
+                    file: None,
+                    line: None,
+                    column: None,
+                    help: Some("Rename the file to use valid UTF-8 characters in its path.".into()),
+                    code: DiagnosticCode::IoError,
+                });
             }
         }
     }

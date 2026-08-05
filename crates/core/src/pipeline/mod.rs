@@ -745,6 +745,51 @@ mod tests {
         );
     }
 
+    // ── test_discover_files_reports_diagnostic_for_non_utf8_filename ─────────
+    //
+    // Bug A, second half: a non-UTF8 filename made `Utf8PathBuf::from_path_buf`
+    // fail, and the `if let Ok(utf8) = ...` branch had no `else` — the file
+    // silently vanished from the discovered set with zero diagnostic.
+
+    #[test]
+    #[cfg(unix)]
+    fn test_discover_files_reports_diagnostic_for_non_utf8_filename() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let tmp = TempDir::new().unwrap();
+        write_file(&tmp, "Button.tsx", "export const Button = () => null;");
+
+        // 0xFF is invalid UTF-8 in any position — construct a non-UTF8 filename
+        // directly, bypassing Rust's &str API (which can't represent one).
+        let bad_name = std::ffi::OsStr::from_bytes(b"Bad\xFF.tsx");
+
+        // ext4 and friends store filenames as opaque bytes, so this write
+        // succeeds on Linux. APFS (macOS) and NTFS (Windows) validate
+        // UTF-8/UTF-16 at the syscall level and reject it outright — there is
+        // no way to get a non-UTF8 path onto disk there at all, Rust API or
+        // not. Detect that behaviorally and skip rather than failing on the
+        // filesystem's precondition instead of the code under test.
+        if let Err(err) = fs::write(tmp.path().join(bad_name), "export const Bad = () => null;") {
+            eprintln!(
+                "skipping test_discover_files_reports_diagnostic_for_non_utf8_filename: \
+                 this filesystem rejects non-UTF8 filenames outright ({err})"
+            );
+            return;
+        }
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let (files, diagnostics) = discover_files(&[dir], &[]);
+
+        let names: Vec<&str> = files.iter().map(|f| f.file_name().unwrap()).collect();
+        assert!(names.contains(&"Button.tsx"), "valid-UTF8 file should still be discovered");
+        assert_eq!(files.len(), 1, "non-UTF8 filename must not silently appear in the discovered set");
+        assert!(
+            diagnostics.iter().any(|d| d.code == DiagnosticCode::IoError),
+            "expected an IoError diagnostic for the non-UTF8 filename, got {:?}",
+            diagnostics
+        );
+    }
+
     // ── test_extract_empty_src ────────────────────────────────────────────────
 
     #[test]

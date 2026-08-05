@@ -1,0 +1,287 @@
+<task-notification>
+<task-id>a0543c333a912e11e</task-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0602cae8-9776-4cab-baaa-67ad00aaf7d1/tasks/a0543c333a912e11e.output</output-file>
+<status>completed</status>
+<summary>Agent "Research Vite 6 plugin API" came to rest</summary>
+<note>A task-notification fires each time this agent comes to rest with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I now have everything needed for a complete, adversarially-verified synthesis. Here is the technical brief:
+
+---
+
+## Vite 6 Plugin API — Technical Brief for HMR Prop-Extraction Plugin
+
+### 1. `hotUpdate` Hook — Exact Signature
+
+The hook was introduced in **Vite 6.0** and replaces the deprecated `handleHotUpdate`. It is **not** called `HotUpdateContext` — the parameter type is `HotUpdateOptions`:
+
+```typescript
+// In Plugin interface (packages/vite/src/node/plugin.ts):
+hotUpdate?: ObjectHook&lt;
+  (
+    this: MinimalPluginContext &amp; { environment: DevEnvironment },
+    options: HotUpdateOptions,
+  ) =&gt; Array&lt;EnvironmentModuleNode&gt; | void | Promise&lt;Array&lt;EnvironmentModuleNode&gt; | void&gt;
+&gt;
+
+// HotUpdateOptions (packages/vite/src/node/server/hmr.ts):
+interface HotUpdateOptions {
+  type: 'create' | 'update' | 'delete'  // NEW in v6 — v5 had no 'type'
+  file: string
+  timestamp: number
+  modules: Array&lt;EnvironmentModuleNode&gt;  // per-environment, not mixed
+  read: () =&gt; string | Promise&lt;string&gt;
+  server: ViteDevServer
+}
+```
+
+**Key behavioral differences from `handleHotUpdate` (Vite 5):**
+- Called **once per environment** (client, ssr, etc.) rather than once globally
+- `modules` contains only `EnvironmentModuleNode` (scoped to the current environment), not the old `ModuleNode` mix
+- Handles `'create'` and `'delete'` events in addition to `'update'`
+- `this.environment` is automatically set to the current `DevEnvironment`
+
+**Return value semantics:**
+- Return `undefined`/`void` — Vite runs default HMR for `modules`
+- Return a filtered `EnvironmentModuleNode[]` — Vite runs HMR only for those modules
+- Return `[]` (empty array) — **fully suppresses default HMR**; your plugin owns the update entirely. Use this when sending custom events.
+
+**When to call `server.reloadPage()`:** There is no `server.reloadPage()` in the standard API. A full page reload is triggered by `this.environment.hot.send({ type: 'full-reload' })`. Call this only when the change cannot be handled incrementally (e.g., non-JS asset changes). For a `.tsx` component file with self-accepting HMR, returning the filtered module list is correct.
+
+---
+
+### 2. `moduleType` — Where It Lives (Not on `HotUpdateOptions`)
+
+`moduleType` does **not** exist on `HotUpdateOptions` or anywhere in the `hotUpdate` context. It is on the **`transform` hook's options**, sourced from Rolldown:
+
+```typescript
+// transform hook (plugin.ts):
+transform?: ObjectHook&lt;
+  (this: TransformPluginContext, code: string, id: string, options?: {
+    moduleType: ModuleType   // from 'rolldown' — 'js' | 'css' | 'asset' etc.
+    ssr?: boolean
+  }) =&gt; TransformResult,
+  { filter?: { moduleType?: ModuleTypeFilter } }
+&gt;
+```
+
+For virtual modules, you do **not** need `moduleType`. A virtual module is treated as JS by default if your `load` hook returns a JS string. The `type` field on `EnvironmentModuleNode` (`'js' | 'css' | 'asset'`) is set by Vite automatically based on the URL — virtual modules default to `'js'`.
+
+---
+
+### 3. Virtual Modules — `\0` Prefix Convention
+
+This is well-established, stable Rollup/Vite convention. The canonical pattern as shown in current Vite docs (using the new Rolldown filter API):
+
+```javascript
+import { exactRegex } from '@rolldown/pluginutils'  // Vite 6+ preferred
+
+const virtualModuleId = 'virtual:oxc-react-docgen'
+const resolvedId = '\0' + virtualModuleId
+
+export function oxcReactDocgenPlugin() {
+  return {
+    name: 'oxc-react-docgen',
+    resolveId: {
+      filter: { id: exactRegex(virtualModuleId) },
+      handler() { return resolvedId }
+    },
+    load: {
+      filter: { id: exactRegex(resolvedId) },
+      handler() { return `export default ${JSON.stringify(cache)}` }
+    },
+  }
+}
+```
+
+**Why `\0`:** Prevents other plugins from trying to process the ID (e.g., node_modules resolution). In the browser dev server, `\0foo` is encoded as `/@id/__x00__foo` and decoded before the plugin pipeline.
+
+**Caveat from Issue #19610 (Vite 6.2.0):** There was a reported inconsistency where `load()` received the ID without the `\0` prefix in some cases. The filter-based approach above (`exactRegex(resolvedId)`) is more robust than a manual `if (id === resolvedId)` check and is the current recommended pattern for Vite 6.
+
+**Invalidating a virtual module on HMR:**
+
+```javascript
+hotUpdate({ file, timestamp }) {
+  if (!file.endsWith('.tsx') &amp;&amp; !file.endsWith('.ts')) return
+
+  // Get the virtual module from the environment's module graph
+  const virtualMod = this.environment.moduleGraph.getModuleById(resolvedId)
+  if (virtualMod) {
+    this.environment.moduleGraph.invalidateModule(
+      virtualMod,
+      new Set(),
+      timestamp,
+      true
+    )
+  }
+
+  // Send custom event instead of triggering module reload
+  this.environment.hot.send({
+    type: 'custom',
+    event: 'oxc-react-docgen:update',
+    data: { file, props: rerunExtraction(file) }
+  })
+  return []
+}
+```
+
+---
+
+### 4. Environment API (Vite 6) — Stability and Necessity
+
+**Status: Experimental in Vite 6.0; stabilizing across 6.x; breaking changes deferred to Vite 7.**
+
+The Vite 6 docs state verbatim: *"We'll keep the APIs stable during Vite 6 to let the ecosystem experiment and build on top of it."* So for new plugins targeting Vite 6 only, it's usable. For plugins targeting Vite 5+6, it requires a compatibility shim.
+
+**`server.environments.client`** is a `DevEnvironment` with:
+- `.moduleGraph` — client-only module graph (`EnvironmentModuleGraph`)
+- `.hot` — `NormalizedHotChannel` for client-targeted HMR messages
+- `.name` — `'client'`
+
+**`server.environments.ssr`** — same shape, for SSR. Present if SSR is enabled.
+
+**For your use case (client-only, custom events):** You do **not** need the Environment API directly. The `hotUpdate` hook provides `this.environment` automatically. You only need `server.environments.client` if you're in a `configureServer` hook and need to proactively send events at startup (vs. reacting to file changes).
+
+**`this.environment.name !== 'client'` guard:** This is the recommended pattern — early-return from `hotUpdate` when running in the SSR environment, since you only want to send browser HMR events to the client environment:
+
+```javascript
+hotUpdate({ file }) {
+  if (this.environment.name !== 'client') return  // skip SSR environment
+  if (!isComponentFile(file)) return
+  // ... do work and send custom event
+}
+```
+
+---
+
+### 5. `Plugin[]` Return Type — Officially Supported
+
+Yes. The Vite Plugin API docs state explicitly:
+
+&gt; *"plugins also accepts presets including several plugins as a single element... The array will be flattened internally."*
+
+The official example:
+```javascript
+// framework-plugin
+export default function framework(config) {
+  return [frameworkRefresh(config), frameworkDevTools(config)]
+}
+```
+
+`@vitejs/plugin-react` uses this: its factory is typed `function viteReact(opts): Plugin[]` and returns an array. This is the recommended pattern for complex plugins that need to split concerns (e.g., separate build-time transform plugin from dev-server HMR plugin). For a prop-extraction plugin, returning `Plugin[]` is appropriate if you want separate `resolveId`/`load` and `hotUpdate` plugins, though a single plugin object can do both.
+
+---
+
+### Complete Pattern for Your Use Case
+
+```typescript
+// Plugin: virtual:oxc-react-docgen + custom HMR events
+import type { Plugin } from 'vite'
+import { exactRegex } from '@rolldown/pluginutils'
+
+const VIRTUAL_ID = 'virtual:oxc-react-docgen'
+const RESOLVED_ID = '\0' + VIRTUAL_ID
+
+export function oxcReactDocgenPlugin(): Plugin[] {
+  let extractionCache: ExtractionOutput | null = null
+
+  return [
+    {
+      name: 'oxc-react-docgen:serve',
+      apply: 'serve',
+
+      // --- Virtual module: serve current extraction result ---
+      resolveId: {
+        filter: { id: exactRegex(VIRTUAL_ID) },
+        handler() { return RESOLVED_ID },
+      },
+      load: {
+        filter: { id: exactRegex(RESOLVED_ID) },
+        handler() {
+          return `export default ${JSON.stringify(extractionCache ?? {})}`
+        },
+      },
+
+      // --- Startup: run initial extraction ---
+      async configureServer(server) {
+        extractionCache = await runFullExtraction()
+      },
+
+      // --- HMR: incremental re-extraction on component changes ---
+      async hotUpdate({ file, timestamp }) {
+        // Skip non-client environments (SSR, edge, etc.)
+        if (this.environment.name !== 'client') return
+
+        if (!isComponentFile(file)) return  // .ts/.tsx only
+
+        // Re-run incremental extraction
+        extractionCache = await runIncrementalExtraction(file, extractionCache)
+
+        // Invalidate virtual module so any import.meta.hot.accept() callers
+        // get a fresh module if they reload
+        const virtualMod = this.environment.moduleGraph.getModuleById(RESOLVED_ID)
+        if (virtualMod) {
+          this.environment.moduleGraph.invalidateModule(
+            virtualMod, new Set(), timestamp, true
+          )
+        }
+
+        // Send payload as custom event — client doesn't reload
+        this.environment.hot.send({
+          type: 'custom',
+          event: 'oxc-react-docgen:update',
+          data: { file, props: extractionCache },
+        })
+
+        return []  // suppress default module HMR entirely
+      },
+    },
+  ]
+}
+```
+
+```typescript
+// Client: virtual:oxc-react-docgen consumer
+import initialProps from 'virtual:oxc-react-docgen'
+
+let props = initialProps
+
+if (import.meta.hot) {
+  import.meta.hot.on('oxc-react-docgen:update', (payload) =&gt; {
+    props = payload.props
+    // trigger UI refresh
+  })
+}
+```
+
+---
+
+### Claim Verification Summary
+
+| Claim | Verdict | Confidence |
+|---|---|---|
+| `hotUpdate` param is `HotUpdateOptions` (not `HotUpdateContext`) | TRUE — `HotUpdateContext` is not a Vite type | HIGH — sourced from Vite source |
+| `HotUpdateOptions` has `type: 'create'\|'update'\|'delete'` | TRUE — new in Vite 6 | HIGH |
+| `this.environment` is auto-set in `hotUpdate` | TRUE — per plugin.ts: `this: MinimalPluginContext &amp; { environment: DevEnvironment }` | HIGH |
+| `moduleType` on `HotUpdateOptions` | FALSE — it's on `transform` options from Rolldown, not HotUpdateOptions | HIGH |
+| Return `[]` suppresses all default HMR | TRUE | HIGH |
+| `server.reloadPage()` exists | FALSE — use `this.environment.hot.send({ type: 'full-reload' })` | HIGH |
+| `\0` prefix in `load` hook received correctly | MOSTLY TRUE — filter-based approach (`exactRegex`) is more reliable than string equality | MEDIUM (Issue #19610 shows edge cases) |
+| Environment API stable in Vite 6 | PARTIALLY — stable within Vite 6.x, marked experimental at launch, breaking changes in Vite 7 | HIGH |
+| `Plugin[]` factory return supported | TRUE — officially documented, used by `@vitejs/plugin-react` | HIGH |
+| Simple plugin doesn't need Environment API | TRUE — `hotUpdate` provides `this.environment` automatically | HIGH |
+
+---
+
+Sources:
+- [HMR hotUpdate Plugin Hook | Vite](https://vite.dev/changes/hotupdate-hook)
+- [Plugin API | Vite](https://vite.dev/guide/api-plugin)
+- [Environment API for Plugins | Vite](https://vite.dev/guide/api-environment-plugins)
+- [HMR API | Vite](https://vite.dev/guide/api-hmr)
+- [Vite source: plugin.ts — hotUpdate hook TypeScript definition](https://raw.githubusercontent.com/vitejs/vite/main/packages/vite/src/node/plugin.ts)
+- [Vite source: moduleGraph.ts — EnvironmentModuleNode class](https://raw.githubusercontent.com/vitejs/vite/main/packages/vite/src/node/server/moduleGraph.ts)
+- [Vite source: hmr.ts — HotUpdateOptions &amp; HmrContext interfaces](https://raw.githubusercontent.com/vitejs/vite/main/packages/vite/src/node/server/hmr.ts)
+- [GitHub: vite-plugin-react/index.ts — Plugin[] return type confirmed](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/src/index.ts)
+- [GitHub Discussion: Manually invalidate virtual module #15504](https://github.com/vitejs/vite/discussions/15504)
+- [GitHub Issue: \0 prefix in load() hook #19610](https://github.com/vitejs/vite/issues/19610)</result>
+<usage><subagent_tokens>41221</subagent_tokens><tool_uses>33</tool_uses><duration_ms>412104</duration_ms></usage>
+</task-notification>

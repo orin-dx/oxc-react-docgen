@@ -3,14 +3,13 @@
 use camino::Utf8Path;
 use compact_str::CompactString;
 
-use crate::known::{push_known_opaque_diagnostic, resolve_known, KnownPatternResult};
+use crate::known::{push_known_opaque_diagnostic, KnownPatternResult};
 use crate::react_types;
 use crate::types::*;
 
 use super::alias::resolve_type_alias_chain;
 use super::collected::resolve_collected_type;
 use super::extends::resolve_extends_ref;
-use super::import::{lookup_interface, lookup_type_alias, resolve_to_canonical};
 use super::react::resolve_react_types_file;
 use super::{ResolutionContext, ResolvedChain, MAX_DEPTH};
 
@@ -104,27 +103,35 @@ pub(super) fn resolve_props_chain(
         return ResolvedChain::empty();
     }
 
-    // ── Step 2: Known pattern check (SxProps, VariantProps, ComponentProps…) ─
-    // Run BEFORE is_react_builtin: some builtins (ComponentPropsWithoutRef,
-    // PropsWithChildren, etc.) expand into props via known.rs and must NOT be
-    // short-circuited as terminal types. resolve_known with the bare name handles
-    // both "ComponentPropsWithoutRef" and "React.ComponentPropsWithoutRef".
-    {
-        let resolved_args: Vec<PropType> = type_args
-            .iter()
-            .map(|a| {
-                let ct = CollectedType::Raw(a.clone());
-                resolve_collected_type(&ct, consuming_file, ctx, state, depth + 1)
-            })
-            .collect();
+    // ── Step 2: Try the project's own source before a known-pattern shortcut ─
+    // See `resolver::precedence` — the shared, single-source-of-truth order
+    // `named.rs` already used correctly; this path used to reimplement the
+    // sequence independently and check known patterns first, silently
+    // replacing project-defined types (e.g. a project's own `interface
+    // SxProps`) with the hardcoded library shortcut. Fixed: P0-1.
+    let resolved_args: Vec<PropType> = type_args
+        .iter()
+        .map(|a| {
+            let ct = CollectedType::Raw(a.clone());
+            resolve_collected_type(&ct, consuming_file, ctx, state, depth + 1)
+        })
+        .collect();
 
-        if let Some(result) = resolve_known(type_name_bare, &resolved_args, &ctx.global, &ctx.enum_bare_index) {
+    let (canonical_file, canonical_name, matched) =
+        super::precedence::resolve_source_defined_or_known(type_name_bare, &resolved_args, consuming_file, ctx, state);
+
+    match matched {
+        Some(super::precedence::SourceOrKnownMatch::TypeAlias { matched_key, alias }) => {
+            let alias = super::substitute::apply_generic_args(alias, &matched_key, type_args, consuming_file, ctx);
+            return resolve_type_alias_chain(&alias, consuming_file, mapping, ctx, state, depth);
+        }
+        Some(super::precedence::SourceOrKnownMatch::Interface(iface)) => {
+            return resolve_interface_chain(iface, type_args, consuming_file, mapping, ctx, state, depth);
+        }
+        Some(super::precedence::SourceOrKnownMatch::Known(result)) => {
             return match result {
                 KnownPatternResult::Props(props) => ResolvedChain { props, ..ResolvedChain::empty() },
                 KnownPatternResult::Type(PropType::HtmlAttributes { element, omitted }) => {
-                    // HtmlAttributes from ComponentPropsWithoutRef<'button'> or
-                    // HTMLChakraProps<'button'> — record as InheritedLayer so
-                    // notable_inherited can be synthesized from the element's attr table.
                     let layer = InheritedLayer {
                         type_name: type_name.to_owned(),
                         file_name: resolve_react_types_file(consuming_file, ctx),
@@ -150,32 +157,14 @@ pub(super) fn resolve_props_chain(
                 }
             };
         }
+        None => {}
     }
 
-    // ── Step 2.5: React builtin check (after known patterns) ─────────────────
-    // Terminal React types (ReactNode, Ref, FC, etc.) that survived the known-pattern
-    // check are not prop providers — add to composes and stop.
+    // ── Step 2.5: React builtin check (after source and known patterns) ──────
+    // Terminal React types (ReactNode, Ref, FC, etc.) that survived both are not
+    // prop providers — add to composes and stop.
     if react_types::is_react_builtin(type_name_bare, &ctx.extra_builtins) {
         return ResolvedChain::empty_with_compose(type_name.to_owned());
-    }
-
-    // ── Step 3: Resolve import to canonical (file, name) ─────────────────────
-    let (canonical_file, canonical_name) = resolve_to_canonical(type_name, consuming_file, ctx, &mut state.diagnostics)
-        .unwrap_or_else(|| (consuming_file.to_owned(), type_name.to_owned()));
-
-    // ── Step 4: Type alias (Omit, Pick, Partial, Union, etc.) ────────────────
-    if let Some((matched_key, alias)) = lookup_type_alias(&ctx.global, canonical_file.as_str(), &canonical_name) {
-        let alias = alias.clone();
-        // Substitute declared type parameters (`type Assign<T, U> = ...`) with the
-        // call site's concrete `type_args` before resolving the body. No-op for
-        // non-generic aliases (the common case) — see resolver/substitute.rs.
-        let alias = super::substitute::apply_generic_args(alias, &matched_key, type_args, consuming_file, ctx);
-        return resolve_type_alias_chain(&alias, consuming_file, mapping, ctx, state, depth);
-    }
-
-    // ── Step 5: Interface ─────────────────────────────────────────────────────
-    if let Some(iface) = lookup_interface(&ctx.global, canonical_file.as_str(), &canonical_name) {
-        return resolve_interface_chain(iface, type_args, consuming_file, mapping, ctx, state, depth);
     }
 
     // ── Step 6: Unresolvable ──────────────────────────────────────────────────

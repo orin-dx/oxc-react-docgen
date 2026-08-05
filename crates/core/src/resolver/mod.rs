@@ -536,6 +536,76 @@ mod tests {
         assert_eq!(result, PropType::SxProps, "Expected SxProps, got {:?}", result);
     }
 
+    // ── Test: P0-1 regression — a project-defined SxProps extended via
+    // `extends` must not be silently replaced by the hardcoded MUI shortcut ────
+    // chain.rs's extends-clause path (reached via ExtendsRef::SameFile /
+    // ExtendsRef::Imported) independently reimplemented named.rs's "source
+    // before known-pattern" order and got it backwards — checking the known
+    // SxProps shortcut before ever looking at the project's own `interface
+    // SxProps`. This is the confirmed, demonstrable bug from the original audit.
+
+    #[test]
+    fn test_extends_clause_prefers_project_defined_sx_props_over_known_shortcut() {
+        let file_path = Utf8PathBuf::from("/test/theme-button.tsx");
+
+        let mut global = GlobalSourceData::default();
+        global.interfaces.insert(
+            format!("{}:SxProps", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:SxProps", file_path),
+                name: "SxProps".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "customSx".into(),
+                    collected_type: CollectedType::String,
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interfaces.insert(
+            format!("{}:ThemeButtonProps", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:ThemeButtonProps", file_path),
+                name: "ThemeButtonProps".into(),
+                file_path: file_path.clone(),
+                props: vec![],
+                extends: vec![ExtendsRef::SameFile { name: "SxProps".into(), type_args: vec![] }],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "ThemeButton".into(),
+            props_type_name: "ThemeButtonProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, _diagnostics) = resolve_component(&mapping, &ctx);
+
+        assert!(
+            entry.props.contains_key("customSx"),
+            "Expected the project's own SxProps interface's 'customSx' field to be inherited, \
+             got props {:?} — this means the hardcoded MUI SxProps known-pattern shortcut won \
+             instead of the project's own source-defined interface",
+            entry.props.keys().collect::<Vec<_>>()
+        );
+    }
+
     // ── Test 5: Indexed access - CSSProperties ────────────────────────────────
 
     #[test]

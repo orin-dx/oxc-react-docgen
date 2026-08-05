@@ -16,18 +16,22 @@ expression: value
           },
           "required": false,
           "defaultValue": null,
-          "description": "The element or component to render as. Enables polymorphic usage.",
+          "description": "The element or component to render as.\nEnables polymorphic rendering (e.g. render a button as an anchor).",
           "tags": {},
-          "parent": {
-            "name": "ButtonProps",
-            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          "parent": null,
+          "declarations": []
+        },
+        "bg": {
+          "name": "bg",
+          "type": {
+            "kind": "string"
           },
-          "declarations": [
-            {
-              "name": "ButtonProps",
-              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
-            }
-          ]
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `background-color`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
         },
         "children": {
           "name": "children",
@@ -45,6 +49,26 @@ expression: value
           "declarations": [
             {
               "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "colorScheme": {
+          "name": "colorScheme",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The color scheme to use, maps to a key in `theme.colors`.\nCommon values: `'blue'`, `'green'`, `'red'`, `'gray'`, `'teal'`, etc.",
+          "tags": {},
+          "parent": {
+            "name": "ThemingProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ThemingProps",
               "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
             }
           ]
@@ -215,6 +239,54 @@ expression: value
             }
           ]
         },
+        "mx": {
+          "name": "mx",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-left` and `margin-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "my": {
+          "name": "my",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-top` and `margin-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "px": {
+          "name": "px",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-left` and `padding-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "py": {
+          "name": "py",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-top` and `padding-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
         "rightIcon": {
           "name": "rightIcon",
           "type": {
@@ -231,6 +303,38 @@ expression: value
           "declarations": [
             {
               "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "rounded": {
+          "name": "rounded",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `border-radius`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "size": {
+          "name": "size",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The size of the component as defined in the component theme.\nCommon values: `'xs'`, `'sm'`, `'md'`, `'lg'`.",
+          "tags": {},
+          "parent": {
+            "name": "ThemingProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ThemingProps",
               "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
             }
           ]
@@ -290,6 +394,37 @@ expression: value
             }
           ]
         },
+        "styleConfig": {
+          "name": "styleConfig",
+          "type": {
+            "kind": "named",
+            "name": "Record",
+            "args": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "unknown"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {
+            "internal": "Used for type inference on the theme component key."
+          },
+          "parent": {
+            "name": "ThemingProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ThemingProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
         "type": {
           "name": "type",
           "type": {
@@ -328,13 +463,35 @@ expression: value
               "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
             }
           ]
+        },
+        "variant": {
+          "name": "variant",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The visual variant of the component as defined in the component theme.\nCommon built-in values: `'solid'`, `'outline'`, `'ghost'`, `'link'`.",
+          "tags": {},
+          "parent": {
+            "name": "ThemingProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ThemingProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
         }
       },
       "inheritance": [
         {
-          "typeName": "HTMLChakraProps",
+          "typeName": "React.ComponentPropsWithoutRef",
           "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
-          "omitted": [],
+          "omitted": [
+            "color"
+          ],
           "htmlElement": "button",
           "totalProps": 0
         }
@@ -578,7 +735,7 @@ expression: value
       },
       "discriminantProp": null,
       "composes": [
-        "ThemingProps"
+        "React.CSSProperties"
       ],
       "tags": {},
       "methods": []
@@ -587,12 +744,99 @@ expression: value
       "displayName": "ButtonGroup",
       "filePath": "[ROOT]/fixtures/chakra/Button.d.ts",
       "description": "",
-      "props": {},
+      "props": {
+        "as": {
+          "name": "as",
+          "type": {
+            "kind": "elementType"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The element or component to render as.\nEnables polymorphic rendering (e.g. render a button as an anchor).",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "bg": {
+          "name": "bg",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `background-color`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "mx": {
+          "name": "mx",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-left` and `margin-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "my": {
+          "name": "my",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-top` and `margin-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "px": {
+          "name": "px",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-left` and `padding-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "py": {
+          "name": "py",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-top` and `padding-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "rounded": {
+          "name": "rounded",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `border-radius`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        }
+      },
       "inheritance": [
         {
-          "typeName": "HTMLChakraProps",
+          "typeName": "React.ComponentPropsWithoutRef",
           "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
-          "omitted": [],
+          "omitted": [
+            "color"
+          ],
           "htmlElement": "div",
           "totalProps": 0
         }
@@ -726,7 +970,9 @@ expression: value
         }
       },
       "discriminantProp": null,
-      "composes": [],
+      "composes": [
+        "React.CSSProperties"
+      ],
       "tags": {},
       "methods": []
     },
@@ -735,6 +981,18 @@ expression: value
       "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
       "description": "",
       "props": {
+        "as": {
+          "name": "as",
+          "type": {
+            "kind": "elementType"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The element or component to render as.\nEnables polymorphic rendering (e.g. render a button as an anchor).",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
         "autoComplete": {
           "name": "autoComplete",
           "type": {
@@ -780,6 +1038,18 @@ expression: value
             }
           ]
         },
+        "bg": {
+          "name": "bg",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `background-color`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
         "colorScheme": {
           "name": "colorScheme",
           "type": {
@@ -787,16 +1057,16 @@ expression: value
           },
           "required": false,
           "defaultValue": null,
-          "description": "Maps to a key in `theme.colors`. Controls the colour family applied to\nfocus rings and interactive states.",
+          "description": "The color scheme to use, maps to a key in `theme.colors`.\nCommon values: `'blue'`, `'green'`, `'red'`, `'gray'`, `'teal'`, etc.",
           "tags": {},
           "parent": {
-            "name": "InputProps",
-            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            "name": "ThemingProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
           },
           "declarations": [
             {
-              "name": "InputProps",
-              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+              "name": "ThemingProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
             }
           ]
         },
@@ -1062,6 +1332,30 @@ expression: value
             }
           ]
         },
+        "mx": {
+          "name": "mx",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-left` and `margin-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "my": {
+          "name": "my",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-top` and `margin-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
         "name": {
           "name": "name",
           "type": {
@@ -1188,6 +1482,42 @@ expression: value
             }
           ]
         },
+        "px": {
+          "name": "px",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-left` and `padding-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "py": {
+          "name": "py",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-top` and `padding-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "rounded": {
+          "name": "rounded",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `border-radius`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
         "size": {
           "name": "size",
           "type": {
@@ -1195,16 +1525,47 @@ expression: value
           },
           "required": false,
           "defaultValue": null,
-          "description": "The size of the input. Resolves from the Input component theme.\nBuilt-in values: `'xs'`, `'sm'`, `'md'`, `'lg'`.",
+          "description": "The size of the component as defined in the component theme.\nCommon values: `'xs'`, `'sm'`, `'md'`, `'lg'`.",
           "tags": {},
           "parent": {
-            "name": "InputProps",
-            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            "name": "ThemingProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
           },
           "declarations": [
             {
-              "name": "InputProps",
-              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+              "name": "ThemingProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
+        },
+        "styleConfig": {
+          "name": "styleConfig",
+          "type": {
+            "kind": "named",
+            "name": "Record",
+            "args": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "unknown"
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "",
+          "tags": {
+            "internal": "Used for type inference on the theme component key."
+          },
+          "parent": {
+            "name": "ThemingProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ThemingProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
             }
           ]
         },
@@ -1279,25 +1640,27 @@ expression: value
           },
           "required": false,
           "defaultValue": null,
-          "description": "The visual variant of the input as defined in the Input component theme.\nBuilt-in values: `'outline'`, `'filled'`, `'flushed'`, `'unstyled'`.",
+          "description": "The visual variant of the component as defined in the component theme.\nCommon built-in values: `'solid'`, `'outline'`, `'ghost'`, `'link'`.",
           "tags": {},
           "parent": {
-            "name": "InputProps",
-            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+            "name": "ThemingProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
           },
           "declarations": [
             {
-              "name": "InputProps",
-              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
+              "name": "ThemingProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
             }
           ]
         }
       },
       "inheritance": [
         {
-          "typeName": "HTMLChakraProps",
+          "typeName": "React.ComponentPropsWithoutRef",
           "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
-          "omitted": [],
+          "omitted": [
+            "color"
+          ],
           "htmlElement": "input",
           "totalProps": 0
         }
@@ -1428,7 +1791,7 @@ expression: value
       },
       "discriminantProp": null,
       "composes": [
-        "ThemingProps"
+        "React.CSSProperties"
       ],
       "tags": {},
       "methods": []
@@ -1438,6 +1801,90 @@ expression: value
       "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
       "description": "",
       "props": {
+        "as": {
+          "name": "as",
+          "type": {
+            "kind": "elementType"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The element or component to render as.\nEnables polymorphic rendering (e.g. render a button as an anchor).",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "bg": {
+          "name": "bg",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `background-color`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "mx": {
+          "name": "mx",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-left` and `margin-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "my": {
+          "name": "my",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-top` and `margin-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "px": {
+          "name": "px",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-left` and `padding-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "py": {
+          "name": "py",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-top` and `padding-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "rounded": {
+          "name": "rounded",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `border-radius`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
         "size": {
           "name": "size",
           "type": {
@@ -1481,9 +1928,11 @@ expression: value
       },
       "inheritance": [
         {
-          "typeName": "HTMLChakraProps",
+          "typeName": "React.ComponentPropsWithoutRef",
           "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
-          "omitted": [],
+          "omitted": [
+            "color"
+          ],
           "htmlElement": "div",
           "totalProps": 0
         }
@@ -1617,7 +2066,9 @@ expression: value
         }
       },
       "discriminantProp": null,
-      "composes": [],
+      "composes": [
+        "React.CSSProperties"
+      ],
       "tags": {},
       "methods": []
     },
@@ -1625,12 +2076,99 @@ expression: value
       "displayName": "InputLeftAddon",
       "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
       "description": "Element placed to the left of the Input inside an InputGroup.",
-      "props": {},
+      "props": {
+        "as": {
+          "name": "as",
+          "type": {
+            "kind": "elementType"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The element or component to render as.\nEnables polymorphic rendering (e.g. render a button as an anchor).",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "bg": {
+          "name": "bg",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `background-color`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "mx": {
+          "name": "mx",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-left` and `margin-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "my": {
+          "name": "my",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-top` and `margin-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "px": {
+          "name": "px",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-left` and `padding-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "py": {
+          "name": "py",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-top` and `padding-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "rounded": {
+          "name": "rounded",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `border-radius`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        }
+      },
       "inheritance": [
         {
-          "typeName": "HTMLChakraProps",
+          "typeName": "React.ComponentPropsWithoutRef",
           "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
-          "omitted": [],
+          "omitted": [
+            "color"
+          ],
           "htmlElement": "div",
           "totalProps": 0
         }
@@ -1764,7 +2302,9 @@ expression: value
         }
       },
       "discriminantProp": null,
-      "composes": [],
+      "composes": [
+        "React.CSSProperties"
+      ],
       "tags": {},
       "methods": []
     },
@@ -1773,6 +2313,90 @@ expression: value
       "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
       "description": "Icon or interactive element positioned inside the left side of the Input.",
       "props": {
+        "as": {
+          "name": "as",
+          "type": {
+            "kind": "elementType"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The element or component to render as.\nEnables polymorphic rendering (e.g. render a button as an anchor).",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "bg": {
+          "name": "bg",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `background-color`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "mx": {
+          "name": "mx",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-left` and `margin-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "my": {
+          "name": "my",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-top` and `margin-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "px": {
+          "name": "px",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-left` and `padding-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "py": {
+          "name": "py",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-top` and `padding-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "rounded": {
+          "name": "rounded",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `border-radius`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
         "size": {
           "name": "size",
           "type": {
@@ -1796,9 +2420,11 @@ expression: value
       },
       "inheritance": [
         {
-          "typeName": "HTMLChakraProps",
+          "typeName": "React.ComponentPropsWithoutRef",
           "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
-          "omitted": [],
+          "omitted": [
+            "color"
+          ],
           "htmlElement": "div",
           "totalProps": 0
         }
@@ -1932,7 +2558,9 @@ expression: value
         }
       },
       "discriminantProp": null,
-      "composes": [],
+      "composes": [
+        "React.CSSProperties"
+      ],
       "tags": {},
       "methods": []
     },
@@ -1940,12 +2568,99 @@ expression: value
       "displayName": "InputRightAddon",
       "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
       "description": "Element placed to the right of the Input inside an InputGroup.",
-      "props": {},
+      "props": {
+        "as": {
+          "name": "as",
+          "type": {
+            "kind": "elementType"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The element or component to render as.\nEnables polymorphic rendering (e.g. render a button as an anchor).",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "bg": {
+          "name": "bg",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `background-color`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "mx": {
+          "name": "mx",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-left` and `margin-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "my": {
+          "name": "my",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-top` and `margin-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "px": {
+          "name": "px",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-left` and `padding-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "py": {
+          "name": "py",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-top` and `padding-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "rounded": {
+          "name": "rounded",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `border-radius`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        }
+      },
       "inheritance": [
         {
-          "typeName": "HTMLChakraProps",
+          "typeName": "React.ComponentPropsWithoutRef",
           "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
-          "omitted": [],
+          "omitted": [
+            "color"
+          ],
           "htmlElement": "div",
           "totalProps": 0
         }
@@ -2079,7 +2794,9 @@ expression: value
         }
       },
       "discriminantProp": null,
-      "composes": [],
+      "composes": [
+        "React.CSSProperties"
+      ],
       "tags": {},
       "methods": []
     },
@@ -2088,6 +2805,90 @@ expression: value
       "filePath": "[ROOT]/fixtures/chakra/Input.d.ts",
       "description": "Icon or interactive element positioned inside the right side of the Input.",
       "props": {
+        "as": {
+          "name": "as",
+          "type": {
+            "kind": "elementType"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "The element or component to render as.\nEnables polymorphic rendering (e.g. render a button as an anchor).",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "bg": {
+          "name": "bg",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `background-color`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "mx": {
+          "name": "mx",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-left` and `margin-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "my": {
+          "name": "my",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `margin-top` and `margin-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "px": {
+          "name": "px",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-left` and `padding-right`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "py": {
+          "name": "py",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `padding-top` and `padding-bottom`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
+        "rounded": {
+          "name": "rounded",
+          "type": {
+            "kind": "string"
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "Shorthand for `border-radius`.",
+          "tags": {},
+          "parent": null,
+          "declarations": []
+        },
         "size": {
           "name": "size",
           "type": {
@@ -2111,9 +2912,11 @@ expression: value
       },
       "inheritance": [
         {
-          "typeName": "HTMLChakraProps",
+          "typeName": "React.ComponentPropsWithoutRef",
           "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
-          "omitted": [],
+          "omitted": [
+            "color"
+          ],
           "htmlElement": "div",
           "totalProps": 0
         }
@@ -2247,32 +3050,15 @@ expression: value
         }
       },
       "discriminantProp": null,
-      "composes": [],
+      "composes": [
+        "React.CSSProperties"
+      ],
       "tags": {},
       "methods": []
     }
   },
   "enums": {},
-  "diagnostics": [
-    {
-      "severity": "info",
-      "message": "'ThemingProps' depends on 'chakra' at runtime and can't be statically resolved — it will appear as opaque",
-      "file": "[ROOT]/fixtures/chakra/Button.d.ts",
-      "line": null,
-      "column": null,
-      "help": null,
-      "code": "OPAQUE_TYPE"
-    },
-    {
-      "severity": "info",
-      "message": "'ThemingProps' depends on 'chakra' at runtime and can't be statically resolved — it will appear as opaque",
-      "file": "[ROOT]/fixtures/chakra/Button.d.ts",
-      "line": null,
-      "column": null,
-      "help": null,
-      "code": "OPAQUE_TYPE"
-    }
-  ],
+  "diagnostics": [],
   "stats": {
     "componentsExtracted": 8,
     "componentsSkipped": 0,

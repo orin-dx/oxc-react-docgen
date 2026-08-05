@@ -25,9 +25,7 @@ pub(super) enum SourceOrKnownMatch<'g> {
     TypeAlias { matched_key: String, alias: CollectedTypeAlias },
     /// An interface declared in the project's own source. `named.rs` only
     /// needs to know a match occurred (it returns a bare `Named` either way);
-    /// `chain.rs`'s wiring (a separate, subsequent change) is the first
-    /// caller that reads the interface itself to expand its props.
-    #[allow(dead_code)]
+    /// `chain.rs`'s wiring reads the interface itself to expand its props.
     Interface(&'g CollectedInterface),
     /// No source declaration found — a recognized library pattern instead.
     Known(KnownPatternResult),

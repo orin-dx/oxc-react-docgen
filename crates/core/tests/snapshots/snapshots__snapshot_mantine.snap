@@ -49,6 +49,45 @@ expression: value
             }
           ]
         },
+        "classNames": {
+          "name": "classNames",
+          "type": {
+            "kind": "named",
+            "name": "Partial",
+            "args": [
+              {
+                "kind": "named",
+                "name": "Record",
+                "args": [
+                  {
+                    "kind": "named",
+                    "name": "Selectors",
+                    "args": []
+                  },
+                  {
+                    "kind": "string"
+                  }
+                ]
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "A map of slot names to CSS class names. Applied in addition to Mantine's\nown generated classes, giving you a hook for per-slot styling.",
+          "tags": {
+            "example": ""
+          },
+          "parent": {
+            "name": "StylesApiProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "StylesApiProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
         "color": {
           "name": "color",
           "type": {
@@ -399,6 +438,66 @@ expression: value
             }
           ]
         },
+        "styles": {
+          "name": "styles",
+          "type": {
+            "kind": "named",
+            "name": "Record",
+            "args": [
+              {
+                "kind": "named",
+                "name": "Selectors",
+                "args": []
+              },
+              {
+                "kind": "named",
+                "name": "React.CSSProperties",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "A map of slot names to inline style objects. Applied alongside Mantine's\ngenerated styles so you can override specific slots without targeting a\nclass name.",
+          "tags": {
+            "example": ""
+          },
+          "parent": {
+            "name": "StylesApiProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "StylesApiProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
+        "unstyled": {
+          "name": "unstyled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, all Mantine-generated styles are removed. Useful when you want\nto apply a completely custom visual design.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "StylesApiProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "StylesApiProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
         "variant": {
           "name": "variant",
           "type": {
@@ -706,9 +805,7 @@ expression: value
         }
       },
       "discriminantProp": null,
-      "composes": [
-        "StylesApiProps"
-      ],
+      "composes": [],
       "tags": {},
       "methods": []
     },
@@ -761,6 +858,45 @@ expression: value
             {
               "name": "TextInputProps",
               "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "classNames": {
+          "name": "classNames",
+          "type": {
+            "kind": "named",
+            "name": "Partial",
+            "args": [
+              {
+                "kind": "named",
+                "name": "Record",
+                "args": [
+                  {
+                    "kind": "named",
+                    "name": "Selectors",
+                    "args": []
+                  },
+                  {
+                    "kind": "string"
+                  }
+                ]
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "A map of slot names to CSS class names. Applied in addition to Mantine's\nown generated classes, giving you a hook for per-slot styling.",
+          "tags": {
+            "example": ""
+          },
+          "parent": {
+            "name": "StylesApiProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "StylesApiProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
             }
           ]
         },
@@ -1582,6 +1718,41 @@ expression: value
             }
           ]
         },
+        "styles": {
+          "name": "styles",
+          "type": {
+            "kind": "named",
+            "name": "Record",
+            "args": [
+              {
+                "kind": "named",
+                "name": "Selectors",
+                "args": []
+              },
+              {
+                "kind": "named",
+                "name": "React.CSSProperties",
+                "args": []
+              }
+            ]
+          },
+          "required": false,
+          "defaultValue": null,
+          "description": "A map of slot names to inline style objects. Applied alongside Mantine's\ngenerated styles so you can override specific slots without targeting a\nclass name.",
+          "tags": {
+            "example": ""
+          },
+          "parent": {
+            "name": "StylesApiProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "StylesApiProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+            }
+          ]
+        },
         "type": {
           "name": "type",
           "type": {
@@ -1606,6 +1777,31 @@ expression: value
             {
               "name": "TextInputProps",
               "fileName": "[ROOT]/fixtures/mantine/TextInput.d.ts"
+            }
+          ]
+        },
+        "unstyled": {
+          "name": "unstyled",
+          "type": {
+            "kind": "boolean"
+          },
+          "required": false,
+          "defaultValue": {
+            "value": "false",
+            "computed": false
+          },
+          "description": "If `true`, all Mantine-generated styles are removed. Useful when you want\nto apply a completely custom visual design.",
+          "tags": {
+            "default": "false"
+          },
+          "parent": {
+            "name": "StylesApiProps",
+            "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "StylesApiProps",
+              "fileName": "[ROOT]/fixtures/mantine/Button.d.ts"
             }
           ]
         },
@@ -1725,34 +1921,13 @@ expression: value
       "inheritance": [],
       "notableInherited": {},
       "discriminantProp": null,
-      "composes": [
-        "StylesApiProps"
-      ],
+      "composes": [],
       "tags": {},
       "methods": []
     }
   },
   "enums": {},
-  "diagnostics": [
-    {
-      "severity": "info",
-      "message": "'StylesApiProps' depends on 'createStyles' at runtime and can't be statically resolved — it will appear as opaque",
-      "file": "[ROOT]/fixtures/mantine/Button.d.ts",
-      "line": null,
-      "column": null,
-      "help": null,
-      "code": "OPAQUE_TYPE"
-    },
-    {
-      "severity": "info",
-      "message": "'StylesApiProps' depends on 'createStyles' at runtime and can't be statically resolved — it will appear as opaque",
-      "file": "[ROOT]/fixtures/mantine/Button.d.ts",
-      "line": null,
-      "column": null,
-      "help": null,
-      "code": "OPAQUE_TYPE"
-    }
-  ],
+  "diagnostics": [],
   "stats": {
     "componentsExtracted": 2,
     "componentsSkipped": 0,

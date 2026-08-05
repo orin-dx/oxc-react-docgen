@@ -1,0 +1,1 @@
+Can we commit and do the full napi work along with the TS/JS CLI?

@@ -90,7 +90,7 @@ impl WatchSession {
     /// Idempotent — concurrent or repeated calls return the existing snapshot
     /// without re-running extraction.
     pub fn initialize(&self) -> ExtractionOutput {
-        let mut guard = self.initialized.lock().expect("init lock poisoned");
+        let mut guard = self.initialized.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if *guard {
             return self.snapshot();
         }
@@ -259,6 +259,25 @@ mod tests {
         let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
         let expected = results[0].components.len();
         assert!(results.iter().all(|r| r.components.len() == expected));
+    }
+
+    #[test]
+    fn initialize_recovers_from_a_poisoned_lock_instead_of_panicking() {
+        let session = WatchSession::new(empty_options());
+
+        // Poison the lock the same way an uncontained panic elsewhere inside
+        // initialize() could, before panic containment landed on the call
+        // sites initialize() reaches (Task 3/4/5).
+        let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = session.initialized.lock().unwrap();
+            panic!("simulated panic while holding the init lock");
+        }));
+        assert!(poisoned.is_err(), "the panic should have unwound past the lock guard");
+        assert!(session.initialized.is_poisoned(), "the lock should now be poisoned");
+
+        // Must recover instead of propagating a second panic via .expect(...).
+        let output = session.initialize();
+        assert!(output.components.is_empty());
     }
 
     #[test]

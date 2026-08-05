@@ -1,0 +1,24 @@
+<task-notification>
+<task-id>a94d9ef0664b04e4b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a94d9ef0664b04e4b.output</output-file>
+<status>completed</status>
+<summary>Agent "Build Base UI MenuRoot fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>No tracked files were modified; only the new `fixtures/base-ui/` directory is untracked, and the throwaway RDT script was deleted.
+
+## Summary
+
+**Files created** (both new, untracked, nothing else touched):
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/base-ui/MenuRoot.tsx` — adapted from `packages/react/src/menu/root/MenuRoot.tsx` at https://github.com/mui/base-ui/blob/master/packages/react/src/menu/root/MenuRoot.tsx
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/base-ui/MenuTrigger.tsx` — adapted from `packages/react/src/menu/trigger/MenuTrigger.tsx` at https://github.com/mui/base-ui/blob/master/packages/react/src/menu/trigger/MenuTrigger.tsx
+
+Both known paths were still current on `master` (verified default branch and paths via GitHub API before fetching). Used MenuRoot + MenuTrigger as specified — no deviation needed; MenuTrigger was reasonably self-contained after trimming.
+
+**Trimmed/stubbed**: all `@base-ui/utils/*` hooks, `floating-ui-react` (useDismiss/useListNavigation/useTypeahead/FloatingTree), `MenuStore`/`MenuHandle` state machine, sibling contexts (`MenubarContext`, `ContextMenuRootContext`), and menubar/composite-item integration — none installed here, none affect prop shape. Preserved near-verbatim: both `Props&lt;Payload&gt;` interfaces with full JSDoc, the generic `Payload` type param, the `namespace MenuRoot {...}` / `namespace MenuTrigger {...}` export pattern, and `BaseUIComponentProps`/`NativeButtonProps` (Base UI's `render`-prop polymorphism, copied from `internals/types.ts` and `types/index.ts`) — the actual mechanism replacing Radix's `asChild`.
+
+**Verification**: `tsc --noEmit` on the whole `fixtures/` tree — both files type-check clean (pre-existing errors in ark-ui/chakra/panda/rdt-compat are unrelated). Our binary (`extract --src fixtures/base-ui`) exits 0, no crash, 2 files parsed. Real `react-docgen-typescript` (tested via a throwaway script in `apps/validate/`, then deleted) parses both files successfully: **MenuRoot → 15 props** (defaultOpen, loopFocus, modal, onOpenChange, handle, children, etc.) and **MenuTrigger → 293 props** (full button HTML attribute set + render/className/style).
+
+**Notable finding** (the resolver stress-test working as intended): our tool only extracted `MenuRoot` (empty `props: {}`, with a clean diagnostic `Cannot resolve type 'MenuRoot.Props'`) and didn't detect `MenuTrigger` as a component at all (0 components, 0 diagnostics — a silent miss). Root cause, confirmed via code read: same-file `namespace X { export type Props = ... }` declarations are stored under the bare name (`"Props"`) while lookups use the dotted qualified name (`"X.Props"`), so same-file namespace-member type refs never resolve (`crates/core/src/extractor/mod.rs` `ts_type_name_str`/`visit_ts_type_alias_declaration`, `crates/core/src/resolver/chain.rs::resolve_props_chain`). This is untested territory — no existing snapshot fixture uses TS namespaces, and `docs/09-STATUS.md` doesn't mention it. RDT resolves both cases fine via the real TS checker. This is a genuine parity gap worth a follow-up issue, not something I fixed.</result>
+<usage><subagent_tokens>113872</subagent_tokens><tool_uses>45</tool_uses><duration_ms>683717</duration_ms></usage>
+</task-notification>

@@ -1,0 +1,41 @@
+<task-notification>
+<task-id>a13ef31f8d46c4aec</task-id>
+<tool-use-id>toolu_01CfYWFLiCo3KhLjhd3LeZvq</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a13ef31f8d46c4aec.output</output-file>
+<status>completed</status>
+<summary>Agent "Research builtin-allowlist config and diagnostic output UX" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All confirmed. Here is the research report.
+
+## Q1 — Is `extra_builtins` user-configurable from the CLI/config today?
+
+**No.** The full chain:
+
+- `crates/core/src/react_types.rs:35` — `is_react_builtin(name, extra: &amp;FxHashSet&lt;CompactString&gt;)`, comment at line 34: *"extra allows callers... to pass additional builtin names from PipelineOptions.extra_builtins without needing to change this file."*
+- `crates/core/src/resolver/mod.rs:53` — `ResolutionContext.extra_builtins: FxHashSet&lt;CompactString&gt;`; populated at `crates/core/src/resolver/mod.rs:89` inside `ResolutionContext::new`: `extra_builtins: options.extra_builtins.clone()`.
+- `crates/core/src/pipeline/mod.rs:80` — `PipelineOptions.extra_builtins: FxHashSet&lt;compact_str::CompactString&gt;` (doc: "Additional builtin type names beyond the React standard set"). Defaults to `Default::default()` (empty) at `crates/core/src/pipeline/mod.rs:103`.
+- **NAPI binding** (`crates/binding/src/lib.rs`): `JsExtractOptions.extra_builtins: Option&lt;Vec&lt;String&gt;&gt;` (line 41), converted into the `FxHashSet&lt;CompactString&gt;` at lines 58-59 and threaded into `PipelineOptions` at line 98. This is a real, working programmatic entry point.
+- **CLI**: `crates/cli/src/main.rs` — `ExtractArgs` (lines 62-91) has no `--extra-builtins`/equivalent flag at all.
+- **Config file**: `crates/cli/src/config.rs:7-9` — the doc comment on `DocgenConfigSchema` explicitly says it's *"a deliberate subset of PipelineOptions — everything except the fields that need complex map/object values (extraPaths, knownTypeOverrides, extraBuiltins), which aren't supported via config file yet."* The struct (lines 14-26) has no `extra_builtins` field, and `deny_unknown_fields` (line 13) means a user who adds `extraBuiltins` to `docgen.config.ts` gets a hard error, not silent ignoring. `into_pipeline_options()` (lines 30-72) never sets `opts.extra_builtins`, so it stays the empty default from `PipelineOptions::default()`.
+
+**Conclusion:** `extra_builtins` is currently settable only via the Rust API (`PipelineOptions` struct literal) or the NAPI/JS binding (`JsExtractOptions.extra_builtins`). A CLI user has **no way** to add a custom name without recompiling — neither a flag nor a config-file field exists, and the config schema explicitly documents this as a known gap.
+
+## Q2 — Any TS-lib (`lib.es5.d.ts`/`lib.dom.d.ts`) parsing infrastructure?
+
+**No — purely react-specific today.** The `HtmlAttributeMode::Full` logic in `crates/core/src/pipeline/mod.rs:285-330` (Phase 3.5) hardcodes `"react"` as the package name: `crate::resolver::resolve_package_dts_path(&amp;from_dir, "react")` (line 305), then reads/parses/caches that one file and merges it via `global.merge(&amp;react_dts_path, data)` (line 313). `resolve_package_dts_path` (`crates/core/src/resolver/mod.rs:101-110`) and `resolve_package_types_file` (`crates/core/src/resolver/react.rs:129-...`) are both generic-looking (take `package_name: &amp;str`) but are only ever invoked with `"react"` (`crates/core/src/resolver/react.rs:119`) or `"@types/react"` in tests (`crates/core/src/resolver/react.rs:252`). Nothing in the codebase calls them with `"typescript"` or references `lib.es5`/`lib.dom`/ambient/`EcmaGlobal` — a repo-wide grep for those terms turned up zero hits outside this analysis. Instead, natively-global types like `Date` fall through to `named.rs`'s step-6 hardcoded allowlist or step-7's diagnostic (see below) — there's no ambient-global resolution path at all.
+
+**`typescript` package presence:** No top-level `node_modules/typescript` (pnpm doesn't hoist it there; `ls` confirms `node_modules/typescript` doesn't exist). It is present transitively in pnpm's content-addressed store at `node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/lib/`, which does contain `lib.es5.d.ts` (213K) and `lib.dom.d.ts` (1.8M), confirmed via `ls -la`. It is not a direct dependency in the root `package.json` (no `"typescript"` line found there). So the files exist and are reachable, but not at a predictable un-versioned path the way `resolve_package_dts_path` currently expects for npm packages — using it would require pnpm-store-aware resolution.
+
+## Q3 — How diagnostics reach the CLI user
+
+`ExtractionOutput.diagnostics` flows to `crates/cli/src/commands/extract.rs:33` (`output = pipeline::extract(&amp;options)`), then, only when `!json_mode &amp;&amp; !quiet`, to `print_summary(&amp;output, quiet)` and `print_diagnostics(&amp;output.diagnostics)` (lines 44-47). In `--json` mode, the function returns early at line 41 after printing the raw serialized `output` (diagnostics included as plain JSON array) — no human-readable diagnostic text at all in that mode.
+
+**No `miette` involvement for diagnostics.** `Diagnostic` (`crates/core/src/types/diagnostic.rs:6-15`) has no `miette::Diagnostic` derive/impl anywhere in the repo (confirmed via grep) — `miette` is used only for command-level `Result&lt;()&gt;`/error propagation (`IntoDiagnostic`, `WrapErr` in `extract.rs:1`), contradicting the CLAUDE.md aspiration that "error display uses miette" for diagnostics specifically.
+
+Actual display, in `crates/cli/src/output.rs`:
+- `print_summary` (lines 4-32): one-line colored summary to **stderr** — component/enum counts, `"{warnings} warnings"` and `"{errors} errors"` counts (yellow/red via `owo_colors` if nonzero), duration.
+- `print_diagnostics` (lines 35-53): flat list to stderr, one line per diagnostic: `  [{prefix}] {file}:{message}` (or without file), plus an indented `help:` line if present. `prefix` is `"error"` (red), `"warn"` (yellow), or `"info"` (dimmed) per severity (lines 38-43).
+
+No grouping by file, no per-code distinction, no summary breakdown by `DiagnosticCode`, and severities are not gated by `--verbose`/`-v` — `verbose` only controls `init_tracing` log level (`main.rs:167-172`), unrelated to diagnostic visibility. The only visibility switch is `--quiet` (suppresses both) and `--json` (suppresses the human-readable path entirely, diagnostics only appear inside the JSON blob). `extract.rs:60-63` additionally makes the process `exit(2)` if any diagnostic has `Error` severity — `Warning`-severity items like `UnresolvableImport` never affect exit code.</result>
+<usage><subagent_tokens>44677</subagent_tokens><tool_uses>27</tool_uses><duration_ms>112565</duration_ms></usage>
+</task-notification>

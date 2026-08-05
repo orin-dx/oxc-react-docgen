@@ -26,7 +26,7 @@ pub(super) fn resolve_named(
 ) -> PropType {
     if depth > MAX_DEPTH {
         state.diagnostics.push(super::max_depth_diagnostic(&format!("named type '{}'", name), consuming_file));
-        return PropType::Opaque { raw: name.to_string(), reason: OpaqueReason::DepthExceeded };
+        return OpaqueDetail::new(name.to_string(), OpaqueReason::DepthExceeded);
     }
 
     // ── 1. React builtin check ────────────────────────────────────────────────
@@ -72,8 +72,13 @@ pub(super) fn resolve_named(
     if let Some(result) = resolve_known(name.as_str(), &resolved_args, &ctx.global, &ctx.enum_bare_index) {
         return match result {
             KnownPatternResult::Type(pt) => {
-                if let PropType::Opaque { reason, .. } = &pt {
-                    push_known_opaque_diagnostic(&mut state.diagnostics, reason, name.as_str(), consuming_file);
+                if let PropType::Opaque(detail) = &pt {
+                    push_known_opaque_diagnostic(
+                        &mut state.diagnostics,
+                        detail.reason(),
+                        name.as_str(),
+                        consuming_file,
+                    );
                 }
                 pt
             }

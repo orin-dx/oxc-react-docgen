@@ -140,7 +140,7 @@ fn format_type_compact(prop_type: &PropType) -> String {
             }
         }
         PropType::SxProps => "SxProps".into(),
-        PropType::Opaque { raw, .. } => format!("opaque({raw})"),
+        PropType::Opaque(detail) => format!("opaque({})", detail.raw()),
     }
 }
 
@@ -247,10 +247,10 @@ mod tests {
         );
         assert_eq!(format_type_compact(&PropType::SxProps), "SxProps");
         assert_eq!(
-            format_type_compact(&PropType::Opaque {
-                raw: "CustomType".into(),
-                reason: crate::types::output::OpaqueReason::ConditionalType
-            }),
+            format_type_compact(&crate::types::output::OpaqueDetail::new(
+                "CustomType",
+                crate::types::output::OpaqueReason::ConditionalType
+            )),
             "opaque(CustomType)"
         );
 

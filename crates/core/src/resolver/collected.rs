@@ -22,7 +22,7 @@ pub fn resolve_collected_type(
 ) -> PropType {
     if depth > MAX_DEPTH {
         state.diagnostics.push(super::max_depth_diagnostic(&format!("type '{}'", ct.to_raw_string()), consuming_file));
-        return PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::DepthExceeded };
+        return OpaqueDetail::new(ct.to_raw_string(), OpaqueReason::DepthExceeded);
     }
 
     match ct {
@@ -77,7 +77,7 @@ pub fn resolve_collected_type(
         // type-to-key-names resolver we don't have, so degrade gracefully.
         CollectedType::KeyOf(_) => {
             push_opaque_diagnostic(state, "a standalone 'keyof'", ct, consuming_file);
-            PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::MappedType }
+            OpaqueDetail::new(ct.to_raw_string(), OpaqueReason::MappedType)
         }
 
         // ── Generic-alias substitution marker — switch file context to where
@@ -101,11 +101,11 @@ pub fn resolve_collected_type(
         // ── Opaque (needs type checker) ───────────────────────────────────────
         CollectedType::Conditional { .. } => {
             push_opaque_diagnostic(state, "a conditional type", ct, consuming_file);
-            PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::ConditionalType }
+            OpaqueDetail::new(ct.to_raw_string(), OpaqueReason::ConditionalType)
         }
         CollectedType::Mapped { .. } => {
             push_opaque_diagnostic(state, "a mapped type", ct, consuming_file);
-            PropType::Opaque { raw: ct.to_raw_string(), reason: OpaqueReason::MappedType }
+            OpaqueDetail::new(ct.to_raw_string(), OpaqueReason::MappedType)
         }
 
         // ── Raw fallback ─────────────────────────────────────────────────────
@@ -148,7 +148,7 @@ pub fn resolve_collected_type(
                 PropType::Named { name: trimmed.into(), args: vec![] }
             } else {
                 push_opaque_diagnostic(state, "an unparsable raw type expression", ct, consuming_file);
-                PropType::Opaque { raw: s.clone(), reason: OpaqueReason::UnsupportedExpression }
+                OpaqueDetail::new(s.clone(), OpaqueReason::UnsupportedExpression)
             }
         }
     }

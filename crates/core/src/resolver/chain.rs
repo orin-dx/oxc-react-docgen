@@ -135,8 +135,13 @@ pub(super) fn resolve_props_chain(
                     ResolvedChain { inheritance: vec![layer], ..ResolvedChain::empty() }
                 }
                 KnownPatternResult::Type(pt) => {
-                    if let PropType::Opaque { reason, .. } = &pt {
-                        push_known_opaque_diagnostic(&mut state.diagnostics, reason, type_name_bare, consuming_file);
+                    if let PropType::Opaque(detail) = &pt {
+                        push_known_opaque_diagnostic(
+                            &mut state.diagnostics,
+                            detail.reason(),
+                            type_name_bare,
+                            consuming_file,
+                        );
                     }
                     ResolvedChain::empty_with_compose(pt.raw_string())
                 }

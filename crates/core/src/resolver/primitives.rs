@@ -178,7 +178,7 @@ pub(super) fn resolve_indexed_access(
         help: Some("Enable typescript-go to resolve indexed access types.".into()),
         code: DiagnosticCode::IndexedAccessOpaque,
     });
-    PropType::Opaque { raw: expression.clone(), reason: OpaqueReason::IndexedAccess { expression } }
+    OpaqueDetail::new(expression.clone(), OpaqueReason::IndexedAccess { expression })
 }
 
 /// Search an interface's `extends` chain (depth-first) for a field, returning

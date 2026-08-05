@@ -99,16 +99,13 @@ pub fn resolve_known(
             if let Some(base) = args.first() {
                 Some(KnownPatternResult::Type(PropType::Union(vec![
                     base.clone(),
-                    PropType::Opaque {
-                        raw: "/* module augmentation */".into(),
-                        reason: OpaqueReason::ModuleAugmentation,
-                    },
+                    OpaqueDetail::new("/* module augmentation */", OpaqueReason::ModuleAugmentation),
                 ])))
             } else {
-                Some(KnownPatternResult::Type(PropType::Opaque {
-                    raw: "OverridableStringUnion".into(),
-                    reason: OpaqueReason::ModuleAugmentation,
-                }))
+                Some(KnownPatternResult::Type(OpaqueDetail::new(
+                    "OverridableStringUnion",
+                    OpaqueReason::ModuleAugmentation,
+                )))
             }
         }
 
@@ -123,17 +120,17 @@ pub fn resolve_known(
         "HTMLChakraProps" | "HTMLArkProps" | "HTMLStyledProps" => html_attrs_from_first_arg(args),
 
         // ThemingProps is runtime-dependent on the chakra theme
-        "ThemingProps" => Some(KnownPatternResult::Type(PropType::Opaque {
-            raw: "ThemingProps".into(),
-            reason: OpaqueReason::RuntimeDependent { function_name: "chakra".into() },
-        })),
+        "ThemingProps" => Some(KnownPatternResult::Type(OpaqueDetail::new(
+            "ThemingProps",
+            OpaqueReason::RuntimeDependent { function_name: "chakra".into() },
+        ))),
 
         // ── Mantine ─────────────────────────────────────────────────────────
         // StylesApiProps is runtime-dependent on createStyles
-        "StylesApiProps" => Some(KnownPatternResult::Type(PropType::Opaque {
-            raw: "StylesApiProps".into(),
-            reason: OpaqueReason::RuntimeDependent { function_name: "createStyles".into() },
-        })),
+        "StylesApiProps" => Some(KnownPatternResult::Type(OpaqueDetail::new(
+            "StylesApiProps",
+            OpaqueReason::RuntimeDependent { function_name: "createStyles".into() },
+        ))),
 
         // MantineColor/Size/Radius are string aliases — let resolver handle as Named
         "MantineColor" | "MantineSize" | "MantineRadius" => None,
@@ -190,10 +187,10 @@ fn resolve_cva_variant_props(
                     }
 
                     if variant_map.is_empty() {
-                        return Some(KnownPatternResult::Type(PropType::Opaque {
-                            raw: format!("VariantProps<typeof {}>", name_str),
-                            reason: OpaqueReason::RuntimeDependent { function_name: "cva".into() },
-                        }));
+                        return Some(KnownPatternResult::Type(OpaqueDetail::new(
+                            format!("VariantProps<typeof {}>", name_str),
+                            OpaqueReason::RuntimeDependent { function_name: "cva".into() },
+                        )));
                     }
 
                     // CVA/tv/defineRecipe VariantProps adds `| null` to every
@@ -218,17 +215,17 @@ fn resolve_cva_variant_props(
                 }
                 None => {
                     // Variants not found in global data — degrade to opaque
-                    Some(KnownPatternResult::Type(PropType::Opaque {
-                        raw: format!("VariantProps<typeof {}>", name_str),
-                        reason: OpaqueReason::RuntimeDependent { function_name: "cva".into() },
-                    }))
+                    Some(KnownPatternResult::Type(OpaqueDetail::new(
+                        format!("VariantProps<typeof {}>", name_str),
+                        OpaqueReason::RuntimeDependent { function_name: "cva".into() },
+                    )))
                 }
             }
         }
-        _ => Some(KnownPatternResult::Type(PropType::Opaque {
-            raw: "VariantProps<...>".into(),
-            reason: OpaqueReason::RuntimeDependent { function_name: "cva".into() },
-        })),
+        _ => Some(KnownPatternResult::Type(OpaqueDetail::new(
+            "VariantProps<...>",
+            OpaqueReason::RuntimeDependent { function_name: "cva".into() },
+        ))),
     }
 }
 
@@ -384,7 +381,7 @@ mod tests {
         let result = resolve_known("OverridableStringUnion", &[], &GlobalSourceData::default(), &FxHashMap::default());
         assert!(matches!(
             result,
-            Some(KnownPatternResult::Type(PropType::Opaque { reason: OpaqueReason::ModuleAugmentation, .. }))
+            Some(KnownPatternResult::Type(PropType::Opaque(ref d))) if d.reason() == &OpaqueReason::ModuleAugmentation
         ));
     }
 
@@ -420,7 +417,8 @@ mod tests {
         let result = resolve_known("ThemingProps", &[], &GlobalSourceData::default(), &FxHashMap::default());
         assert!(matches!(
             result,
-            Some(KnownPatternResult::Type(PropType::Opaque { reason: OpaqueReason::RuntimeDependent { .. }, .. }))
+            Some(KnownPatternResult::Type(PropType::Opaque(ref d)))
+                if matches!(d.reason(), OpaqueReason::RuntimeDependent { .. })
         ));
     }
 
@@ -429,7 +427,8 @@ mod tests {
         let result = resolve_known("StylesApiProps", &[], &GlobalSourceData::default(), &FxHashMap::default());
         assert!(matches!(
             result,
-            Some(KnownPatternResult::Type(PropType::Opaque { reason: OpaqueReason::RuntimeDependent { .. }, .. }))
+            Some(KnownPatternResult::Type(PropType::Opaque(ref d)))
+                if matches!(d.reason(), OpaqueReason::RuntimeDependent { .. })
         ));
     }
 
@@ -522,7 +521,8 @@ mod tests {
         let result = resolve_known("RecipeVariantProps", &[], &GlobalSourceData::default(), &FxHashMap::default());
         assert!(matches!(
             result,
-            Some(KnownPatternResult::Type(PropType::Opaque { reason: OpaqueReason::RuntimeDependent { .. }, .. }))
+            Some(KnownPatternResult::Type(PropType::Opaque(ref d)))
+                if matches!(d.reason(), OpaqueReason::RuntimeDependent { .. })
         ));
     }
 
@@ -532,7 +532,8 @@ mod tests {
         let result = resolve_known("VariantProps", &args, &GlobalSourceData::default(), &FxHashMap::default());
         assert!(matches!(
             result,
-            Some(KnownPatternResult::Type(PropType::Opaque { reason: OpaqueReason::RuntimeDependent { .. }, .. }))
+            Some(KnownPatternResult::Type(PropType::Opaque(ref d)))
+                if matches!(d.reason(), OpaqueReason::RuntimeDependent { .. })
         ));
     }
 

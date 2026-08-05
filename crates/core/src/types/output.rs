@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use super::collected::{EnumEntry, TypeName};
 use super::diagnostic::Diagnostic;
+use super::global::ResolveState;
 
 // ─── Top-level output ─────────────────────────────────────────────────────────
 
@@ -199,11 +200,53 @@ pub enum PropType {
     SxProps,
 
     // ── Unresolvable — graceful degradation
-    Opaque {
-        /// Original type string as written in source
-        raw: std::string::String,
+    Opaque(OpaqueDetail),
+}
+
+/// The private payload of `PropType::Opaque`. Fields are unreachable from
+/// outside this module — the only ways to build one are `give_up` (pushes
+/// the diagnostic that explains the degradation, then builds the value) and
+/// `new` (for the one documented exception: `known.rs`, which has no
+/// diagnostics channel of its own and pushes its own diagnostic separately
+/// via `known::push_known_opaque_diagnostic` — see that function's doc
+/// comment). Read the payload back through `raw()`/`reason()`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpaqueDetail {
+    raw: std::string::String,
+    reason: OpaqueReason,
+}
+
+impl OpaqueDetail {
+    #[allow(clippy::new_ret_no_self)]
+    pub(crate) fn new(raw: impl Into<std::string::String>, reason: OpaqueReason) -> PropType {
+        PropType::Opaque(OpaqueDetail { raw: raw.into(), reason })
+    }
+
+    /// The sanctioned "give up and record why" constructor — pushes
+    /// `diagnostic` onto `state` before building the value, so a resolver
+    /// call site that reaches for this can't forget to explain the
+    /// degradation the way the old bare `PropType::Opaque { .. }` literal let
+    /// call sites do.
+    /// Unused until Tasks 3-6 route the mechanical `OpaqueDetail::new` call
+    /// sites in `resolver/` through this real give-up path.
+    #[allow(dead_code)]
+    pub(crate) fn give_up(
+        state: &mut ResolveState,
+        raw: impl Into<std::string::String>,
         reason: OpaqueReason,
-    },
+        diagnostic: Diagnostic,
+    ) -> PropType {
+        state.diagnostics.push(diagnostic);
+        Self::new(raw, reason)
+    }
+
+    pub(crate) fn raw(&self) -> &str {
+        &self.raw
+    }
+
+    pub(crate) fn reason(&self) -> &OpaqueReason {
+        &self.reason
+    }
 }
 
 impl PropType {
@@ -272,7 +315,7 @@ impl PropType {
                 format!("{}HTMLAttributes", element_to_type_name(element))
             }
             PropType::SxProps => "SxProps".into(),
-            PropType::Opaque { raw, .. } => raw.clone(),
+            PropType::Opaque(detail) => detail.raw.clone(),
         }
     }
 }
@@ -363,7 +406,7 @@ impl PropType {
                 "members": members,
                 "hasDefault": has_default
             }),
-            PropType::Opaque { raw, reason } => {
+            PropType::Opaque(OpaqueDetail { raw, reason }) => {
                 let reason_val = match reason {
                     OpaqueReason::ConditionalType => serde_json::json!({"type": "conditionalType"}),
                     OpaqueReason::MappedType => serde_json::json!({"type": "mappedType"}),
@@ -526,12 +569,9 @@ impl PropType {
                     "unsupportedExpression" => OpaqueReason::UnsupportedExpression,
                     _ => OpaqueReason::DepthExceeded,
                 };
-                Ok(PropType::Opaque { raw, reason })
+                Ok(OpaqueDetail::new(raw, reason))
             }
-            other => Ok(PropType::Opaque {
-                raw: format!("unknown PropType kind: {}", other),
-                reason: OpaqueReason::DepthExceeded,
-            }),
+            other => Ok(OpaqueDetail::new(format!("unknown PropType kind: {}", other), OpaqueReason::DepthExceeded)),
         }
     }
 }
@@ -659,5 +699,43 @@ mod tests {
             },
         ]);
         assert_eq!(ty.raw_string(), "{ label: string; 'data-testid'?: string }");
+    }
+}
+
+#[cfg(test)]
+mod opaque_detail_tests {
+    use super::*;
+    use crate::types::diagnostic::DiagnosticCode;
+    use crate::types::diagnostic::DiagnosticSeverity;
+    use crate::types::global::ResolveState;
+
+    #[test]
+    fn give_up_pushes_the_diagnostic_and_builds_the_opaque_payload() {
+        let mut state = ResolveState::default();
+        let diagnostic = Diagnostic {
+            severity: DiagnosticSeverity::Info,
+            message: "gave up".into(),
+            file: None,
+            line: None,
+            column: None,
+            help: None,
+            code: DiagnosticCode::OpaqueType,
+        };
+
+        let pt = OpaqueDetail::give_up(&mut state, "SomeType", OpaqueReason::DepthExceeded, diagnostic);
+
+        assert_eq!(state.diagnostics.len(), 1);
+        assert_eq!(state.diagnostics[0].message, "gave up");
+        let PropType::Opaque(detail) = &pt else { panic!("expected PropType::Opaque, got {:?}", pt) };
+        assert_eq!(detail.raw(), "SomeType");
+        assert_eq!(detail.reason(), &OpaqueReason::DepthExceeded);
+    }
+
+    #[test]
+    fn opaque_round_trips_through_the_tagged_json_wire_format() {
+        let pt = OpaqueDetail::new("A<B> | C", OpaqueReason::UnsupportedExpression);
+        let json = pt.to_tagged_value();
+        let restored = PropType::from_tagged_value(&json).expect("should deserialize");
+        assert_eq!(pt, restored);
     }
 }

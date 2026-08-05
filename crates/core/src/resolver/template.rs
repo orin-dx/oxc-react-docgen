@@ -36,7 +36,7 @@ pub(super) fn resolve_template_literal(
         help: Some("Enable typescript-go or add explicit string literal union for template literal types.".into()),
         code: DiagnosticCode::TemplateLiteralOpaque,
     });
-    PropType::Opaque { raw: raw.clone(), reason: OpaqueReason::TemplateLiteral { expression: raw } }
+    OpaqueDetail::new(raw.clone(), OpaqueReason::TemplateLiteral { expression: raw })
 }
 
 /// Try to fully expand a template literal into a list of concrete string values.

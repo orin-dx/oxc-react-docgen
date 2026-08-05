@@ -1949,7 +1949,7 @@ mod tests {
         ]);
         let result = resolve_type(&ct, &ctx);
         assert!(
-            matches!(result, PropType::Opaque { reason: OpaqueReason::TemplateLiteral { .. }, .. }),
+            matches!(&result, PropType::Opaque(d) if matches!(d.reason(), OpaqueReason::TemplateLiteral { .. })),
             "Expected Opaque TemplateLiteral, got {:?}",
             result
         );
@@ -1997,7 +1997,7 @@ mod tests {
         };
         let result = resolve_type(&ct, &ctx);
         assert!(
-            matches!(result, PropType::Opaque { reason: OpaqueReason::ConditionalType, .. }),
+            matches!(&result, PropType::Opaque(d) if matches!(d.reason(), OpaqueReason::ConditionalType)),
             "Expected ConditionalType opaque, got {:?}",
             result
         );
@@ -2014,7 +2014,7 @@ mod tests {
         };
         let result = resolve_type(&ct, &ctx);
         assert!(
-            matches!(result, PropType::Opaque { reason: OpaqueReason::MappedType, .. }),
+            matches!(&result, PropType::Opaque(d) if matches!(d.reason(), OpaqueReason::MappedType)),
             "Expected MappedType opaque, got {:?}",
             result
         );
@@ -2053,7 +2053,7 @@ mod tests {
         };
         let result = resolve_type(&ct, &ctx);
         assert!(
-            matches!(result, PropType::Opaque { reason: OpaqueReason::MultiParamFunction, .. }),
+            matches!(&result, PropType::Opaque(d) if matches!(d.reason(), OpaqueReason::MultiParamFunction)),
             "Expected MultiParamFunction opaque, got {:?}",
             result
         );
@@ -2157,7 +2157,7 @@ mod tests {
         let result =
             super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
 
-        assert!(matches!(result, PropType::Opaque { .. }), "expected Opaque, got {:?}", result);
+        assert!(matches!(result, PropType::Opaque(_)), "expected Opaque, got {:?}", result);
         assert!(
             !state.diagnostics.is_empty(),
             "expected a diagnostic for the known-but-runtime-dependent ThemingProps result, got none"
@@ -2205,7 +2205,7 @@ mod tests {
         };
         let result =
             super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
-        assert!(matches!(result, PropType::Opaque { .. }));
+        assert!(matches!(result, PropType::Opaque(_)));
         assert!(!state.diagnostics.is_empty(), "expected a diagnostic for a Conditional type, got none");
     }
 
@@ -2219,7 +2219,7 @@ mod tests {
         };
         let result =
             super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
-        assert!(matches!(result, PropType::Opaque { .. }));
+        assert!(matches!(result, PropType::Opaque(_)));
         assert!(!state.diagnostics.is_empty(), "expected a diagnostic for a Mapped type, got none");
     }
 
@@ -2230,7 +2230,7 @@ mod tests {
         let ct = CollectedType::KeyOf(Box::new(CollectedType::Named { name: "SomeType".into(), args: vec![] }));
         let result =
             super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
-        assert!(matches!(result, PropType::Opaque { .. }));
+        assert!(matches!(result, PropType::Opaque(_)));
         assert!(!state.diagnostics.is_empty(), "expected a diagnostic for a standalone keyof, got none");
     }
 
@@ -2243,7 +2243,7 @@ mod tests {
         let ct = CollectedType::Raw("A<B> | C".into());
         let result =
             super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
-        assert!(matches!(result, PropType::Opaque { .. }));
+        assert!(matches!(result, PropType::Opaque(_)));
         assert!(!state.diagnostics.is_empty(), "expected a diagnostic for an unparsable Raw fallback, got none");
     }
 

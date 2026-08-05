@@ -227,9 +227,6 @@ impl OpaqueDetail {
     /// call site that reaches for this can't forget to explain the
     /// degradation the way the old bare `PropType::Opaque { .. }` literal let
     /// call sites do.
-    /// Unused until Tasks 3-6 route the mechanical `OpaqueDetail::new` call
-    /// sites in `resolver/` through this real give-up path.
-    #[allow(dead_code)]
     pub(crate) fn give_up(
         state: &mut ResolveState,
         raw: impl Into<std::string::String>,

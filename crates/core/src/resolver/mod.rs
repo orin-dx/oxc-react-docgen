@@ -2247,6 +2247,26 @@ mod tests {
         assert!(!state.diagnostics.is_empty(), "expected a diagnostic for an unparsable Raw fallback, got none");
     }
 
+    #[test]
+    fn test_depth_exceeded_opaque_carries_the_max_depth_diagnostic() {
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        let result = super::collected::resolve_collected_type(
+            &CollectedType::String,
+            Utf8Path::new("/test/button.tsx"),
+            &ctx,
+            &mut state,
+            MAX_DEPTH + 1,
+        );
+        let PropType::Opaque(detail) = &result else { panic!("expected Opaque, got {:?}", result) };
+        assert_eq!(detail.reason(), &OpaqueReason::DepthExceeded);
+        assert!(
+            state.diagnostics.iter().any(|d| d.code == DiagnosticCode::MaxDepthExceeded),
+            "expected a MaxDepthExceeded diagnostic, got {:?}",
+            state.diagnostics
+        );
+    }
+
     // ── Test: self-referential extends must emit a diagnostic, not silently
     // return an empty chain ──────────────────────────────────────────────────
     // Regression test for: chain.rs's cycle-detected path returned a bare

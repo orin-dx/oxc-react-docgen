@@ -21,8 +21,8 @@ pub fn resolve_collected_type(
     depth: u8,
 ) -> PropType {
     if depth > MAX_DEPTH {
-        state.diagnostics.push(super::max_depth_diagnostic(&format!("type '{}'", ct.to_raw_string()), consuming_file));
-        return OpaqueDetail::new(ct.to_raw_string(), OpaqueReason::DepthExceeded);
+        let diag = super::max_depth_diagnostic(&format!("type '{}'", ct.to_raw_string()), consuming_file);
+        return OpaqueDetail::give_up(state, ct.to_raw_string(), OpaqueReason::DepthExceeded, diag);
     }
 
     match ct {
@@ -76,8 +76,8 @@ pub fn resolve_collected_type(
         // there, see resolver/alias.rs); standalone usage needs a general
         // type-to-key-names resolver we don't have, so degrade gracefully.
         CollectedType::KeyOf(_) => {
-            push_opaque_diagnostic(state, "a standalone 'keyof'", ct, consuming_file);
-            OpaqueDetail::new(ct.to_raw_string(), OpaqueReason::MappedType)
+            let diag = opaque_diagnostic("a standalone 'keyof'", ct, consuming_file);
+            OpaqueDetail::give_up(state, ct.to_raw_string(), OpaqueReason::MappedType, diag)
         }
 
         // ── Generic-alias substitution marker — switch file context to where
@@ -100,12 +100,12 @@ pub fn resolve_collected_type(
 
         // ── Opaque (needs type checker) ───────────────────────────────────────
         CollectedType::Conditional { .. } => {
-            push_opaque_diagnostic(state, "a conditional type", ct, consuming_file);
-            OpaqueDetail::new(ct.to_raw_string(), OpaqueReason::ConditionalType)
+            let diag = opaque_diagnostic("a conditional type", ct, consuming_file);
+            OpaqueDetail::give_up(state, ct.to_raw_string(), OpaqueReason::ConditionalType, diag)
         }
         CollectedType::Mapped { .. } => {
-            push_opaque_diagnostic(state, "a mapped type", ct, consuming_file);
-            OpaqueDetail::new(ct.to_raw_string(), OpaqueReason::MappedType)
+            let diag = opaque_diagnostic("a mapped type", ct, consuming_file);
+            OpaqueDetail::give_up(state, ct.to_raw_string(), OpaqueReason::MappedType, diag)
         }
 
         // ── Raw fallback ─────────────────────────────────────────────────────
@@ -147,18 +147,20 @@ pub fn resolve_collected_type(
             {
                 PropType::Named { name: trimmed.into(), args: vec![] }
             } else {
-                push_opaque_diagnostic(state, "an unparsable raw type expression", ct, consuming_file);
-                OpaqueDetail::new(s.clone(), OpaqueReason::UnsupportedExpression)
+                let diag = opaque_diagnostic("an unparsable raw type expression", ct, consuming_file);
+                OpaqueDetail::give_up(state, s.clone(), OpaqueReason::UnsupportedExpression, diag)
             }
         }
     }
 }
 
-/// Push an Info diagnostic for a `CollectedType` that degrades to `PropType::Opaque`
-/// because expanding it needs the TypeScript type checker (or, for the Raw
-/// fallback, needs the extractor to understand a syntax shape it doesn't yet).
-fn push_opaque_diagnostic(state: &mut ResolveState, what: &str, ct: &CollectedType, file: &Utf8Path) {
-    state.diagnostics.push(Diagnostic {
+/// Build the diagnostic explaining why a `CollectedType` degrades to
+/// `PropType::Opaque` — expanding it needs the TypeScript type checker (or,
+/// for the Raw fallback, needs the extractor to understand a syntax shape it
+/// doesn't yet). Pure builder — the caller passes the result to
+/// `OpaqueDetail::give_up`, which pushes it.
+fn opaque_diagnostic(what: &str, ct: &CollectedType, file: &Utf8Path) -> Diagnostic {
+    Diagnostic {
         severity: DiagnosticSeverity::Info,
         message: format!(
             "'{}' is {} and can't be statically resolved — it will appear as opaque",
@@ -170,5 +172,5 @@ fn push_opaque_diagnostic(state: &mut ResolveState, what: &str, ct: &CollectedTy
         column: None,
         help: None,
         code: DiagnosticCode::OpaqueType,
-    });
+    }
 }

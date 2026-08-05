@@ -25,8 +25,8 @@ pub(super) fn resolve_named(
     depth: u8,
 ) -> PropType {
     if depth > MAX_DEPTH {
-        state.diagnostics.push(super::max_depth_diagnostic(&format!("named type '{}'", name), consuming_file));
-        return OpaqueDetail::new(name.to_string(), OpaqueReason::DepthExceeded);
+        let diag = super::max_depth_diagnostic(&format!("named type '{}'", name), consuming_file);
+        return OpaqueDetail::give_up(state, name.to_string(), OpaqueReason::DepthExceeded, diag);
     }
 
     // ── 1. React builtin check ────────────────────────────────────────────────

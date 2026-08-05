@@ -1,0 +1,540 @@
+<task-notification>
+<task-id>a5e092519ac93e86b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0602cae8-9776-4cab-baaa-67ad00aaf7d1/tasks/a5e092519ac93e86b.output</output-file>
+<status>completed</status>
+<summary>Agent "Research Rust testing best practices 2025/2026" came to rest</summary>
+<note>A task-notification fires each time this agent comes to rest with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I now have enough depth across all 8 questions. Let me synthesize the full report.
+
+---
+
+# Rust Testing Best Practices for Library Crates (2025)
+
+Synthesized from: Rust Book ch11, Rust by Example, loom/rayon/insta/shuttle docs, matklad's 2024 concurrency testing article, rustfaq.org, rustprojectprimer.com, and real crate structures (rayon-core, serde, tokio-rs).
+
+---
+
+## 1. Unit Test Placement: Inline `#[cfg(test)]` vs `tests/` directory
+
+**The Rust Book's stance** (authoritative, ch11-03):
+
+&gt; "You'll put unit tests in the _src_ directory in each file with the code that they're testing. The convention is to create a module named `tests` in each file to contain the test functions and to annotate the module with `cfg(test)`."
+
+**Community consensus**: Inline `#[cfg(test)]` for unit tests, `tests/` for integration tests. This is not optional preference — it's the structural rule Cargo enforces.
+
+**Why inline**:
+- Tests in child modules can access private items in ancestor modules via `use super::*;`.
+- `#[cfg(test)]` excludes test code and test-only dependencies from the release artifact.
+- Proximity to the code makes it easier to keep tests in sync with implementation.
+
+**Alternative accepted style**: Some projects (especially large ones) place unit tests in `mod tests` at the end of the file, while others intersperse test functions with code. Both are fine; the module boundary is what matters, not physical placement.
+
+**Rule of thumb for this project**:
+
+```
+extractor/foo.rs       → #[cfg(test)] mod tests { use super::*; ... }
+resolver/bar.rs        → #[cfg(test)] mod tests { use super::*; ... }
+tests/                 → integration tests only, public API only
+```
+
+---
+
+## 2. Testing `pub(crate)` Items
+
+**Key insight** (rustfaq.org, corroborated by Rust Book):
+
+&gt; "Don't mark functions `pub(crate)` just to test them. That leaks implementation details. Write a unit test instead."
+
+**The mechanism**: Because `#[cfg(test)] mod tests` is a child module, it has full access to all items in the parent module — including `pub(crate)`, `pub(super)`, and even bare private items. No visibility widening is needed.
+
+```rust
+// In extractor/property_extractor.rs
+pub(crate) fn extract_prop_type(node: &amp;TSTypeAnnotation) -&gt; PropType {
+    // ...
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;   // gives access to extract_prop_type even though it's pub(crate)
+
+    #[test]
+    fn extract_prop_type_handles_optional() {
+        // test pub(crate) function directly
+    }
+}
+```
+
+**Integration tests in `tests/` CANNOT access `pub(crate)` items**. Each file in `tests/` is compiled as a separate crate that depends on yours — it only sees your `pub` surface area. Attempting to call `pub(crate)` items from there produces `E0603`. This is by design and correct.
+
+**Pattern summary**:
+
+| What you're testing | Where the test goes |
+|---|---|
+| `pub(crate)` function | Same file, `#[cfg(test)] mod tests` |
+| Private function | Same file, `#[cfg(test)] mod tests` |
+| `pub` API surface | `tests/` directory |
+| End-to-end pipeline | `tests/` directory |
+
+---
+
+## 3. Integration Test Structure in `crates/core/tests/`
+
+From the Rust Book (ch11-03):
+
+&gt; "In Rust, integration tests are entirely external to your library. They use your library in the same way any other code would, which means they can only call functions that are part of your library's public API."
+
+&gt; "Each file in the _tests_ directory is a separate crate."
+
+**Structure recommended for `crates/core/tests/`**:
+
+```
+tests/
+├── snapshots/              # insta snapshot files (already exists per CLAUDE.md)
+├── common/
+│   └── mod.rs             # shared fixtures, setup helpers
+├── pipeline.rs            # tests for pipeline:: public API
+├── types.rs               # tests for types:: public API
+└── react_types.rs         # tests for react_types:: public API
+```
+
+The `common/mod.rs` pattern is critical. If you put a `helpers.rs` directly in `tests/`, Cargo tries to run it as a test binary and will emit confusing "no tests" warnings. Use a subdirectory:
+
+```rust
+// tests/pipeline.rs
+mod common;  // pulls in tests/common/mod.rs
+
+#[test]
+fn pipeline_extracts_simple_component() {
+    common::setup();
+    // ...
+}
+```
+
+**Name files after features/behaviors, not internal module names** (rustfaq.org):
+
+&gt; "`tests/user_auth.rs` is better than `tests/auth.rs` if `auth` is an internal module name."
+
+For this project: `tests/extract_component_props.rs` beats `tests/resolver.rs`.
+
+---
+
+## 4. Testing Rayon-Parallel Code
+
+Rayon itself does not document explicit testing patterns in its FAQ — but the docs and rayon-core's own test suite reveal the correct approach.
+
+**Key facts**:
+- Rayon's output **ordering is not guaranteed** for parallel operations. `par_iter().map(f).collect::&lt;Vec&lt;_&gt;&gt;()` produces results in an arbitrary order.
+- `cargo test` runs test *functions* in parallel (via its own thread pool). This interacts poorly with `build_global()` since global thread pool init is one-time only.
+
+**Pattern 1: Use `ThreadPool::install()` for test isolation**
+
+Instead of relying on the global thread pool, create a local pool for each test that needs controlled parallelism:
+
+```rust
+#[test]
+fn pipeline_produces_correct_results() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .expect("failed to build test pool");
+
+    let results = pool.install(|| {
+        run_parallel_extraction(inputs)
+    });
+
+    // Sort deterministically before asserting
+    let mut results: Vec&lt;_&gt; = results.into_iter().collect();
+    results.sort_by_key(|r| r.component_name.clone());
+    assert_eq!(results, expected);
+}
+```
+
+**Pattern 2: Sort before asserting on collections**
+
+Parallel results are non-deterministic in order. Always sort before snapshot assertions:
+
+```rust
+let mut components = pipeline.extract_all(files);
+components.sort_by(|a, b| a.name.cmp(&amp;b.name));
+insta::assert_yaml_snapshot!(components);
+```
+
+**Pattern 3: Single-threaded pool for deterministic unit tests**
+
+For tests where you need to control scheduling:
+
+```rust
+let pool = rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+pool.install(|| { /* test body */ });
+```
+
+**Pattern 4: `build_scoped()` for tests needing thread-local state**
+
+From rayon docs for test isolation with thread-locals:
+
+```rust
+rayon::ThreadPoolBuilder::new()
+    .build_scoped(
+        |thread| MY_STATE.set(&amp;state, || thread.run()),
+        |pool| pool.install(|| { /* test */ }),
+    )?;
+```
+
+**Cargo-level**: Use `RAYON_NUM_THREADS=1 cargo test` in CI if you want all tests to run single-threaded. The `--test-threads=1` flag controls test function parallelism, not rayon's internal parallelism.
+
+**Rayon-core test structure**: Real-world confirmation from `rayon-core/tests/` — files like `double_init_fail.rs`, `scope_join.rs`, `simple_panic.rs` are each independent integration test files with one focused concern each. No shared helpers needed, each is self-contained.
+
+---
+
+## 5. `insta` Snapshot Testing Best Practices (2025)
+
+**Which macro to use** (insta.rs quickstart — the most authoritative source):
+
+&gt; "For most real world applications the recommendation is to use YAML snapshots of serializable values."
+
+The decision tree:
+- `assert_yaml_snapshot!()` — **default choice** for structs/enums with `Serialize`. Readable, diffable, stable.
+- `assert_json_snapshot!()` — use when output must be JSON specifically (e.g., validating RDT-compatible output format). For this project's `ExtractionOutput`, this is the right choice since you're emitting RDT-compatible JSON.
+- `assert_debug_snapshot!()` — quick-and-dirty for types that only have `Debug`, not `Serialize`. Avoid for stable snapshots — `Debug` output format is not guaranteed across Rust versions.
+- `assert_snapshot!()` — for raw string values.
+- Inline `assert_snapshot!(value, @"expected")` — best for small values where seeing the expected value inline is more readable. Requires `cargo-insta` to update.
+
+**File vs inline snapshots trade-offs**:
+
+| File snapshots | Inline snapshots |
+|---|---|
+| Best for large/complex output | Best for small values (&lt; ~10 lines) |
+| Stored in `snapshots/` dir, reviewable as diff | Embedded in test code, updated by cargo-insta |
+| Better for test output that is the primary artifact | Better for keeping context tight in the test |
+| This project's current choice — correct for component extraction output | Use sparingly, for simple property checks |
+
+**CI workflow** (insta docs):
+
+```yaml
+# .github/workflows/ci.yml
+- run: cargo test
+  env:
+    CI: "true"   # insta auto-detects CI=true and refuses to write .snap.new files
+```
+
+When `CI=true`, insta will **fail** on any snapshot mismatch rather than writing new files. This is automatic — most CI providers set `CI=true` already.
+
+**Local workflow**:
+```bash
+cargo insta test        # run tests, collect changes as .snap.new files
+cargo insta review      # interactive accept/reject per snapshot
+# OR combined:
+cargo insta test --review
+```
+
+**INSTA_UPDATE modes**:
+- `auto` (default) — writes `.snap.new` locally, fails in CI
+- `new` — always writes `.snap.new`, never overwrites directly
+- `always` — overwrites `.snap` directly without review (useful in CI for regeneration PRs)
+- `unseen` — auto-accepts new snapshots, uses `new` behavior for changed ones
+
+**Glob pattern** for testing multiple fixture files:
+
+```rust
+#[test]
+fn test_all_fixtures() {
+    insta::glob!("fixtures/*.tsx", |path| {
+        let output = extract_from_file(path);
+        insta::assert_yaml_snapshot!(output);
+    });
+}
+```
+
+---
+
+## 6. `#[should_panic]` vs `Result`-Returning Tests
+
+**Rust Book (ch11-01) is explicit**:
+
+&gt; "Writing tests so that they return a `Result&lt;T, E&gt;` enables you to use the question mark operator in the body of tests, which can be a convenient way to write tests that should fail if any operation within them returns an `Err` variant."
+
+&gt; "You can't use the `#[should_panic]` annotation on tests that use `Result&lt;T, E&gt;`."
+
+**Decision rule**:
+
+- **Use `fn test() -&gt; Result&lt;(), E&gt;`** when:
+  - The code under test returns `Result` or `Option`
+  - You want to use `?` for early exit on unexpected errors
+  - You want precise, inspectable error messages on failure
+
+- **Use `#[should_panic(expected = "...")]`** when:
+  - You're specifically verifying that a function panics in a particular scenario
+  - The panic is the documented behavior (e.g., index out of bounds, invalid invariant)
+  - You cannot use `Result` (e.g., testing panic propagation)
+
+**Error docs site** corroborates this preference:
+
+&gt; "Testing the Results directly gives you even more precision, so is a better strategy than unwrapping if you are starting with Result."
+
+**Concrete pattern for this project** (given the no-`unwrap()` non-negotiable from CLAUDE.md):
+
+```rust
+// Preferred: Result-returning test
+#[test]
+fn extract_parses_tsx_file() -&gt; anyhow::Result&lt;()&gt; {
+    let output = parse_file(Path::new("fixtures/Button.tsx"))?;
+    assert!(!output.components.is_empty());
+    Ok(())
+}
+
+// Use should_panic only when testing panic behavior specifically
+#[test]
+#[should_panic(expected = "allocator must outlive")]
+fn parse_file_panics_on_invalid_allocator() {
+    // test specific panic contract
+}
+```
+
+Note: `assert!(value.is_err())` is the correct way to assert error conditions in `Result`-returning tests — not `value.unwrap_err()` (which panics if `Ok`) without `should_panic`.
+
+---
+
+## 7. Test Naming Conventions
+
+**No official Rust standard exists** for test names beyond: functions are `snake_case`. The Rust Book, Rust API Guidelines, and RFCs are silent on test naming specifically.
+
+**Community consensus** (from real crate survey + ZTM guide):
+
+&gt; "These function names aren't used outside of test results, so don't hold back on being descriptive."
+
+**Dominant patterns in major crates**:
+
+The Rust ecosystem uses two dominant patterns without a clear winner:
+
+**Pattern A — Descriptive behavior**: `succeeds_with_empty_input`, `reports_error_when_invalid_syntax_encountered`, `returns_none_for_unknown_import`
+
+**Pattern B — `test_` prefix + scenario**: `test_extract_props`, `test_pipeline_missing_file`, `test_resolver_cycles`
+
+**Pattern C — nested modules by feature** (tokio, axum):
+```rust
+mod tests {
+    mod extract {
+        #[test] fn simple_component() { ... }
+        #[test] fn with_generic_props() { ... }
+    }
+    mod resolve {
+        #[test] fn follows_re_exports() { ... }
+    }
+}
+```
+
+**Recommendation for this project**: Given the existing snapshot test naming visible in the architecture, use **descriptive snake_case without `test_` prefix** since the `#[test]` attribute makes the function's role clear:
+
+```rust
+// Good
+fn extracts_optional_prop_types() -&gt; Result&lt;(), E&gt;
+fn handles_union_type_with_string_literal()
+fn skips_non_react_exports()
+fn resolves_reexported_component_from_barrel()
+
+// Avoid
+fn test_extract()      // too vague
+fn it_works()          // meaningless
+fn test1()             // definitely not
+```
+
+For the `#[cfg(test)] mod tests` naming convention: `mod tests` (singular noun, not `mod test` or `mod unit_tests`) is universal.
+
+---
+
+## 8. Testing the `Mutex&lt;bool&gt;` Initialization Guard
+
+This is a concurrent correctness problem. The right tool depends on what you're proving:
+
+### Option A: `std::thread` + `Barrier` — simple smoke test (recommended starting point)
+
+Tests that concurrent calls don't cause data corruption or double-init; does not exhaustively explore interleavings:
+
+```rust
+#[test]
+fn initialize_is_idempotent_under_concurrent_calls() {
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+
+    let session = Arc::new(WatchSession::new());
+    let barrier = Arc::new(Barrier::new(10));
+    let successes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    let handles: Vec&lt;_&gt; = (0..10).map(|_| {
+        let session = Arc::clone(&amp;session);
+        let barrier = Arc::clone(&amp;barrier);
+        let successes = Arc::clone(&amp;successes);
+        thread::spawn(move || {
+            barrier.wait();  // all threads start initialize() at the same time
+            if session.initialize().is_ok() {
+                successes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        })
+    }).collect();
+
+    for h in handles { h.join().unwrap(); }
+
+    // Only one initialize() should have "won"
+    assert_eq!(successes.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+```
+
+The `Barrier` is key — it holds all threads until all 10 have reached `barrier.wait()`, then releases them simultaneously, maximizing the race window.
+
+### Option B: `loom` — exhaustive correctness proof (for safety-critical guards)
+
+Loom from tokio-rs exhaustively explores all valid thread interleavings:
+
+```toml
+# Cargo.toml
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
+```
+
+```rust
+// In your sync abstraction module
+#[cfg(loom)]
+use loom::sync::Mutex;
+#[cfg(not(loom))]
+use std::sync::Mutex;
+
+// Test file
+#[test]
+#[cfg(loom)]
+fn loom_initialize_guard_correctness() {
+    loom::model(|| {
+        let initialized = Arc::new(Mutex::new(false));
+
+        let t1_init = Arc::clone(&amp;initialized);
+        let t2_init = Arc::clone(&amp;initialized);
+
+        let t1 = loom::thread::spawn(move || {
+            let mut guard = t1_init.lock().unwrap();
+            if !*guard {
+                *guard = true;
+                true  // this thread did the init
+            } else {
+                false
+            }
+        });
+
+        let t2 = loom::thread::spawn(move || {
+            let mut guard = t2_init.lock().unwrap();
+            if !*guard {
+                *guard = true;
+                true
+            } else {
+                false
+            }
+        });
+
+        let r1 = t1.join().unwrap();
+        let r2 = t2.join().unwrap();
+        // Exactly one thread should have initialized
+        assert!(r1 ^ r2, "exactly one thread must win the init race");
+    });
+}
+```
+
+Run: `RUSTFLAGS="--cfg loom" cargo test --release`
+
+Loom limitations to know:
+- Requires all sync primitives to be loom's types (you need a shim layer)
+- Cannot model `Relaxed` ordering fully
+- Scales poorly with many threads — use 2-3 threads max in loom tests
+- Best applied to the sync primitive itself, not the full `WatchSession`
+
+### Option C: `shuttle` (AWS) — randomized, scales better than loom
+
+```rust
+#[test]
+fn shuttle_initialize_guard() {
+    shuttle::check_random(|| {
+        use shuttle::sync::{Arc, Mutex};
+        let initialized = Arc::new(Mutex::new(false));
+        let i2 = Arc::clone(&amp;initialized);
+
+        shuttle::thread::spawn(move || {
+            let mut g = i2.lock().unwrap();
+            if !*g { *g = true; }
+        });
+
+        let mut g = initialized.lock().unwrap();
+        if !*g { *g = true; }
+    }, 100);
+}
+```
+
+Shuttle finds bugs with very high probability (99.9999%+ for this pattern) without needing the loom shim layer. Better for testing `WatchSession` as a whole rather than just the primitive.
+
+### For this project — concrete recommendation:
+
+1. Start with Option A (Barrier + threads). It's zero-dependency, idiomatic, fast, and will catch real races.
+2. If the init guard is safety-critical or complex, add a loom test for the raw `Mutex&lt;bool&gt;` logic in isolation.
+3. Do not use `tokio::test` for this — `WatchSession::initialize()` is sync (`Mutex`, not async mutex), so `std::thread` is the right tool. `tokio::test` adds complexity without benefit here.
+
+---
+
+## Adversarial Verification Pass
+
+Claims checked against multiple sources:
+
+| Claim | Confidence | Sources |
+|---|---|---|
+| Unit tests inline via `#[cfg(test)]`, `tests/` for integration only | High | Rust Book ch11, rustfaq.org, rustprojectprimer.com — all three agree |
+| `pub(crate)` items testable via `use super::*` in same-file test module | High | Rust Book ch11: "Rust's privacy rules do allow you to test private functions" |
+| Integration tests in `tests/` cannot access `pub(crate)` items | High | Rust Book: "they can only call functions that are part of your library's public API" |
+| `tests/common/mod.rs` pattern for shared helpers | High | Rust Book explicitly documents this |
+| Rayon output ordering non-deterministic — sort before asserting | High | Implied by rayon design; rayon FAQ + docs confirm |
+| `ThreadPool::install()` + `build()` for test isolation | High | rayon docs, ThreadPoolBuilder docs |
+| `Result&lt;T, E&gt;` tests preferred over `should_panic` for error cases | High | Rust Book + nrc.github.io/error-docs agree |
+| `#[should_panic]` and `Result&lt;T, E&gt;` are mutually exclusive | High | Rust Book explicitly states this |
+| insta: YAML snapshots recommended for serializable values | High | insta.rs quickstart docs |
+| insta: `CI=true` env var triggers strict mode (no .snap.new writes) | High | insta docs + rustprojectprimer |
+| loom requires `#[cfg(loom)]` shim for sync primitives | High | loom docs |
+| `std::sync::Barrier` releases all threads simultaneously at `wait()` | High | std::sync::Barrier docs with example |
+| No official Rust standard for test naming beyond snake_case | High | RFC 0430, API guidelines — both silent on test names |
+
+---
+
+## Summary Card for Quick Reference
+
+```
+UNIT TESTS:        Same file, #[cfg(test)] mod tests { use super::*; ... }
+PUB(CRATE) TESTS:  Same as above — no visibility widening needed
+INTEGRATION TESTS: crates/core/tests/ — public API only, one file per feature
+SHARED HELPERS:    tests/common/mod.rs (NOT tests/common.rs)
+RAYON TESTS:       ThreadPoolBuilder::new().build() + pool.install() + sort before asserting
+INSTA CI:          CI=true → strict mode; local: cargo insta test --review
+INSTA MACROS:      assert_yaml_snapshot! (default), assert_json_snapshot! (for RDT output)
+INLINE SNAPSHOTS:  For small values only; assert_snapshot!(v, @"expected")
+RESULT VS PANIC:   Result&lt;(), E&gt; + ? for error cases; #[should_panic] only for panic contracts
+TEST NAMING:       snake_case, descriptive, no test_ prefix; mod tests {} always
+MUTEX GUARD TEST:  Arc&lt;Barrier&gt; + thread::spawn to maximize race window; loom for exhaustive
+```
+
+---
+
+Sources:
+- [Rust Book ch11-03: Test Organization](https://doc.rust-lang.org/book/ch11-03-test-organization.html)
+- [Rust Book ch11-01: Writing Tests (Result section)](https://doc.rust-lang.org/book/ch11-01-writing-tests.html)
+- [insta quickstart](https://insta.rs/docs/quickstart/)
+- [insta advanced (INSTA_UPDATE modes)](https://insta.rs/docs/advanced/)
+- [insta settings (CI behavior)](https://insta.rs/docs/settings/)
+- [loom docs](https://docs.rs/loom/latest/loom/)
+- [rayon ThreadPoolBuilder docs](https://docs.rs/rayon/latest/rayon/struct.ThreadPoolBuilder.html)
+- [rayon FAQ](https://github.com/rayon-rs/rayon/blob/main/FAQ.md)
+- [rayon-core tests directory](https://github.com/rayon-rs/rayon/tree/main/rayon-core/tests)
+- [matklad: Properly Testing Concurrent Data Structures (2024)](https://matklad.github.io/2024/07/05/properly-testing-concurrent-data-structures.html)
+- [shuttle (AWS): randomized concurrency testing](https://github.com/awslabs/shuttle)
+- [std::sync::Barrier docs](https://doc.rust-lang.org/std/sync/struct.Barrier.html)
+- [Rust Project Primer: Unit Tests](https://rustprojectprimer.com/testing/unit-tests.html)
+- [rustfaq.org: Best Practices for Organizing Tests](https://www.rustfaq.org/en/best-practices-for-organizing-tests-in-rust-projects/)
+- [Zero To Mastery: Complete Guide to Testing in Rust](https://zerotomastery.io/blog/complete-guide-to-testing-code-in-rust/)
+- [nrc: Error Handling in Tests](https://nrc.github.io/error-docs/rust-errors/testing.html)
+- [Ratatui: Snapshot Testing Recipe](https://ratatui.rs/recipes/testing/snapshots/)
+- [Rust Project Primer: Snapshot Testing](https://www.rustprojectprimer.com/testing/snapshot.html)
+- [Sling Academy: Thread Safety in Rust Tests](https://www.slingacademy.com/article/ensuring-thread-safety-in-rust-tests-by-checking-for-data-races/)</result>
+<usage><subagent_tokens>46013</subagent_tokens><tool_uses>46</tool_uses><duration_ms>866983</duration_ms></usage>
+</task-notification>

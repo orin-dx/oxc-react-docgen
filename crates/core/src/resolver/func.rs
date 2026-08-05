@@ -58,7 +58,19 @@ pub(super) fn resolve_function_type(
     // Resolve the return type to see if it's ReactNode.
     let _ = resolve_collected_type(return_type, consuming_file, ctx, state, depth + 1);
 
-    OpaqueDetail::new(raw, OpaqueReason::MultiParamFunction)
+    let diagnostic = Diagnostic {
+        severity: DiagnosticSeverity::Info,
+        message: format!(
+            "'{}' is a multi-parameter function type and can't be statically resolved — it will appear as opaque",
+            raw
+        ),
+        file: Some(consuming_file.to_string()),
+        line: None,
+        column: None,
+        help: None,
+        code: DiagnosticCode::OpaqueType,
+    };
+    OpaqueDetail::give_up(state, raw, OpaqueReason::MultiParamFunction, diagnostic)
 }
 
 pub(super) fn resolve_typeof(

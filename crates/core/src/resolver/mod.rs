@@ -2059,6 +2059,28 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_multi_param_function_opaque_emits_diagnostic() {
+        // Regression test for: func.rs's multi-param function degrade
+        // constructed PropType::Opaque directly with no diagnostic at all — the
+        // only Opaque-producing path in the resolver that gave up silently.
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        let ct = CollectedType::Function {
+            params: vec![CollectedType::String, CollectedType::Number],
+            param_names: vec![Some("a".into()), Some("b".into())],
+            return_type: Box::new(CollectedType::Void),
+        };
+        let result =
+            super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
+        assert!(
+            matches!(&result, PropType::Opaque(d) if matches!(d.reason(), OpaqueReason::MultiParamFunction)),
+            "Expected MultiParamFunction opaque, got {:?}",
+            result
+        );
+        assert!(!state.diagnostics.is_empty(), "expected a diagnostic for a multi-param function type, got none");
+    }
+
     // ── Test 17: tsconfig path stripping ─────────────────────────────────────
 
     #[test]

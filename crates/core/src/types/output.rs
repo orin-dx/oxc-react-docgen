@@ -461,7 +461,23 @@ impl PropType {
             // Newtype/tuple variants — give each a real field name instead of a
             // positional "0" key, matching the struct-style variants below.
             PropType::StringLiteral(s) => serde_json::json!({"kind": "stringLiteral", "value": s}),
-            PropType::NumberLiteral(n) => serde_json::json!({"kind": "numberLiteral", "value": n}),
+            PropType::NumberLiteral(n) => {
+                // `serde_json::Number` cannot represent NaN/Infinity (they'd
+                // silently become JSON `null`, then round-trip back as `0.0`
+                // — see `from_tagged_value` below). Tag non-finite values as
+                // strings instead so the read side can tell them apart from a
+                // genuinely-absent value.
+                let value = if n.is_finite() {
+                    serde_json::json!(n)
+                } else if n.is_nan() {
+                    serde_json::json!("NaN")
+                } else if *n > 0.0 {
+                    serde_json::json!("Infinity")
+                } else {
+                    serde_json::json!("-Infinity")
+                };
+                serde_json::json!({"kind": "numberLiteral", "value": value})
+            }
             PropType::BoolLiteral(b) => serde_json::json!({"kind": "boolLiteral", "value": b}),
             PropType::Union(members) => serde_json::json!({
                 "kind": "union",
@@ -570,7 +586,16 @@ impl PropType {
                 Ok(PropType::StringLiteral(s))
             }
             "numberLiteral" | "number_literal" => {
-                let n = v["value"].as_f64().unwrap_or(0.0);
+                let n = match v.get("value") {
+                    Some(val) if val.is_string() => match val.as_str().unwrap_or("") {
+                        "NaN" => f64::NAN,
+                        "Infinity" => f64::INFINITY,
+                        "-Infinity" => f64::NEG_INFINITY,
+                        _ => 0.0,
+                    },
+                    Some(val) => val.as_f64().unwrap_or(0.0),
+                    None => 0.0,
+                };
                 Ok(PropType::NumberLiteral(n))
             }
             "boolLiteral" | "bool_literal" => {
@@ -896,5 +921,43 @@ mod opaque_detail_tests {
         let json = pt.to_tagged_value();
         let restored = PropType::from_tagged_value(&json).expect("should deserialize");
         assert_eq!(pt, restored);
+    }
+}
+
+#[cfg(test)]
+mod number_literal_roundtrip_tests {
+    use super::*;
+
+    #[test]
+    fn nan_number_literal_round_trips_as_nan_not_zero() {
+        let original = PropType::NumberLiteral(f64::NAN);
+        let json = serde_json::to_value(&original).expect("serialize");
+        let restored: PropType = serde_json::from_value(json).expect("deserialize");
+
+        match restored {
+            PropType::NumberLiteral(n) => assert!(n.is_nan(), "expected NaN to survive the round-trip, got {n}"),
+            other => panic!("expected NumberLiteral, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn infinity_number_literal_round_trips_as_infinity() {
+        let original = PropType::NumberLiteral(f64::INFINITY);
+        let json = serde_json::to_value(&original).expect("serialize");
+        let restored: PropType = serde_json::from_value(json).expect("deserialize");
+
+        match restored {
+            PropType::NumberLiteral(n) => assert_eq!(n, f64::INFINITY),
+            other => panic!("expected NumberLiteral, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn finite_number_literal_still_round_trips_normally() {
+        let original = PropType::NumberLiteral(42.5);
+        let json = serde_json::to_value(&original).expect("serialize");
+        let restored: PropType = serde_json::from_value(json).expect("deserialize");
+
+        assert_eq!(restored, PropType::NumberLiteral(42.5));
     }
 }

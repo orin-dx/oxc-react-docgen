@@ -75,6 +75,10 @@ pub enum DiagnosticCode {
     ExcessiveNesting,
     /// TypeScript syntax error reported by the parser.
     ParseError,
+    /// An internal panic was caught and converted into a diagnostic instead
+    /// of crashing the process (see ADR 0005). Never expected in normal
+    /// operation — always a bug, filed with the panic's own message.
+    InternalPanic,
 }
 
 #[cfg(test)]
@@ -93,5 +97,20 @@ mod tests {
         assert_eq!(diagnostic.file.as_deref(), Some("src/Button.tsx"));
         assert!(diagnostic.message.contains("src/Button.tsx"));
         assert!(diagnostic.message.contains("permission denied"));
+    }
+
+    #[test]
+    fn internal_panic_code_serializes_as_screaming_snake_case() {
+        let diagnostic = Diagnostic {
+            severity: DiagnosticSeverity::Error,
+            message: "panic in rayon worker".into(),
+            file: None,
+            line: None,
+            column: None,
+            help: None,
+            code: DiagnosticCode::InternalPanic,
+        };
+        let json = serde_json::to_string(&diagnostic).unwrap();
+        assert!(json.contains("\"INTERNAL_PANIC\""), "expected INTERNAL_PANIC in {json}");
     }
 }

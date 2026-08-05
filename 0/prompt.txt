@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bj2qhx2ua</task-id>
+<tool-use-id>toolu_011XmmthHhGakwpmrjoWB6NQ</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/bj2qhx2ua.output</output-file>
+<status>completed</status>
+<summary>Background command "Run full test suite with 2048 recursion limit" completed (exit code 0)</summary>
+</task-notification>

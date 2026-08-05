@@ -1,0 +1,556 @@
+<task-notification>
+<task-id>a52171a85c439e14c</task-id>
+<tool-use-id>toolu_015mx1e7Wo7QyQZgNYWL8pXL</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0602cae8-9776-4cab-baaa-67ad00aaf7d1/tasks/a52171a85c439e14c.output</output-file>
+<status>completed</status>
+<summary>Agent "Research hybrid Rust+TS monorepo with moon and pnpm" came to rest</summary>
+<note>A task-notification fires each time this agent comes to rest with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I now have enough information to do the adversarial verification and synthesize the full report. Let me assemble the findings.
+
+---
+
+## Adversarial Verification of Key Claims
+
+**Claim: "moon 2.0 replaced filename-based task inheritance with inheritedBy"**
+- VERIFIED by 3 independent sources: InfoQ article on moon 2.0, moonrepo blog, and actual moonrepo/moon `.moon/tasks/node.yml` which shows explicit `inheritedBy: toolchains: node`. The old convention still works as organization but you must add `inheritedBy`.
+
+**Claim: ".moon/tasks.yml was removed in moon 2.0, replaced by .moon/tasks/all.yml"**
+- VERIFIED by migrate/2.0 docs: "The centralized tasks file was eliminated. To support inherited tasks across all projects, move configurations to .moon/tasks/all.yml without the inheritedBy setting."
+
+**Claim: "toolchains: node vs toolchains: typescript — which applies to TS packages?"**
+- PARTIALLY VERIFIED: moonrepo/moon's own `node.yml` uses `toolchains: node`. The toolchains.yml shows `node`, `javascript`, and `typescript` are separate keys. For a TypeScript project with pnpm, the relevant toolchain is likely `node` (the runtime) with `typescript` as a secondary toolchain.
+
+**Claim: "tsup is the safe choice, tsdown is faster"**
+- VERIFIED: pkgpulse guide confirms tsdown 3-5x faster (Rolldown-based), tsup is most popular/established.
+
+**Claim: "OXC and Rolldown use moon"**
+- REFUTED: Both repos use `justfile` + custom task scripts. Neither has a `.moon` directory.
+
+**Claim: "moon 2.x type field renamed to layer"**
+- VERIFIED: migrate/2.0 docs show `type → layer` rename. Real moonrepo/moon packages use `layer: library`.
+
+---
+
+Here is the synthesized report:
+
+---
+
+# Hybrid Rust + TypeScript Monorepo with Moon 2.x and pnpm
+
+## 1. Moon Project `language` Field — What It Actually Does
+
+In moon 2.x, the `language` field in `moon.yml` serves two purposes:
+
+**Auto-detection**: If omitted, moon scans the project root for marker files to infer language. Priority order: Rust (`Cargo.toml`) &gt; TypeScript (`tsconfig.json`) &gt; JavaScript (`package.json`). Packages with both `Cargo.toml` and `package.json` (like a NAPI package) will be detected as Rust first. Be explicit.
+
+**Task inheritance targeting** (moon 2.0+): The `language` field enables the `languages` condition in `inheritedBy`. However, in practice, the `toolchains` condition is more commonly used because it maps to configured toolchain plugins.
+
+Valid values: `bash`, `batch`, `go`, `javascript`, `php`, `python`, `ruby`, `rust`, `typescript`, `unknown`, or any custom string.
+
+**What moon does differently per language:**
+- Routes the project into the correct `inheritedBy: languages:` bucket
+- Editor extensions and IDE integration use it for syntax highlighting in moon UI
+- Auto-detection of binary names and file extensions within the WASM plugin system
+
+**For your setup:**
+```yaml
+# crates/core/moon.yml
+language: rust
+
+# packages/napi/moon.yml  (the JS wrapper package)
+language: typescript
+
+# crates/napi/moon.yml    (the Rust NAPI crate)
+language: rust
+```
+
+The `language` field does NOT directly control which toolchain runs tasks. Toolchain assignment comes from `toolchains` in project config and what is enabled in `.moon/toolchains.yml`.
+
+---
+
+## 2. Task Inheritance with `language` — How Scoping Actually Works in Moon 2.x
+
+**Breaking change from moon 1.x to 2.x**: The old filename-as-convention system (`node.yml` auto-applies to node projects) was replaced with explicit `inheritedBy`. The files can still be named anything, but you must declare conditions.
+
+**The correct structure is `.moon/tasks/*.yml`** (not `.moon/tasks.yml` which was removed). Use `.moon/tasks/all.yml` for tasks that apply to every project.
+
+**To scope cargo tasks to Rust crates only:**
+```yaml
+# .moon/tasks/rust.yml
+$schema: 'https://moonrepo.dev/schemas/tasks.json'
+
+inheritedBy:
+  toolchains: 'rust'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'Cargo.toml'
+  tests:
+    - 'tests/**/*'
+    - 'benches/**/*'
+
+tasks:
+  fmt-check:
+    command: 'cargo fmt --check'
+    inputs:
+      - '@globs(sources)'
+      - '@globs(tests)'
+      - '/rustfmt.toml'
+
+  lint:
+    command: 'cargo clippy -- -D warnings'
+    inputs:
+      - '@globs(sources)'
+      - '@globs(tests)'
+      - '/.cargo/config.toml'
+
+  test:
+    command: 'cargo test'
+    inputs:
+      - '@globs(sources)'
+      - '@globs(tests)'
+```
+
+**To scope pnpm-based tasks to Node/TS packages only:**
+```yaml
+# .moon/tasks/node.yml
+$schema: 'https://moonrepo.dev/schemas/tasks.json'
+
+inheritedBy:
+  toolchains: 'node'
+
+implicitDeps:
+  - '^:build'
+
+implicitInputs:
+  - 'package.json'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+  tests:
+    - 'tests/**/*'
+    - '**/*.test.ts'
+
+tasks:
+  typecheck:
+    command: 'tsc --build'
+    inputs:
+      - '@globs(sources)'
+      - 'tsconfig.json'
+      - '/tsconfig.json'
+
+  test:
+    command: 'vitest run'
+    inputs:
+      - '@globs(sources)'
+      - '@globs(tests)'
+      - 'vitest.config.*'
+```
+
+**Key**: `toolchains: 'rust'` matches projects where the `rust` toolchain plugin is active. `toolchains: 'node'` matches projects in the Node.js ecosystem. A project has the node toolchain active if it has a `package.json` and the `node` key is set in `.moon/toolchains.yml`. A Rust crate without a `package.json` will only have the rust toolchain.
+
+**For your existing `.moon/tasks.yml`** with cargo tasks: rename it to `.moon/tasks/rust.yml` and add:
+```yaml
+inheritedBy:
+  toolchains: 'rust'
+```
+
+---
+
+## 3. Concrete `moon.yml` Examples
+
+### `crates/core/moon.yml` — Pure Rust crate
+```yaml
+$schema: 'https://moonrepo.dev/schemas/project.json'
+language: rust
+layer: library
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'Cargo.toml'
+  tests:
+    - 'tests/**/*'
+    - 'benches/**/*'
+
+tasks:
+  build:
+    command: 'cargo build -p oxc-react-docgen-core'
+    inputs:
+      - '@globs(sources)'
+      - '/Cargo.toml'
+      - '/Cargo.lock'
+    outputs:
+      - '../../target/debug/liboxc_react_docgen_core.rlib'
+
+  test:
+    command: 'cargo test -p oxc-react-docgen-core'
+    inputs:
+      - '@globs(sources)'
+      - '@globs(tests)'
+```
+
+The inherited tasks from `.moon/tasks/rust.yml` (fmt-check, lint, typos, deny) will be automatically merged in because this project has `language: rust` and the rust toolchain is active.
+
+### `crates/napi/moon.yml` — Rust NAPI crate (the Rust side)
+```yaml
+$schema: 'https://moonrepo.dev/schemas/project.json'
+language: rust
+layer: library
+
+dependsOn:
+  - id: 'core'
+    scope: 'build'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'Cargo.toml'
+
+tasks:
+  build:
+    command: 'cargo build -p oxc-react-docgen-napi --release'
+    inputs:
+      - '@globs(sources)'
+      - '/Cargo.toml'
+      - '/Cargo.lock'
+    outputs:
+      - '../../target/release/liboxc_react_docgen_napi.so'
+```
+
+### `packages/napi/moon.yml` — NAPI npm package (the JS/native side)
+This is the package that runs `napi build` to produce the `.node` binary. It needs the Rust compilation to finish first.
+
+```yaml
+$schema: 'https://moonrepo.dev/schemas/project.json'
+language: typescript
+layer: library
+
+# Depend on the Rust NAPI crate being compiled first
+dependsOn:
+  - id: 'napi-crate'    # the moon project ID for crates/napi
+    scope: 'build'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'package.json'
+
+tasks:
+  build:
+    command: 'napi build --platform --release'
+    deps:
+      - 'napi-crate:build'   # explicit dep on specific task
+    inputs:
+      - '@globs(sources)'
+      - '../../crates/napi/src/**/*'
+      - '../../Cargo.lock'
+    outputs:
+      - '*.node'
+      - 'index.js'
+      - 'index.d.ts'
+
+  build-debug:
+    command: 'napi build --platform'
+    deps:
+      - 'napi-crate:build'
+    inputs:
+      - '@globs(sources)'
+    options:
+      runInCI: false
+```
+
+### `packages/vite-plugin/moon.yml` — TypeScript wrapper package
+```yaml
+$schema: 'https://moonrepo.dev/schemas/project.json'
+language: typescript
+layer: library
+
+dependsOn:
+  - id: 'napi-npm'        # the packages/napi moon project ID
+    scope: 'production'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'package.json'
+    - 'tsconfig.json'
+  tests:
+    - 'tests/**/*'
+
+tasks:
+  build:
+    command: 'tsup'
+    deps:
+      - 'napi-npm:build'   # must have the .node binary first
+    inputs:
+      - '@globs(sources)'
+      - 'tsup.config.ts'
+    outputs:
+      - 'dist'
+
+  test:
+    command: 'vitest run'
+    deps:
+      - '~:build'
+    inputs:
+      - '@globs(sources)'
+      - '@globs(tests)'
+      - 'vitest.config.*'
+
+  # Override the inherited typecheck to use local tsconfig
+  typecheck:
+    command: 'tsc --build'
+    inputs:
+      - '@globs(sources)'
+      - 'tsconfig.json'
+```
+
+---
+
+## 4. Cross-Language Dependencies in Moon
+
+Moon's `deps` in task configuration uses **target syntax**: `project-id:task-name`.
+
+```
+scope:task
+```
+
+Where scope can be:
+- A project ID: `napi-crate:build` — run that specific task in that specific project
+- `^:build` — run `build` in all projects listed in `dependsOn`
+- `~:build` — run `build` in the current project
+- `^production:build` (moon 2.1+) — run `build` only in production-scoped deps
+
+**For NAPI cross-language deps, the pattern is:**
+
+1. Register both the Rust crate and the JS package as moon projects in `workspace.yml`:
+```yaml
+# .moon/workspace.yml
+projects:
+  sources: {}
+  globs:
+    - 'crates/*'
+    - 'packages/*'
+```
+
+2. In the JS package `moon.yml`, declare the Rust project as a dep and reference its build task:
+```yaml
+# packages/napi/moon.yml
+dependsOn:
+  - id: 'napi-crate'
+    scope: 'build'
+
+tasks:
+  build:
+    command: 'napi build --platform --release'
+    deps:
+      - 'napi-crate:build'   # ← cross-language task dependency
+```
+
+When `moon run napi-npm:build`, moon will:
+1. Resolve the task graph
+2. Run `napi-crate:build` first (which runs `cargo build`)
+3. Then run `napi-npm:build` (which runs `napi build --platform`)
+
+**The project IDs** come from how you register them in `workspace.yml`. If you use `globs: ['crates/*', 'packages/*']`, the project ID for `crates/napi` would be `napi` and for `packages/napi` it would also be `napi` — a collision. Use explicit sources to assign unique IDs:
+
+```yaml
+# .moon/workspace.yml
+projects:
+  sources:
+    core: 'crates/core'
+    napi-crate: 'crates/napi'
+    cli: 'crates/cli'
+    napi-npm: 'packages/napi'
+    vite-plugin: 'packages/vite-plugin'
+    rolldown-plugin: 'packages/rolldown-plugin'
+```
+
+---
+
+## 5. TypeScript Build Tooling for Thin Wrapper Packages
+
+For `packages/vite-plugin` (a thin TS wrapper that imports from the NAPI package):
+
+**Recommendation: `tsup` now, migrate to `tsdown` when stable enough for your stack.**
+
+| Tool | Why For / Against |
+|------|-------------------|
+| **tsup** | Most used (6M weekly downloads), zero-config ESM+CJS+`.d.ts`, esbuild-based (fast), well-documented, mature moon integration via simple `npm run build` | 
+| **tsdown** | 3-5x faster (Rolldown-based), near-identical API to tsup, but newer — verify peerDep compatibility before committing |
+| **unbuild** | Rollup-based, stub mode useful for internal packages, but more setup for dual output; best for Nuxt/UnJS ecosystem |
+| **plain tsc** | Only option for type checking; too slow for bundling; use as `--noEmit` alongside tsup |
+
+**tsup config for a vite-plugin package:**
+```typescript
+// packages/vite-plugin/tsup.config.ts
+import { defineConfig } from 'tsup';
+
+export default defineConfig({
+  entry: ['src/index.ts'],
+  format: ['esm', 'cjs'],
+  dts: true,
+  clean: true,
+  external: ['vite', 'oxc-react-docgen'],  // don't bundle the napi dep
+  sourcemap: true,
+});
+```
+
+**package.json:**
+```json
+{
+  "name": "oxc-react-docgen-vite-plugin",
+  "version": "0.1.0",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "vite": "&gt;=5.0.0"
+  },
+  "dependencies": {
+    "oxc-react-docgen": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.x",
+    "typescript": "^5.x"
+  }
+}
+```
+
+---
+
+## 6. Publishing with Changesets + pnpm in a Moon Monorepo
+
+**Moon has no native publishing integration.** Publishing is handled by standard tooling; moon just orchestrates the task.
+
+**Recommended setup: `@changesets/cli` + `pnpm`**
+
+Install at workspace root:
+```bash
+pnpm add -Dw @changesets/cli
+pnpm changeset init
+```
+
+**Root `package.json` scripts:**
+```json
+{
+  "scripts": {
+    "changeset": "changeset",
+    "version-packages": "changeset version &amp;&amp; pnpm install --lockfile-only",
+    "release": "pnpm build &amp;&amp; changeset publish"
+  }
+}
+```
+
+**Add a publish task in `.moon/tasks/node.yml`** (or a separate `node-library.yml`):
+```yaml
+# .moon/tasks/node-library.yml
+$schema: 'https://moonrepo.dev/schemas/tasks.json'
+
+inheritedBy:
+  toolchains: 'node'
+  layers: 'library'
+
+tasks:
+  prepublish:
+    command: 'pnpm pack --dry-run'
+    inputs:
+      - 'dist/**/*'
+      - 'package.json'
+    options:
+      runInCI: false
+```
+
+**Root-level moon task for release:**
+```yaml
+# root moon.yml (or a release project)
+tasks:
+  release:
+    script: 'pnpm changeset publish'
+    deps:
+      - ':build'   # build all projects first
+    options:
+      runInCI: true
+      runDepsInParallel: false
+```
+
+**GitHub Actions workflow:**
+```yaml
+# .github/workflows/release.yml
+name: Release
+on:
+  push:
+    branches: [main]
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: moonrepo/setup-moon-action@v1
+      - uses: pnpm/action-setup@v4
+      - run: moon run :build     # builds everything including Rust
+      - uses: changesets/action@v1
+        with:
+          publish: pnpm release
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**Important for NAPI packages**: The `.node` binary files (per-platform artifacts) are typically published as optional peer packages (`oxc-react-docgen-linux-x64-gnu`, etc.) generated by `napi build --release` in CI with cross-compilation. The main `oxc-react-docgen` package has `optionalDependencies` for each platform. This is the `napi-rs` artifact pattern — not moon-specific but works cleanly with the above setup.
+
+---
+
+## Corrected Facts on Reference Repos
+
+- **OXC** (`oxc-project/oxc`): Uses `justfile` + custom `tasks/` shell scripts. No moon.
+- **Rolldown** (`rolldown/rolldown`): Uses `justfile` + pnpm scripts. No moon.
+- **Biome**: Uses custom Rust-based tooling. No moon.
+- **napi-rs/package-template**: Uses GitHub Actions matrix builds directly. No moon.
+
+The best real-world moon 2.x + Rust reference is **moonrepo/moon itself** — it's a Rust repo with Node.js packages and uses moon to manage the Node package tasks. Its `.moon/tasks/node.yml` with `inheritedBy: toolchains: node` is the canonical pattern to follow.
+
+---
+
+## Key Moon 2.x Syntax Differences from 1.x (Migration Checklist)
+
+| v1 | v2 |
+|----|----|
+| `.moon/tasks.yml` | `.moon/tasks/all.yml` (no `inheritedBy`) |
+| `.moon/toolchain.yml` | `.moon/toolchains.yml` (plural) |
+| `type: library` | `layer: library` |
+| `toolchain: { typescript: { disabled: true } }` | `toolchains: { typescript: null }` |
+| `tasks.*.platform` | `tasks.*.toolchains` |
+| Filename convention auto-applied | Must use `inheritedBy` explicitly |
+| `node.packageManager: pnpm` | `javascript.packageManager: pnpm` (+ `pnpm: {}` at top level) |
+
+**Sources:**
+- [moonrepo task inheritance docs](https://moonrepo.dev/docs/concepts/task-inheritance)
+- [moonrepo project config docs](https://moonrepo.dev/docs/config/project)
+- [moon 2.0 release blog](https://moonrepo.dev/blog/moon-v2.0)
+- [moon 2.1 release blog (target dep scopes)](https://moonrepo.dev/blog/moon-v2.1)
+- [moon migrate 2.0 guide](https://moonrepo.dev/docs/migrate/2.0)
+- [moon Rust handbook](https://moonrepo.dev/docs/guides/rust/handbook)
+- [moon v0.23 scoped task inheritance](https://moonrepo.dev/blog/v0.23)
+- [pnpm changesets guide](https://pnpm.io/next/using-changesets)
+- [tsup vs tsdown vs unbuild 2026](https://www.pkgpulse.com/guides/tsup-vs-tsdown-vs-unbuild-typescript-library-bundling-2026)
+- [moonrepo/moon actual node.yml](https://github.com/moonrepo/moon/blob/master/.moon/tasks/node.yml)
+- [InfoQ moon v2.0 coverage](https://www.infoq.com/news/2026/05/moonrepo-2-release/)</result>
+<usage><subagent_tokens>53263</subagent_tokens><tool_uses>71</tool_uses><duration_ms>421192</duration_ms></usage>
+</task-notification>

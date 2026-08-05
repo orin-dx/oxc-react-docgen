@@ -3,7 +3,14 @@ use miette::{IntoDiagnostic, Result};
 use crate::config::{build_options, BuildOptionsArgs};
 use crate::output::{print_diagnostics, print_summary};
 
-pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>) -> Result<()> {
+/// Watch mode never runs `--strict` — there's no CLI flag for it — so this
+/// is always `exit_code(false)`. Named seam so `cmd_watch`'s wiring has
+/// something unit-testable without spinning up watchexec.
+fn watch_exit_code(output: &oxc_react_docgen_core::types::ExtractionOutput) -> i32 {
+    output.exit_code(false)
+}
+
+pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>) -> Result<i32> {
     use indicatif::{ProgressBar, ProgressStyle};
     use owo_colors::OwoColorize;
 
@@ -50,6 +57,8 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
         print_diagnostics(&first.diagnostics);
     }
 
+    let exit_code = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(watch_exit_code(&first)));
+
     // q=quit, r=re-extract
     let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
     let running_clone = running.clone();
@@ -79,12 +88,14 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
     let src_dirs: Vec<std::path::PathBuf> = options.src_dirs.iter().map(|p| p.as_std_path().to_owned()).collect();
 
     let rt = tokio::runtime::Runtime::new().into_diagnostic()?;
+    let exit_code_outer = exit_code.clone();
     rt.block_on(async move {
         use watchexec::Watchexec;
 
         let session_inner = session.clone();
         let quiet_inner = quiet;
         let out_path = args.out.clone();
+        let exit_code_inner = exit_code_outer.clone();
 
         let wx = Watchexec::new(move |action| {
             for event in action.events.iter() {
@@ -95,6 +106,16 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
                     }
                     if let Ok(utf8) = camino::Utf8PathBuf::from_path_buf(path.to_owned()) {
                         let update = session_inner.update_file(&utf8);
+                        exit_code_inner.store(
+                            oxc_react_docgen_core::types::ExtractionOutput {
+                                components: Default::default(),
+                                enums: Default::default(),
+                                diagnostics: update.diagnostics.clone(),
+                                stats: Default::default(),
+                            }
+                            .exit_code(false),
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
                         if !quiet_inner {
                             use owo_colors::OwoColorize;
                             let names: Vec<_> =
@@ -123,5 +144,37 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
     })?;
 
     running.store(false, std::sync::atomic::Ordering::Relaxed);
-    Ok(())
+    Ok(exit_code.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn watch_exit_code_mirrors_extraction_output_exit_code_non_strict() {
+        let clean = oxc_react_docgen_core::types::ExtractionOutput {
+            components: Default::default(),
+            enums: Default::default(),
+            diagnostics: vec![],
+            stats: Default::default(),
+        };
+        assert_eq!(watch_exit_code(&clean), 0);
+
+        let with_error = oxc_react_docgen_core::types::ExtractionOutput {
+            components: Default::default(),
+            enums: Default::default(),
+            diagnostics: vec![oxc_react_docgen_core::types::Diagnostic {
+                severity: oxc_react_docgen_core::types::DiagnosticSeverity::Error,
+                message: "boom".into(),
+                file: None,
+                line: None,
+                column: None,
+                help: None,
+                code: oxc_react_docgen_core::types::DiagnosticCode::Unknown,
+            }],
+            stats: Default::default(),
+        };
+        assert_eq!(watch_exit_code(&with_error), 2);
+    }
 }

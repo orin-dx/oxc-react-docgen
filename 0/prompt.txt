@@ -1,0 +1,24 @@
+<task-notification>
+<task-id>af2c54f7676dff6ad</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/af2c54f7676dff6ad.output</output-file>
+<status>completed</status>
+<summary>Agent "Build Zendesk Garden StyledButton fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Done. Summary:
+
+**Files created**: `/Users/gabe/Projects/oxc-react-codegen/fixtures/zendesk-garden/StyledButton.tsx` (single self-contained file, ~190 lines, no other files touched)
+
+**Source**: `zendeskgarden/react-components` (confirmed via `gh api`, Apache-2.0, default branch `main`) — note the real path has a leading dot: `.packages/buttons/src/styled/StyledButton.ts` (not `packages/...` as guessed), 522 lines exactly as expected. Companion type `IButtonProps` lives in `.packages/buttons/src/types/index.ts`.
+
+**Trimmed/stubbed**: CSS-in-JS bodies of `colorStyles`/`groupStyles`/`iconStyles`/`sizeStyles` collapsed to trivial stubs (real versions are ~230 lines of pure theme-token lookups). `IButtonProps` inlined (verbatim shape) instead of importing across a relative path, so the fixture stays single-file. `StyledIcon`/`StyledSplitButton` (only used as nested-selector interpolation targets) stubbed as trivial `styled.svg`/`styled.div``. `PACKAGE_VERSION` (a webpack `DefinePlugin` global) stubbed via `declare const`. `styled-components`, `@zendeskgarden/react-theming`, and `polished` are none of them installed in this repo's node_modules, so their import specifiers are left real-but-unresolved — consistent with the existing `fixtures/panda/button.tsx` fixture, which does the same for `@pandacss/dev`. The load-bearing pieces — `IStyledButtonProps extends ButtonHTMLAttributes&lt;HTMLButtonElement&gt;` and `styled.button.attrs&lt;IStyledButtonProps&gt;(props =&gt; ({...}))&lt;IStyledButtonProps&gt;\`...\`` — are preserved verbatim.
+
+**Extraction results**:
+- Our binary (`./target/release/oxc-react-docgen extract --src fixtures/zendesk-garden --format canonical`): exit 0, clean run, **0 components, 0 diagnostics**. I traced this in `crates/core/src/extractor/component.rs`/`visit.rs`: component detection only recognizes `VariableDeclarator` initializers that are an FC-typed arrow/function, a `forwardRef(...)` call, an HOC-wrapped call, or a `ForwardRefExoticComponent` type-only decl. `styled.button.attrs&lt;T&gt;(...)&lt;T&gt;\`...\`` is a `TaggedTemplateExpression` whose tag is a `CallExpression` — none of the four detectors match it, so it's structurally invisible to the extractor today, regardless of whether `styled-components` types resolve.
+- Real `react-docgen-typescript@2.4.0` (via `apps/validate/node_modules`, throwaway script since deleted): also does **not** detect `StyledButton`. It returned one spurious entry for the unrelated exported helper `getHeight` with 0 props — an artifact of RDT's looser "any exported function" heuristic, not a meaningful detection of the styled-components pattern.
+
+**Finding**: both tools currently fail to recognize `styled.X.attrs&lt;T&gt;()` as a component-defining pattern — a legitimate gap this fixture now documents for both.
+
+No problems encountered that blocked completion; no files outside `fixtures/zendesk-garden/` were modified, and nothing was committed.</result>
+<usage><subagent_tokens>90939</subagent_tokens><tool_uses>40</tool_uses><duration_ms>411171</duration_ms></usage>
+</task-notification>

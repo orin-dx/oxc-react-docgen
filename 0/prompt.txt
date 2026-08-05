@@ -1,0 +1,164 @@
+<task-notification>
+<task-id>a6ec49be6f2a93b1d</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0602cae8-9776-4cab-baaa-67ad00aaf7d1/tasks/a6ec49be6f2a93b1d.output</output-file>
+<status>completed</status>
+<summary>Agent "Search angle 1: Rolldown Plugin trait and Rust plugin API" came to rest</summary>
+<note>A task-notification fires each time this agent comes to rest with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All 5 claims verified. Here is the complete synthesized report:
+
+---
+
+## Rolldown Native Rust Plugin API — Research Report
+
+### TL;DR
+
+Yes, Rolldown has a native Rust `Plugin` trait. It lives in the dedicated `rolldown_plugin` crate (v1.1.1 on crates.io, released 2026-06-11). The full module path is `rolldown_plugin::Plugin`, also re-exported as `rolldown::plugin::Plugin`.
+
+---
+
+### Crate and module path
+
+- **Crate**: `rolldown_plugin` — https://crates.io/crates/rolldown_plugin
+- **docs.rs**: https://docs.rs/rolldown_plugin/latest/rolldown_plugin/trait.Plugin.html
+- **Source** (GitHub): https://github.com/rolldown/rolldown/blob/main/crates/rolldown_plugin/src/plugin.rs
+- **Crate directory in repo**: https://github.com/rolldown/rolldown/tree/main/crates/rolldown_plugin
+
+Note: the repo moved from `rolldown-rs/rolldown` to `rolldown/rolldown`.
+
+The `rolldown` umbrella crate re-exports the entire plugin crate:
+```rust
+// crates/rolldown/src/lib.rs
+pub use rolldown_plugin as plugin;
+```
+So `rolldown::plugin::Plugin` and `rolldown_plugin::Plugin` are the same type.
+
+---
+
+### Trait definition (verbatim supertraits + required methods)
+
+```rust
+pub trait Plugin: Any + Debug + Send + Sync + 'static {
+    // REQUIRED — no defaults
+    fn name(&amp;self) -&gt; Cow&lt;'static, str&gt;;
+    fn register_hook_usage(&amp;self) -&gt; HookUsage;
+
+    // All other methods have default no-op async bodies (see below)
+}
+```
+
+**Key design points (all adversarially verified):**
+- Uses RPITIT (`impl Future&lt;Output = …&gt; + Send`) — NOT `#[async_trait]` on the trait itself. Requires Rust 1.75+.
+- The crate does depend on `async-trait = "0.1.88"` (in Cargo.toml), but only for internal dyn-dispatch wrappers (`Pluginable`), not the user-facing `Plugin` trait.
+- Not dyn-compatible directly; the internal `Pluginable` trait handles type erasure for the plugin driver.
+- 44 total methods: 2 required, 42 with defaults.
+
+---
+
+### Hook inventory (all defaulted, grouped by phase)
+
+**Build phase:**
+| Method | Return type |
+|--------|------------|
+| `build_start(&amp;self, ctx, args)` | `HookNoopReturn` = `Result&lt;()&gt;` |
+| `resolve_id(&amp;self, ctx, args)` | `HookResolveIdReturn` = `Result&lt;Option&lt;HookResolveIdOutput&gt;&gt;` |
+| `resolve_dynamic_import` | Same — `#[deprecated]`, use `resolve_id` |
+| `load(&amp;self, ctx, args)` | `HookLoadReturn` = `Result&lt;Option&lt;HookLoadOutput&gt;&gt;` |
+| `transform(&amp;self, ctx, args)` | `HookTransformReturn` = `Result&lt;Option&lt;HookTransformOutput&gt;&gt;` |
+| `transform_ast(&amp;self, ctx, args)` | `HookTransformAstReturn` = `Result&lt;EcmaAst&gt;` — experimental, OXC-native |
+| `module_parsed(&amp;self, ctx, module_info, normal_module)` | `HookNoopReturn` |
+| `build_end(&amp;self, ctx, args)` | `HookNoopReturn` |
+
+**Generate phase:**
+| Method | Return type |
+|--------|------------|
+| `render_start` | `HookNoopReturn` |
+| `banner` / `footer` / `intro` / `outro` | `HookInjectionOutputReturn` = `Result&lt;Option&lt;String&gt;&gt;` |
+| `render_chunk` | `HookRenderChunkReturn` = `Result&lt;Option&lt;HookRenderChunkOutput&gt;&gt;` |
+| `augment_chunk_hash` | `HookAugmentChunkHashReturn` = `Result&lt;Option&lt;String&gt;&gt;` |
+| `render_error` | `HookNoopReturn` |
+| `generate_bundle` | `HookNoopReturn` |
+| `write_bundle` | `HookNoopReturn` |
+| `close_bundle` | `HookNoopReturn` |
+
+**Watch mode:**
+| Method | Return type |
+|--------|------------|
+| `watch_change(&amp;self, ctx, path, event)` | `HookNoopReturn` |
+| `close_watcher(&amp;self, ctx)` | `HookNoopReturn` |
+
+Every hook method has a paired `fn hook_name_meta(&amp;self) -&gt; Option&lt;PluginHookMeta&gt;` (defaulting to `None`) for controlling execution order/parallelism.
+
+**Context types differ by hook:**
+- `load` → `SharedLoadPluginContext`
+- `transform` → `SharedTransformPluginContext`
+- everything else → `&amp;PluginContext`
+
+---
+
+### `register_hook_usage` — the required bitflag method
+
+Implementations must declare which hooks they actually use via `HookUsage` bitflags (auto-generated):
+
+```rust
+bitflags! {
+    pub struct HookUsage: u32 {
+        const BuildStart = 1 &lt;&lt; 0;
+        const ResolveId  = 1 &lt;&lt; 1;
+        const Load       = 1 &lt;&lt; 3;
+        const Transform  = 1 &lt;&lt; 4;
+        const TransformAst = 1 &lt;&lt; 16;
+        // ... 21 total flags
+    }
+}
+```
+
+---
+
+### `transform_ast` — the OXC-native hook
+
+Takes **owned** `EcmaAst` (confirmed from source):
+
+```rust
+pub struct HookTransformAstArgs&lt;'a&gt; {
+    pub cwd: &amp;'a PathBuf,
+    pub ast: EcmaAst,          // owned — direct AST manipulation
+    pub id: &amp;'a str,
+    pub stable_id: &amp;'a str,
+    pub is_user_defined_entry: bool,
+    pub module_type: &amp;'a ModuleType,
+}
+```
+
+This is rolldown's extension beyond Rollup compatibility — lets plugins manipulate OXC's AST directly without a source → parse → generate round-trip.
+
+---
+
+### Internal architecture (not for plugin authors)
+
+- `Pluginable` trait (in `pluginable.rs`): blanket-implemented for all `T: Plugin`. Provides `call_*` versions of each hook (e.g. `call_resolve_id`). The plugin driver operates on `dyn Pluginable` (type-erased).
+- `SharedPluginable` = `Arc&lt;dyn Pluginable&gt;` — how plugins are stored and passed across threads.
+- `PluginDriver` — orchestrates hook calls across the plugin list.
+
+---
+
+### Ecosystem of built-in plugin crates
+
+25+ crates under `crates/rolldown_plugin_*` in the repo, all published to crates.io at 1.1.1:
+`rolldown_plugin_replace`, `rolldown_plugin_hmr`, `rolldown_plugin_isolated_declaration`, `rolldown_plugin_bundle_analyzer`, `rolldown_plugin_vite_resolve`, `rolldown_plugin_vite_css`, `rolldown_plugin_vite_html`, `rolldown_plugin_lazy_compilation`, `rolldown_plugin_copy_module`, `rolldown_plugin_data_url`, `rolldown_plugin_wasm_helper`, `rolldown_plugin_wasm_fallback`, `rolldown_plugin_oxc_runtime`, `rolldown_plugin_chunk_import_map`, `rolldown_plugin_asset_import_meta_url`, and more.
+
+Utility crate: `rolldown_plugin_utils` (v1.1.1) — shared helpers for plugin authors.
+
+---
+
+### Verification summary
+
+| Claim | Verdict |
+|-------|---------|
+| `rolldown_plugin` v1.1.1 on crates.io | Confirmed — crates.io API |
+| RPITIT, not `#[async_trait]` on trait | Confirmed — raw source |
+| 2 required methods, 42 with defaults | Confirmed — full method count |
+| `pub use rolldown_plugin as plugin` in `rolldown` | Confirmed — raw `lib.rs` |
+| `transform_ast` takes owned `EcmaAst` | Confirmed — struct definition |</result>
+<usage><subagent_tokens>29402</subagent_tokens><tool_uses>1</tool_uses><duration_ms>144709</duration_ms></usage>
+</task-notification>

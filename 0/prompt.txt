@@ -1,0 +1,3 @@
+Are these accounted in the fixtures you wrote? Consider complex examples of these and how they should map to RDT? Any other common patterns we can find from popular libraries like FloatingUI, MUI, Radix, Shadcn, react-aria, spectrum, IBM carbon, shopify's design system, etc?
+
+How do we deal with jsdoc/tsdoc defalts + inline defaults (inline overrides). Also typeof values?

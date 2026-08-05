@@ -1,0 +1,1 @@
+Let's not litter the project with extra MD files right? Let's systematically tackle all of the issues we identified please

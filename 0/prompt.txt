@@ -1,0 +1,1 @@
+We should make sure that we accurately get the default values from the tsdoc/jsdoc or code (code is the more accurate if there is a discrepancy, which we should call out). Any way to address the issues identified?

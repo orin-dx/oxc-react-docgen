@@ -1,0 +1,126 @@
+<task-notification>
+<task-id>abee49774a4e24f95</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0602cae8-9776-4cab-baaa-67ad00aaf7d1/tasks/abee49774a4e24f95.output</output-file>
+<status>completed</status>
+<summary>Agent "Search for blocking NAPI calls and thread-safety gaps" came to rest</summary>
+<note>A task-notification fires each time this agent comes to rest with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I now have a complete picture. Here is the full audit:
+
+---
+
+## Category 1: `extract_all` — Should it be async?
+
+**Current state:** `extract_all` is a synchronous `#[napi]` fn. It calls `oxc_react_docgen_core::pipeline::extract`, which does parallel file I/O and CPU work via rayon — routinely 100ms–2s on a real project.
+
+**What happens in Node.js:** Every `#[napi]` function that is *not* marked `async` runs on Node's main JavaScript thread (the V8/libuv event loop thread). A 500ms rayon-powered scan blocks Node from processing any other JS, I/O callbacks, or incoming requests during that entire time.
+
+**Verdict: Yes, it should be made async, for the same reason as `initialize_session`.**
+
+The fix is identical to `initialize_session`:
+```rust
+#[napi]
+pub async fn extract_all(options: JsExtractOptions) -&gt; NapiResult&lt;String&gt; {
+    let pipeline_options = PipelineOptions::from(options);
+    tokio::task::spawn_blocking(move || {
+        let output = oxc_react_docgen_core::pipeline::extract(&amp;pipeline_options);
+        extraction_output_to_json(&amp;output).map_err(|e| napi::Error::from_reason(e.to_string()))
+    })
+    .await
+    .map_err(|e| napi::Error::from_reason(e.to_string()))?
+}
+```
+
+**Tradeoff:** The only cost is one `Arc` clone and a thread pool hop. For a one-off cold run this is negligible. The risk of *not* doing it is that Node.js Storybook/Vite builds calling `extract_all` at startup will stall the event loop, blocking HMR and other plugin hooks until it returns.
+
+**Note:** `create_session` (line 128) is also sync but it only constructs a `WatchSession::new` (no I/O, instant), so that one is fine.
+
+---
+
+## Category 2: Thread-safety and race conditions
+
+### 2.1 ArcSwap read-modify-write without `rcu`
+
+`update_file` at `watch.rs:135` correctly uses `rcu`. No other ArcSwap mutations exist in the file. `initialize` uses `self.global.store(new_global)` at line 83 — this is a plain store, not RMW, so no issue. **No remaining non-`rcu` RMW patterns found.**
+
+### 2.2 Rayon parallel iterators and shared mutable state
+
+In `pipeline/mod.rs`, Phase 2 (parallel parse at line 195–226): the rayon closure captures `cache_ref` (an `Arc&lt;DtsCache&gt;`) and calls `cache_ref.get()` and `cache_ref.insert()`. `DtsCache::store` is a `DashMap`, so both operations are individually thread-safe. **No bug here.**
+
+In `watch.rs:154–155`, `affected_mappings.par_iter().map(|m| resolve_component(m, &amp;ctx))` — `ctx` is a `ResolutionContext` which holds `Arc&lt;GlobalSourceData&gt;`, `Arc&lt;ImportResolutionMap&gt;`, and `Arc&lt;Resolver&gt;`, all read-only. **No bug here.**
+
+The `component_cache.insert()` at line 161 is called *sequentially* inside the for-loop after rayon collects into a `Vec`, not from within rayon threads. **No bug here.**
+
+### 2.3 DashMap TOCTOU patterns
+
+In `lib.rs:143–147`:
+```rust
+let session = SESSIONS
+    .entry(session_id)
+    .or_insert_with(|| Arc::new(WatchSession::new(PipelineOptions::from(options))))
+    .clone();
+```
+`DashMap::entry().or_insert_with()` holds a shard lock for the entire check-and-insert, so this is atomic. **No TOCTOU here.**
+
+In `watch.rs:130`, `self.source_cache.insert(changed.to_owned(), new_data.clone())` is a plain unconditional insert. **No TOCTOU here.**
+
+### 2.4 `ReverseDeps::affected()` access patterns
+
+`ReverseDeps` holds `inner: FxHashMap&lt;Utf8PathBuf, Vec&lt;Utf8PathBuf&gt;&gt;` (plain, not concurrent). It is wrapped in `Arc&lt;ReverseDeps&gt;` in `WatchSession` and is never mutated after `initialize()` builds it — the doc comment at line 79 explicitly says structural changes require a new `WatchSession`. `affected()` takes `&amp;self` and only reads from `inner` via `self.inner.get()`. **No bug. Safe read-only access from any thread.**
+
+### 2.5 Concurrent `initialize()` calls — real race
+
+**This is a real bug.** `WatchSession::initialize()` takes `&amp;self` (shared reference) and performs a two-phase, non-atomic operation:
+
+1. Calls `extract()` (heavy cold run, lines 51)
+2. Runs a second discovery loop, filling `source_cache` and building a new `GlobalSourceData`, then calls `self.global.store(new_global)` (line 83)
+3. Seeds `component_cache` from the first run's output (lines 85–88)
+
+If two callers invoke `initialize()` concurrently on the same `WatchSession` (which is possible — the NAPI `initialize_session` function retrieves the session from `SESSIONS` and offloads to `spawn_blocking`; nothing prevents two JS callers from calling `initialize_session` with the same `session_id` before either returns):
+
+- Both calls run `extract()` in parallel — harmless but wasteful.
+- Both calls run the discovery for-loop independently and race to call `self.source_cache.insert()` — DashMap makes this safe, but the *last writer wins* non-deterministically.
+- Both calls call `self.global.store()` — the last write wins, but because the two cold runs happen at slightly different times, one of `source_cache`, `global`, and `component_cache` may reflect run A's data while another reflects run B's — they end up inconsistent with each other.
+- Both calls insert into `component_cache` from their respective cold `output.components`, again last writer wins but the trio (`source_cache`, `global`, `component_cache`) is not atomically consistent.
+
+**Scenario that triggers it:** A Vite plugin that calls `initialize_session` twice on the same session ID (e.g., due to a config reload in development or a race in the plugin's own `configureServer` hook ordering). The session ends up with `global` reflecting snapshot A's file set and `component_cache` reflecting snapshot B's — producing silently incorrect incremental results on the next `update_file`.
+
+**Fix:** Add an `AtomicBool` initialized flag plus a `Mutex&lt;()&gt;` (or `tokio::sync::Mutex` since this is called from spawn_blocking context) to guard `initialize()`, making it idempotent:
+
+```rust
+pub struct WatchSession {
+    // ... existing fields ...
+    initialized: std::sync::atomic::AtomicBool,
+    init_lock: std::sync::Mutex&lt;()&gt;,
+}
+
+pub fn initialize(&amp;self) -&gt; ExtractionOutput {
+    // Fast path: already initialized.
+    if self.initialized.load(std::sync::atomic::Ordering::Acquire) {
+        return self.snapshot();
+    }
+    // Slow path: take lock and re-check.
+    let _guard = self.init_lock.lock().unwrap();
+    if self.initialized.load(std::sync::atomic::Ordering::Acquire) {
+        return self.snapshot();
+    }
+    // ... existing body ...
+    self.initialized.store(true, std::sync::atomic::Ordering::Release);
+    output
+}
+```
+
+---
+
+## Summary
+
+| # | Location | Bug? | Severity |
+|---|---|---|---|
+| C1 | `napi/lib.rs:extract_all` | Not async — blocks Node event loop on cold runs | Medium — correctness on busy servers |
+| C2.1 | `watch.rs` ArcSwap | No remaining non-`rcu` RMW patterns | Clean |
+| C2.2 | Rayon parallel iters | No unprotected shared mutable state | Clean |
+| C2.3 | DashMap TOCTOU | No check-then-act patterns | Clean |
+| C2.4 | `ReverseDeps::affected()` | Read-only after construction, safe | Clean |
+| C2.5 | `WatchSession::initialize()` concurrent calls | Real race: `source_cache`/`global`/`component_cache` can end up inconsistent across two concurrent init calls | Medium — silent data corruption in edge case |</result>
+<usage><subagent_tokens>40320</subagent_tokens><tool_uses>5</tool_uses><duration_ms>82313</duration_ms></usage>
+</task-notification>

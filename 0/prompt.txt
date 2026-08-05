@@ -1,0 +1,1 @@
+Also consider what might happen to components when we use react-compiler. Does anything change in terms for react-docgen?

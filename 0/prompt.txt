@@ -1,0 +1,290 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+## 1. Primary Request and Intent
+
+The session resumed from a prior context that had completed R1 (7 insta snapshot tests). The user's primary directive was **"Let's go to the next part"** — meaning proceed through the full R1-R11 refactor sequence defined in `docs/10-QUALITY-AND-ARCHITECTURE.md`. After each step was complete, the user said **"commit this"** to persist the work.
+
+The most recent request — immediately before this summary — was: **"Can we take a stab at another round of evaluation of the architecture and our rust best practices? Where else can we improve our codebase to something that exceeds the standards for the industry? How do we compare to the codebases for the likes of RTK, oxc, oxlint, rolldown?"** This is a text-only analysis request for a second architecture review.
+
+---
+
+## 2. Key Technical Concepts
+
+- **`insta` snapshot tests** — 7 tests locking JSON output per fixture library; `INSTA_UPDATE=always` to regenerate, `cargo insta review` to approve. Non-deterministic fields (`durationMs`, `dtsCacheHits`) zeroed before comparison. Absolute paths redacted to `[ROOT]/...`.
+- **R1-R11 refactor sequence** — structural + behavioral improvements: snapshots → types/ split → ResolveState → resolver/ split → extractor/ split → pipeline/ split + IO errors → CLI split → visibility cleanup → PropType serde → cross-package resolution → tooling.
+- **`types/` module split** — Four focused sub-modules: `collected.rs` (raw AST-level types), `output.rs` (semantic resolver output), `diagnostic.rs` (Diagnostic/DiagnosticCode/DiagnosticSeverity), `global.rs` (GlobalSourceData + ScopedKey + ResolveState). `mod.rs` re-exports all via `pub use collected::*, diagnostic::*, global::*, output::*`.
+- **`ScopedKey` newtype** — `struct ScopedKey(CompactString)` in `types/global.rs`. Constructor: `ScopedKey::new(file: &Utf8Path, name: &str)`. Defined but NOT yet used in `GlobalSourceData` maps (still `FxHashMap<String, ...>`).
+- **`ResolveState`** — `struct ResolveState { visited: FxHashSet<CompactString>, diagnostics: Vec<Diagnostic> }`. Bundles the two mutable-reference params threaded through 17 resolver functions. `depth: u8` intentionally kept as a separate parameter (avoids RAII complexity).
+- **`resolver/` split** — 12 sub-modules: `mod.rs` (ResolutionContext, resolve_component, ResolvedChain, tests), `chain.rs`, `extends.rs`, `alias.rs`, `collected.rs`, `named.rs`, `primitives.rs`, `template.rs`, `func.rs`, `react.rs`, `import.rs`, `html.rs`.
+- **`extractor/` split** — 7 sub-modules: `mod.rs` (SourceDataCollector struct + core helpers + tests), `alias.rs`, `component.rs`, `defaults.rs`, `interface.rs`, `jsdoc.rs`, `visit.rs`. SourceDataCollector fields are `pub(super)`.
+- **`pipeline/` split** — 3 files: `mod.rs` (PipelineOptions, extract(), tests), `discover.rs` (discover_files, should_skip — pub(super)), `watch.rs` (WatchSession).
+- **`DiagnosticCode::IoError`** — New variant added to propagate `fs::read_to_string` failures instead of silently returning empty string via `unwrap_or_default()`.
+- **IO error propagation** — The par_iter in `extract()` changed from `Vec<(Utf8PathBuf, SourceData)>` to `Vec<(Utf8PathBuf, SourceData, Option<Diagnostic>)>`. `initialize()` pushes IoError into returned `output.diagnostics`. `update_file()` prepends `io_diagnostic` into its result's `diagnostics` vec.
+- **CLI split** — `cli/main.rs` split into `main.rs` (Cli struct, Command enum, *Args structs, main(), init_tracing()), `config.rs`, `output.rs`, `commands/{mod,extract,watch,inspect,check,completions}.rs`. All *Args fields made `pub` so commands can access via `crate::`.
+- **Visibility model** — `lib.rs`: `cache`, `extractor`, `import_map`, `known`, `resolver` → `pub(crate)`; `pipeline`, `types`, `react_types` → `pub`.
+- **R9 SKIPPED** — `#[derive(Serialize, Deserialize)]` for `PropType` not feasible without breaking JSON format. `#[serde(tag = "kind")]` doesn't support tuple/newtype variants; `#[serde(tag = "kind", content = "0")]` wraps struct variants in a "0" object breaking the existing format.
+- **`.clippy.toml`** — Added `too-many-arguments-threshold = 6` and `too-many-lines-threshold = 100` alongside existing `msrv = "1.94"`.
+- **CompactString** — Used throughout for type names, prop names; avoids heap allocation for strings ≤24 bytes.
+- **FxHashMap vs BTreeMap** — `FxHashMap` for internal lookup maps (perf), `BTreeMap` for JSON-facing output (deterministic key ordering).
+- **rayon** — `par_iter()` for parallel file parsing and parallel component resolution.
+
+---
+
+## 3. Files and Code Sections
+
+### `crates/core/src/types/mod.rs` (CREATED)
+Re-exports everything from sub-modules for backward compatibility with `use crate::types::*`:
+```rust
+pub mod collected;
+pub mod diagnostic;
+pub mod global;
+pub mod output;
+
+pub use collected::*;
+pub use diagnostic::*;
+pub use global::*;
+pub use output::*;
+```
+
+### `crates/core/src/types/diagnostic.rs` (CREATED)
+```rust
+use serde::{Deserialize, Serialize};
+
+pub struct Diagnostic {
+    pub severity: DiagnosticSeverity,
+    pub message: String,
+    pub file: Option<String>,
+    pub line: Option<u32>,
+    pub column: Option<u32>,
+    pub help: Option<String>,
+    pub code: DiagnosticCode,
+}
+
+pub enum DiagnosticCode {
+    UnresolvableImport, OpaqueType, PandaCodegenMissing, MaxDepthExceeded,
+    ComponentDetectionFailed, BarrelResolutionFailed, Unknown,
+    JsDocDefaultMismatch, ComputedDefault, IndexedAccessOpaque,
+    TemplateLiteralOpaque, CallableComponent, DiscriminatedUnion,
+    IoError,  // ADDED in R6
+}
+```
+
+### `crates/core/src/types/collected.rs` (CREATED)
+Contains `TypeName = CompactString`, `CollectedType` (with hand-rolled serde via `to_json_value`/`from_json_value`), `CollectedObjectField` (with hand-rolled serde), `EnumEntry`, `EnumValue`, `SourceData`, `CollectedInterface`, `RawProp`, `ExtendsRef`, `CollectedTypeAlias`, `DefaultSource`, `RawDefault`, `ComponentMapping`, `ImportBinding`, `LexedExport`.
+
+### `crates/core/src/types/output.rs` (CREATED)
+Contains `PropType` (with hand-rolled serde via `to_tagged_value`/`from_tagged_value`), `OpaqueReason`, `ObjectField`, `ExtractionOutput`, `InheritedLayer`, `ComponentEntry`, `ParsedProp`, `DefaultValue`, `PropParent`, `ExtractionStats`, `element_to_type_name` (private).
+
+### `crates/core/src/types/global.rs` (CREATED)
+```rust
+use rustc_hash::{FxHashMap, FxHashSet};
+use compact_str::CompactString;
+use super::diagnostic::Diagnostic;
+use super::collected::{CollectedInterface, CollectedTypeAlias, ComponentMapping, EnumEntry, ImportBinding, LexedExport, SourceData};
+
+#[derive(Default)]
+pub struct ResolveState {
+    pub visited: FxHashSet<CompactString>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct ScopedKey(CompactString);
+
+impl ScopedKey {
+    pub fn new(file: &Utf8Path, name: &str) -> Self {
+        Self(format!("{}:{}", file, name).into())
+    }
+    pub fn as_str(&self) -> &str { &self.0 }
+}
+
+pub struct GlobalSourceData {
+    pub interfaces: FxHashMap<String, CollectedInterface>,  // Still String keys
+    pub type_aliases: FxHashMap<String, CollectedTypeAlias>,
+    pub enums: FxHashMap<String, Vec<EnumEntry>>,
+    pub import_map: FxHashMap<Utf8PathBuf, Vec<ImportBinding>>,
+    pub re_export_map: FxHashMap<Utf8PathBuf, Vec<LexedExport>>,
+    pub component_mappings: Vec<ComponentMapping>,
+}
+// merge() and remove_file() methods unchanged
+```
+
+### `crates/core/src/types.rs` (DELETED)
+Replaced by the `types/` directory.
+
+### `crates/core/src/resolver/mod.rs` (CREATED from split)
+Contains imports, module declarations (`mod chain; mod extends; mod alias; ...`), `ResolutionContext`, `resolve_component`, `ResolvedChain` struct + impl, and the full `#[cfg(test)] mod tests`. Notable fix: removed the `pub use collected::resolve_collected_type;` re-export (unused after R8 visibility change), added `use super::collected::resolve_collected_type;` inside the test helper.
+
+### `crates/core/src/resolver/chain.rs` (CREATED)
+`resolve_props_chain`, `resolve_interface_chain`, `find_discriminant_prop`. Functions use `pub(super) fn` visibility.
+
+### `crates/core/src/resolver/` (all other sub-modules)
+`extends.rs`, `alias.rs`, `collected.rs` (pub resolve_collected_type → now pub(super) after R8), `named.rs`, `primitives.rs`, `template.rs`, `func.rs`, `react.rs`, `import.rs`, `html.rs`.
+
+### `crates/core/src/resolver.rs` (DELETED)
+Replaced by the `resolver/` directory.
+
+### `crates/core/src/extractor/` (CREATED, 7 files)
+`mod.rs` (SourceDataCollector struct with `pub(super)` fields, core helpers, tests), `alias.rs`, `component.rs`, `defaults.rs`, `interface.rs`, `jsdoc.rs`, `visit.rs`.
+
+### `crates/core/src/extractor.rs` (DELETED)
+
+### `crates/core/src/pipeline/mod.rs` (CREATED from split)
+IO error fix in `extract()`:
+```rust
+// Changed from Vec<(Utf8PathBuf, SourceData)>
+let source_data_vec: Vec<(Utf8PathBuf, SourceData, Option<Diagnostic>)> = src_files
+    .par_iter()
+    .map(|path| {
+        // ...
+        let (source, io_diag) = match std::fs::read_to_string(path) {
+            Ok(s) => (s, None),
+            Err(e) => (String::new(), Some(Diagnostic {
+                severity: DiagnosticSeverity::Error,
+                message: format!("Failed to read '{}': {}", path, e),
+                file: Some(path.to_string()),
+                line: None, column: None,
+                help: Some("Check file permissions and that the file exists.".into()),
+                code: DiagnosticCode::IoError,
+            })),
+        };
+        // ...
+        (path.clone(), data, io_diag)
+    })
+    .collect();
+
+for (path, data, io_diag) in source_data_vec {
+    if let Some(d) = io_diag { diagnostics.push(d); }
+    global.merge(&path, data);
+}
+```
+
+### `crates/core/src/pipeline/watch.rs` (CREATED)
+`WatchSession` struct + impl. `update_file()` uses:
+```rust
+let mut io_diagnostic: Option<Diagnostic> = None;
+let source = match std::fs::read_to_string(changed) {
+    Ok(s) => s,
+    Err(e) => { io_diagnostic = Some(Diagnostic { ... IoError ... }); String::new() }
+};
+// ...
+let mut diagnostics: Vec<Diagnostic> = io_diagnostic.into_iter().collect();
+```
+
+### `crates/core/src/pipeline.rs` (DELETED)
+
+### `crates/cli/src/main.rs` (MODIFIED)
+Slimmed to ~140 lines: Cli, Command, *Args structs (all fields `pub`), main(), init_tracing(). Added `mod config; mod output; mod commands;`.
+
+### `crates/cli/src/commands/` (CREATED, 6 files)
+`mod.rs` + `extract.rs`, `watch.rs`, `inspect.rs`, `check.rs`, `completions.rs`.
+
+### `crates/cli/src/config.rs` + `crates/cli/src/output.rs` (CREATED)
+
+### `crates/core/src/lib.rs` (MODIFIED)
+```rust
+pub(crate) mod cache;
+pub(crate) mod extractor;
+pub(crate) mod import_map;
+pub(crate) mod known;
+pub mod pipeline;
+pub mod react_types;
+pub(crate) mod resolver;
+pub mod types;
+```
+
+### `.clippy.toml` (MODIFIED)
+```toml
+msrv = "1.94"
+too-many-arguments-threshold = 6
+too-many-lines-threshold = 100
+```
+
+### `docs/09-STATUS.md` (MODIFIED)
+Updated to reflect R1-R8 + R11 complete, R9 skipped, R10 deferred, Phase 5a ready to start.
+
+### `crates/core/tests/snapshots.rs` (was already created in R1)
+7 snapshot tests using `insta::assert_json_snapshot!`. Path redaction replaces workspace root with `[ROOT]/`. Non-deterministic stats fields zeroed. Per-library tests: `snapshot_shadcn`, `snapshot_radix`, `snapshot_mui`, `snapshot_chakra`, `snapshot_mantine`, `snapshot_react_aria`, `snapshot_panda`.
+
+### `crates/core/tests/snapshots/*.snap` (was already created in R1)
+7 `.snap` files — one per fixture. All contain real extracted JSON with paths replaced by `[ROOT]/fixtures/...`.
+
+---
+
+## 4. Errors and Fixes
+
+- **`resolve_collected_type` unused re-export warning** after R8 visibility change: removed `pub use collected::resolve_collected_type;` from `resolver/mod.rs`. But the test helper `resolve_type()` inside the test block used it — fixed by adding `use super::collected::resolve_collected_type;` inside the test function body.
+
+- **`react_types` module private error** after setting `pub(crate)`: the CLI uses `oxc_react_docgen_core::react_types::REACT_18` and `REACT_19` — fixed by keeping `react_types` as `pub` (it's part of the public API).
+
+- **ResolveState `union_alias` branch-cloning case**: in `resolve_union_alias`, branches were cloned separately with their own visited sets; the agent handled this by creating a `branch_state` with `visited: state.visited.clone()` and merging diagnostics back.
+
+- **`output.rs` bad re-export lines**: first draft of `types/output.rs` had incorrect `pub use super::collected::{EnumEntry as _, EnumValue as _};` lines (using `as _` hides the import) and a redundant `use` at the bottom — rewrote the file cleanly without those lines; `mod.rs` handles all re-exports.
+
+---
+
+## 5. Problem Solving
+
+**R3 depth-in-state decision**: The architecture doc envisioned depth inside `ResolveState`, but incrementing/restoring it through recursive calls with mutable reference sharing is tricky without RAII guards. Decision: keep `depth: u8` as a separate value parameter alongside `state: &mut ResolveState`. This reduces the param count from 3 to 2 while avoiding complexity.
+
+**R9 PropType derive impossibility**: `#[serde(tag = "kind")]` internally tagged representation doesn't support tuple/newtype variants. `#[serde(tag = "kind", content = "0")]` adjacently tagged would work for newtypes (preserving `"0"` field name) but wraps struct variants in a `"0"` object — breaking current format for `Named`, `EventHandler`, `Ref`, `HtmlAttributes`, `LiteralUnion`, `Opaque`. Accepted this as a known limitation; hand-rolled serde stays.
+
+**Agent delegation for large mechanical transforms**: R3 (17 function signatures), R4 (resolver split), R5 (extractor split), R6-part2 (pipeline split), R7 (CLI split) were all delegated to spawned agents given the size of the changes. Each agent was given precise instructions about target structure, import patterns, and compile verification.
+
+---
+
+## 6. All User Messages
+
+1. "Let's go to the next part" — signal to continue R2 after compaction
+2. "commit this" — commit the completed R1-R11 refactor work
+3. "Can we take a stab at another round of evaluation of the architecture and our rust best practices? Where else can we improve our codebase to something that exceeds the standards for the industry? How do we compare to the codebases for the likes of RTK, oxc, oxlint, rolldown? CRITICAL: Respond with TEXT ONLY. Do NOT call any tools. [full compaction instructions followed]"
+
+---
+
+## 7. Pending Tasks
+
+- **Architecture evaluation** (most recent request): Provide a detailed text analysis of where the codebase stands vs. OXC, oxlint, rolldown, RTK-quality standards. Identify remaining gaps and improvement opportunities.
+- **R9 (revisited)**: PropType serde derive remains skipped. If format change is accepted, this could be done by converting all tuple variants to struct variants and regenerating snapshots.
+- **R10**: Cross-package resolution — demand-driven, multi-pass. Requires adding `needed_specifiers: Vec<NeededSpecifier>` to `ResolveState`, a `NeededSpecifier` struct, and a multi-pass loop in `pipeline/resolve.rs`.
+- **ScopedKey migration**: `ScopedKey` is defined but `GlobalSourceData` maps still use raw `String` keys. The type-safety benefit was deferred.
+- **Phase 5a**: Vite plugin (codebase is now ready structurally).
+
+---
+
+## 8. Current Work
+
+The refactor (R1-R8 + R11) was committed as `a3521bd` with 51 files changed, 15,550 insertions, 6,449 deletions. The user then immediately asked for an architecture/Rust best practices evaluation comparing the codebase to OXC, oxlint, rolldown, and RTK. This is a TEXT ONLY analysis — no tools.
+
+---
+
+## 9. Optional Next Step
+
+The user's most recent explicit request is:
+
+> "Can we take a stab at another round of evaluation of the architecture and our rust best practices? Where else can we improve our codebase to something that exceeds the standards for the industry? How do we compare to the codebases for the likes of RTK, oxc, oxlint, rolldown?"
+
+The next step is to deliver that architecture evaluation. Based on what's known about the codebase from this session, key areas where it falls short of OXC/oxlint/rolldown quality:
+
+**Gaps vs. OXC-quality Rust:**
+1. **`ScopedKey` defined but never used** — Maps are still `FxHashMap<String, ...>`. The type safety benefit of the newtype is unrealized.
+2. **`depth: u8` not in `ResolveState`** — The architecture doc's full vision (with `descend()` method and RAII depth guard) was not implemented.
+3. **Dead code in `import_map.rs`** — `ReExportStep`, `wildcard_sources`, `is_type_only`, `resolve_reexport_chain`, `wildcard_sources_for` are all unused. OXC-quality code has zero dead code warnings.
+4. **No `#![deny(unsafe_code)]`** — Missing from `lib.rs`. OXC explicitly denies unsafe.
+5. **No `#[must_use]`** on important return types — OXC marks Results and important builders `#[must_use]`.
+6. **`recursion_limit = "2048"`** — A code smell indicating the serde hand-roll is straining the compiler. Real fix: redesign PropType variant shapes to allow derive.
+7. **No Criterion benchmarks** — Performance regressions are invisible.
+8. **No `#[non_exhaustive]`** on public enums (`DiagnosticCode`, `OpaqueReason`) — Adding new variants is a semver-breaking change without it.
+9. **Inconsistent `String` vs `CompactString`** — Output types (`ComponentEntry.display_name`, `PropParent.name`) still use `std::string::String` where `CompactString` could reduce allocations.
+10. **`resolver/mod.rs` still 32K** — The test suite in mod.rs keeps it large; tests belong in a separate `tests.rs` or per-module `#[cfg(test)]` blocks.
+11. **No structured tracing in core** — Only wall-clock timing in pipeline. OXC-quality tooling has `tracing::span!` annotations for profiling.
+12. **`GlobalSourceData` cloned in `WatchSession`** — Expensive for large codebases; `Arc<T>` + structural sharing (already used via `ArcSwap`) is good but the clone on `rcu` is unavoidable.
+13. **No `cargo-deny`** — Dependency vetting is not automated. R11 mentioned it but it wasn't added.
+14. **No `proptest`** — R11 mentioned property-based testing but wasn't added.
+15. **`allow(clippy::too_many_arguments)` may still exist** as suppressions that bypass the new thresholds.
+16. **Documentation on public API** — `pipeline::extract()`, `PipelineOptions`, `ExtractionOutput` have no doc comments explaining usage. OXC and rolldown have thorough rustdoc.
+17. **`CollectedInterface.scoped_key: String`** — This field duplicates information that could be derived from the map key. Redundant storage.
+18. **Error messages are ad-hoc** — Diagnostic message strings are not standardized. OXC/oxlint have strict message formats with error codes (E0xxx style) and consistent help text.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

@@ -1,0 +1,29 @@
+<task-notification>
+<task-id>a34589108612d70bc</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/8659ece6-b660-4616-9f1d-5c547b9c57c2/tasks/a34589108612d70bc.output</output-file>
+<status>completed</status>
+<summary>Agent "Team H: Fix JSDoc consumed-comment tracking to prevent description leaks" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>**Done.** Here's a summary of what was implemented:
+
+## Fix: JSDoc consumed-comment tracking (I7)
+
+**Root cause confirmed:** `find_jsdoc` used a 120-byte proximity window with no deduplication. A JSDoc comment at the end of an interface (e.g., `/** Avatar diameter in pixels. */` before `size?: number`) was within 120 bytes of the following component declaration, so it was returned twice — once for the prop, once for the component description.
+
+**Changes made (5 files):**
+
+- **`extractor/mod.rs`**: Added `consumed_jsdoc: FxHashSet&lt;u32&gt;` field to `SourceDataCollector`, initialized in `new()`. Changed 8 method signatures from `&amp;self` to `&amp;mut self` due to the borrow-checker cascade: `ts_type_to_collected`, `ts_tuple_element_to_collected`, `ts_signature_to_object_field`, `extract_type_args`, `extract_type_name_from_type`, `extract_props_arg`, `collect_extends`, `collect_property_signature`.
+
+- **`extractor/jsdoc.rs`**: `find_jsdoc` → `&amp;mut self`. Adds `!self.consumed_jsdoc.contains(&amp;c.span_end)` to the comment filter and inserts `span_end` on successful non-empty match. `extract_jsdoc_tags` intentionally left without consumed check — it is always called after `find_jsdoc` for the same span and needs to find the already-consumed comment.
+
+- **`extractor/component.rs`**: 5 methods (`try_fc_annotation`, `extract_props_from_type_annotation`, `try_forward_ref`, `try_hoc_wrapped`, `try_forward_ref_exotic_decl`) changed to `&amp;mut self`.
+
+- **`extractor/alias.rs`**: `classify_type_alias` changed to `&amp;mut self`.
+
+- **`Cargo.lock`**: `anyhow` bumped 1.0.102 → 1.0.103 to clear a pre-existing `cargo deny` advisory that was blocking the hook.
+
+**Test results:** 93 unit/integration tests pass. 7 snapshot tests fail as expected — all are correct bug fixes (component descriptions that previously leaked from nearby prop JSDoc, e.g. Avatar, Select, IconButton, TextInput, Button, Input, InputGroup). No snapshots were updated per the task instructions.</result>
+<usage><subagent_tokens>123947</subagent_tokens><tool_uses>106</tool_uses><duration_ms>955061</duration_ms></usage>
+<worktree><worktreePath>/Users/gabe/Projects/oxc-react-codegen/.claude/worktrees/agent-a34589108612d70bc</worktreePath><worktreeBranch>worktree-agent-a34589108612d70bc</worktreeBranch></worktree>
+</task-notification>

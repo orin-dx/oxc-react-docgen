@@ -29,6 +29,15 @@ pub use watch::WatchSession;
 #[cfg(test)]
 const PARSE_PANIC_TEST_SENTINEL: &str = "__PANIC_TEST__.tsx";
 
+/// Component name that trips a simulated panic in the Phase 4 resolve
+/// closure — same rationale as `PARSE_PANIC_TEST_SENTINEL`, but for
+/// `resolve_component`, which can't be made to panic without editing
+/// non-test resolver code. Must be PascalCase — `is_pascal_case` is how the
+/// extractor decides a function declaration is a component in the first
+/// place, so a non-PascalCase sentinel would never reach Phase 4 at all.
+#[cfg(test)]
+const RESOLVE_PANIC_TEST_SENTINEL: &str = "ResolvePanicTestSentinel";
+
 // ─── PipelineOptions ─────────────────────────────────────────────────────────
 
 /// User-supplied known type override for custom library patterns.
@@ -371,9 +380,40 @@ pub(crate) fn extract_with_global(
         .cloned()
         .collect();
 
+    // The whole closure body is wrapped in `contain_panic` so one component's
+    // resolution panicking degrades to a per-component diagnostic instead of
+    // poisoning the entire `.collect()` and crashing the whole extraction
+    // run for every component.
     let ctx = Arc::new(ResolutionContext::new(global.clone(), options));
-    let results: Vec<(ComponentEntry, Vec<Diagnostic>)> =
-        mappings.par_iter().map(|mapping| resolve_component(mapping, &ctx)).collect();
+    let results: Vec<(ComponentEntry, Vec<Diagnostic>)> = mappings
+        .par_iter()
+        .map(|mapping| {
+            let label = format!("resolve:{}", mapping.component_name);
+            crate::panic_guard::contain_panic(&label, || {
+                #[cfg(test)]
+                if mapping.component_name == RESOLVE_PANIC_TEST_SENTINEL {
+                    panic!("simulated resolve-phase panic (test-only sentinel)");
+                }
+
+                resolve_component(mapping, &ctx)
+            })
+            .unwrap_or_else(|diag| {
+                let stub = ComponentEntry {
+                    display_name: mapping.component_name.clone(),
+                    file_path: mapping.file_path.clone(),
+                    description: String::new(),
+                    props: Default::default(),
+                    inheritance: vec![],
+                    notable_inherited: Default::default(),
+                    discriminant_prop: None,
+                    composes: vec![],
+                    tags: Default::default(),
+                    methods: vec![],
+                };
+                (stub, vec![diag])
+            })
+        })
+        .collect();
 
     // Phase 5: Collect output.
     let mut components = std::collections::BTreeMap::new();
@@ -570,6 +610,43 @@ mod tests {
         let output = extract(&options);
 
         assert_eq!(output.stats.files_parsed, 2, "both files should still be counted as discovered");
+        assert!(
+            output.diagnostics.iter().any(|d| d.code == DiagnosticCode::InternalPanic),
+            "expected an InternalPanic diagnostic, got {:?}",
+            output.diagnostics
+        );
+    }
+
+    // ── a_panic_during_resolve_phase_degrades_to_a_diagnostic_not_a_crash ────
+    //
+    // Same rationale as the parse-phase test above: `resolve_component` can't
+    // be made to panic without editing non-test resolver code, so this drives
+    // the real Phase 4 rayon closure via the sentinel component name it
+    // checks for under `#[cfg(test)]`.
+
+    #[test]
+    fn a_panic_during_resolve_phase_degrades_to_a_diagnostic_not_a_crash() {
+        let tmp = TempDir::new().unwrap();
+        write_file(&tmp, "Button.tsx", "export function Button(props: { label: string }) { return null; }\n");
+        write_file(
+            &tmp,
+            "Other.tsx",
+            &format!("export function {RESOLVE_PANIC_TEST_SENTINEL}(props: {{ label: string }}) {{ return null; }}\n"),
+        );
+
+        let options = PipelineOptions {
+            src_dirs: vec![Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap()],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        // Must not panic the test process — that's the whole point.
+        let output = extract(&options);
+
+        assert!(
+            output.components.contains_key("Button"),
+            "the component whose sibling panicked during resolution should still be extracted"
+        );
         assert!(
             output.diagnostics.iter().any(|d| d.code == DiagnosticCode::InternalPanic),
             "expected an InternalPanic diagnostic, got {:?}",

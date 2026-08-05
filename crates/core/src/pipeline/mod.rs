@@ -453,7 +453,25 @@ pub(crate) fn extract_with_global(
 
         let mut entry = entry;
         diagnostics.extend(options.plugins.run_on_component_resolved(&mut entry));
-        components.insert(key, entry);
+        if let Some(previous) = components.insert(key.clone(), entry.clone()) {
+            diagnostics.push(Diagnostic {
+                severity: DiagnosticSeverity::Warning,
+                message: format!(
+                    "Duplicate component key '{key}' — colliding file paths: previously '{}', now '{}'",
+                    previous.file_path, entry.file_path
+                ),
+                file: Some(entry.file_path.to_string()),
+                line: None,
+                column: None,
+                help: Some(
+                    "Two resolved components produced the same display name and disambiguation key — only \
+                     the later one is kept in the output. Check for overlapping src_dirs or a genuine \
+                     duplicate declaration."
+                        .into(),
+                ),
+                code: DiagnosticCode::Unknown,
+            });
+        }
         diagnostics.extend(diags);
     }
 
@@ -1723,5 +1741,99 @@ Button.defaultProps = { size: 'md' };
         // still have run for both entries.
         assert_eq!(button.composes, vec!["PluginAdded"]);
         assert_eq!(card.composes, vec!["PluginAdded"]);
+    }
+
+    // ── test_duplicate_component_declarations_in_one_file_emit_a_collision_diagnostic ─
+    //
+    // Bug C (root-cause-analysis.md): `components.insert(key, entry)` in Phase
+    // 5 discarded the `Option<ComponentEntry>` `BTreeMap::insert` already hands
+    // back — a same-key collision (three or more resolutions landing on the
+    // identical disambiguated key) silently overwrote the earlier entry with
+    // zero diagnostic. `parse_file` never runs `oxc_semantic`'s checker, so
+    // three syntactically-duplicate `function Button(...)` declarations in one
+    // file parse cleanly into three `ComponentMapping`s sharing both name and
+    // file_path (see extractor::visit's `visit_function`) — the 1st occurrence
+    // keys as "Button", the 2nd and 3rd both key as "Button (<path>)" (file_path
+    // is identical for all three), colliding at insert exactly like an
+    // overlapping-src_dirs 3-way repeat would. (Note: a *2-directory* overlap of
+    // the same physical file is instead caught upstream by `discover_files`'s
+    // post-sort dedup — see `test_overlapping_src_dirs_two_directories_deduplicates_without_a_duplicate_listing` —
+    // since that case never reaches this collision at all.)
+
+    #[test]
+    fn test_duplicate_component_declarations_in_one_file_emit_a_collision_diagnostic() {
+        let tmp = TempDir::new().unwrap();
+        write_file(
+            &tmp,
+            "Button.tsx",
+            "interface ButtonProps { a?: string }\n\
+             export function Button(props: ButtonProps) { return null; }\n\
+             export function Button(props: ButtonProps) { return null; }\n\
+             export function Button(props: ButtonProps) { return null; }\n",
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let collision = output
+            .diagnostics
+            .iter()
+            .find(|d| d.message.contains("Button") && d.message.to_lowercase().contains("duplicate"))
+            .expect("expected a diagnostic naming the colliding component, got none");
+        assert!(
+            collision.message.contains("Button.tsx"),
+            "expected the diagnostic to name the colliding file path, got: {}",
+            collision.message
+        );
+    }
+
+    // ── test_overlapping_src_dirs_two_directories_deduplicates_without_a_duplicate_listing ─
+    //
+    // Corrected finding: the insert-return check above only catches a genuine
+    // 3+-way same-key collision. A realistic 2-directory overlap (e.g.
+    // `["./src", "./src/components"]` both walking the same physical file)
+    // produces exactly 2 duplicate mappings for the identical file that get
+    // keyed DIFFERENTLY — the first gets the plain "Button" key, the second
+    // gets the disambiguated "Button (<path>)" key — so they never collide at
+    // `insert` and both silently appear as separate entries in the output.
+    // `discover_files` must dedup identical canonical paths before they ever
+    // become two separate component_mappings.
+
+    #[test]
+    fn test_overlapping_src_dirs_two_directories_deduplicates_without_a_duplicate_listing() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new_in(manifest_dir).unwrap();
+        let components_dir = tmp.path().join("components");
+        fs::create_dir(&components_dir).unwrap();
+        fs::write(
+            components_dir.join("Button.tsx"),
+            "export function Button(props: { a?: string }) { return null; }\n",
+        )
+        .unwrap();
+
+        let root = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let nested = Utf8PathBuf::from_path_buf(components_dir).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![root, nested],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+
+        let button_keys: Vec<&String> = output.components.keys().filter(|k| k.starts_with("Button")).collect();
+        assert_eq!(
+            button_keys.len(),
+            1,
+            "the same physical file discovered via two overlapping src_dirs must produce exactly one \
+             component entry, got keys: {button_keys:?}"
+        );
+        assert_eq!(output.stats.files_parsed, 1, "the overlapping file must be parsed once, not twice");
     }
 }

@@ -86,7 +86,13 @@ pub(super) fn discover_files(
         }
     }
 
-    files.sort(); // deterministic ordering across OS / FS
+    // Sort for deterministic ordering across OS/FS, then dedup: overlapping
+    // src_dirs (e.g. ["./src", "./src/components"]) walk the same physical
+    // file more than once, and since paths are canonicalized above, an exact
+    // duplicate always sorts adjacent — this catches it here rather than
+    // producing two separate component_mappings downstream.
+    files.sort();
+    files.dedup();
     (files, diagnostics)
 }
 

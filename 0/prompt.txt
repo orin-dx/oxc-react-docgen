@@ -1,0 +1,20 @@
+FYI monokl is doing this for docs:
+
+Repo's set up. Final structure:
+
+monokl/
+├── README.md          — pitch, quick example, status, language table
+├── ARCHITECTURE.md     — the design in prose (two-level analyzer/enricher model, search pipeline, caching, capability model)
+├── PRINCIPLES.md       — design tenets + non-goals, with rationale
+├── CONTRIBUTING.md     — project status, spec-change process, code conventions
+├── AGENTS.md           — vendor-neutral AI agent guidance
+├── CLAUDE.md           — thin Claude Code layer on top of AGENTS.md (orin-axi/michi context, skills to use)
+└── docs/spec/
+    ├── README.md                      — index + reading order + known gaps
+    ├── 01-core-architecture.md        — v0.1.0 baseline (3121 lines)
+    ├── 02-inspection-and-analysis.md  — inspect/refs/definition/diff/etc. (1945 lines)
+    ├── 03-multi-language-platform.md  — registry, real Rust analyzer, git scopes (3059 lines)
+    ├── 04-analysis-fidelity.md        — signature/symbol fidelity fixes (315 lines)
+    └── 05-research-and-decisions.md   — the changelog: why things are the way they are (241 lines)
+
+we should consider this right?

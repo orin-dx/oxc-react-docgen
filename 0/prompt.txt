@@ -1,0 +1,1 @@
+Let's leverage all of the best pre-commit hooks to help us here, not just clippy but things that run very fast

@@ -5,7 +5,6 @@ use compact_str::CompactString;
 
 use crate::types::*;
 
-use super::collected::resolve_collected_type;
 use super::ResolutionContext;
 
 #[allow(clippy::too_many_arguments)]
@@ -14,9 +13,13 @@ pub(super) fn resolve_function_type(
     param_names: &[Option<CompactString>],
     return_type: &CollectedType,
     consuming_file: &Utf8Path,
-    ctx: &ResolutionContext,
+    // Unused in the body — kept so this function's signature matches its
+    // dispatch siblings in resolve_collected_type's match arms (e.g.
+    // resolve_indexed_access, resolve_template_literal), which all take the
+    // same (ctx, state, depth) tail.
+    _ctx: &ResolutionContext,
     state: &mut ResolveState,
-    depth: u8,
+    _depth: u8,
 ) -> PropType {
     // Check if the return type is a React node → render prop pattern.
     let returns_react_node = matches!(
@@ -51,12 +54,15 @@ pub(super) fn resolve_function_type(
         return PropType::EventHandler { event_type: "void".into(), param_name: None };
     }
 
-    // Multi-param function — describe as opaque.
+    // Multi-param function — describe as opaque. Deliberately does NOT resolve
+    // return_type: resolve_collected_type mutates ResolveState (pushes
+    // diagnostics, extends in_scope_type_params) rather than being a pure
+    // query, and the function is emitted as opaque regardless of what the
+    // return type resolves to — resolving it here only risked side effects
+    // (e.g. a spurious "Cannot resolve type" warning) for a value nothing
+    // ever reads.
     let param_strs: Vec<String> = params.iter().map(|p| p.to_raw_string()).collect();
     let raw = format!("({}) => {}", param_strs.join(", "), return_type.to_raw_string());
-
-    // Resolve the return type to see if it's ReactNode.
-    let _ = resolve_collected_type(return_type, consuming_file, ctx, state, depth + 1);
 
     let diagnostic = Diagnostic {
         severity: DiagnosticSeverity::Info,

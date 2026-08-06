@@ -3,15 +3,16 @@
 //! Cache validity is based on file size + mtime (nanosecond resolution).
 //! Schema version bumps automatically invalidate the entire cache.
 //!
-//! The cache never panics — all I/O errors are silently swallowed and the cache
-//! degrades gracefully to an empty state.
+//! The cache never panics — load failures degrade gracefully to an empty
+//! state, and save failures are reported via a `Diagnostic` (see
+//! `save_to_disk`) rather than swallowed.
 
 use camino::{Utf8Path, Utf8PathBuf};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
-use crate::types::SourceData;
+use crate::types::{Diagnostic, DiagnosticCode, DiagnosticSeverity, SourceData};
 
 /// Bump this whenever `SourceData`'s field list or field order changes.
 /// Serialization is via plain `rmp_serde::to_vec`/`from_slice` — MessagePack's
@@ -136,40 +137,56 @@ impl DtsCache {
 
     /// Persist the cache to disk atomically (temp file + rename).
     ///
-    /// Skips writing if the cache is clean (no inserts since load).
-    /// Never panics — all errors are silently ignored.
-    pub fn save_to_disk(&self) {
+    /// Skips writing if the cache is clean (no inserts since load). Never
+    /// panics — on failure, returns a `Diagnostic` describing what went
+    /// wrong (cache persistence is best-effort and must not fail the
+    /// extraction run) instead of failing silently. Severity is `Info`, not
+    /// `Warning`: a `Warning` here would flip `docgen check --strict`'s exit
+    /// code to 1 purely because caching failed, even though extraction
+    /// output itself is entirely correct — the exact class of spurious
+    /// exit-code flip this project has already fixed once (see the
+    /// resolver's discarded-return-type-resolution fix).
+    pub fn save_to_disk(&self) -> Option<Diagnostic> {
         if !self.dirty.load(std::sync::atomic::Ordering::Relaxed) {
-            return;
+            return None;
         }
-        let _ = self.try_save();
+        self.try_save().err().map(|reason| Diagnostic {
+            severity: DiagnosticSeverity::Info,
+            message: format!("Failed to persist the DTS cache to '{}': {reason}", self.cache_dir),
+            file: None,
+            line: None,
+            column: None,
+            help: Some("Check that the cache directory is writable. Extraction still succeeded; only caching for the next run was affected.".into()),
+            code: DiagnosticCode::IoError,
+        })
     }
 
-    fn try_save(&self) -> Option<()> {
-        std::fs::create_dir_all(self.cache_dir.as_std_path()).ok()?;
+    fn try_save(&self) -> Result<(), String> {
+        std::fs::create_dir_all(self.cache_dir.as_std_path()).map_err(|e| e.to_string())?;
 
         // Collect into a serializable form.
         let entries: Vec<(SerializableCacheKey, SourceData)> =
             self.store.iter().map(|r| (SerializableCacheKey::from(r.key()), r.value().clone())).collect();
 
-        let bytes = rmp_serde::to_vec(&entries).ok()?;
+        let bytes = rmp_serde::to_vec(&entries).map_err(|e| e.to_string())?;
 
         // Atomic write: write to tmp then rename (avoids half-written files on crash).
         let tmp_path = self.cache_dir.join("dts-v1.msgpack.tmp");
         let final_path = self.cache_dir.join("dts-v1.msgpack");
-        std::fs::write(tmp_path.as_std_path(), &bytes).ok()?;
-        std::fs::rename(tmp_path.as_std_path(), final_path.as_std_path()).ok()?;
+        std::fs::write(tmp_path.as_std_path(), &bytes).map_err(|e| e.to_string())?;
+        std::fs::rename(tmp_path.as_std_path(), final_path.as_std_path()).map_err(|e| e.to_string())?;
 
         // Write manifest (schema version + entry count for quick inspection).
         let manifest = serde_json::json!({
             "schema": CACHE_SCHEMA_VERSION,
             "entry_count": entries.len(),
         });
-        let manifest_json = serde_json::to_string_pretty(&manifest).ok()?;
-        std::fs::write(self.cache_dir.join("manifest.json").as_std_path(), manifest_json.as_bytes()).ok()?;
+        let manifest_json = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+        std::fs::write(self.cache_dir.join("manifest.json").as_std_path(), manifest_json.as_bytes())
+            .map_err(|e| e.to_string())?;
 
         self.dirty.store(false, std::sync::atomic::Ordering::Relaxed);
-        Some(())
+        Ok(())
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -323,6 +340,40 @@ mod tests {
             dirty: std::sync::atomic::AtomicBool::new(true),
         };
         cache.save_to_disk(); // must not panic
+    }
+
+    #[test]
+    fn test_save_to_disk_surfaces_a_diagnostic_instead_of_failing_silently() {
+        // Regression test for: a cache-persistence failure (unwritable dir,
+        // full disk, sandboxed CI, etc.) was silently swallowed via `let _ =
+        // self.try_save()`, violating "always emit a Diagnostic when
+        // degrading" — every subsequent run would re-parse every .d.ts file
+        // with zero user-visible signal.
+        let cache = DtsCache {
+            store: DashMap::new(),
+            cache_dir: Utf8PathBuf::from("/dev/null/impossible/cache"),
+            dirty: std::sync::atomic::AtomicBool::new(true),
+        };
+        let diagnostic = cache.save_to_disk();
+        assert!(diagnostic.is_some(), "expected a diagnostic when cache persistence fails, got None");
+        let diagnostic = diagnostic.unwrap();
+        // Info, not Warning: a cache-persistence failure must not flip `check
+        // --strict`'s exit code — extraction output itself is unaffected.
+        assert_eq!(diagnostic.severity, crate::types::DiagnosticSeverity::Info);
+        assert!(
+            diagnostic.message.to_lowercase().contains("cache"),
+            "expected the diagnostic to mention the cache, got: {}",
+            diagnostic.message
+        );
+    }
+
+    #[test]
+    fn test_save_to_disk_returns_none_on_success() {
+        let tmp = temp_dir("save-success");
+        let cache_dir = tmp.join("cache");
+        let cache = DtsCache::load_from_disk(Some(&cache_dir));
+        cache.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(cache.save_to_disk().is_none(), "expected no diagnostic on a successful save");
     }
 
     #[test]

@@ -480,10 +480,11 @@ pub(crate) fn extract_with_global(
     // Persist cache for the next run.
     // Arc::try_unwrap succeeds because all rayon workers have finished; fallback
     // calls save_to_disk via the Arc deref since DtsCache::save_to_disk takes &self.
-    match Arc::try_unwrap(cache) {
+    let cache_save_diagnostic = match Arc::try_unwrap(cache) {
         Ok(c) => c.save_to_disk(),
         Err(arc) => arc.save_to_disk(),
-    }
+    };
+    diagnostics.extend(cache_save_diagnostic);
 
     let duration_ms = start.elapsed().as_millis() as u64;
     let components_extracted = components.len() as u32;

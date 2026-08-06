@@ -2167,6 +2167,39 @@ mod tests {
         assert!(!state.diagnostics.is_empty(), "expected a diagnostic for a multi-param function type, got none");
     }
 
+    #[test]
+    fn test_multi_param_function_does_not_emit_a_spurious_unresolvable_diagnostic_for_its_return_type() {
+        // Regression test for: resolve_function_type resolved the multi-param
+        // function's return type "to see if it's ReactNode" (per its own
+        // comment) but discarded the result with `let _ =` — resolve_collected_type
+        // isn't a pure query, it mutates ResolveState, so an unresolvable
+        // return type pushed a "Cannot resolve type" warning for a type that
+        // never appears anywhere in the emitted output. Under `check --strict`
+        // this fabricated warning could flip a user's exit code to 1.
+        let ctx = empty_ctx();
+        let mut state = ResolveState::default();
+        let ct = CollectedType::Function {
+            params: vec![CollectedType::String, CollectedType::Number],
+            param_names: vec![Some("a".into()), Some("b".into())],
+            return_type: Box::new(CollectedType::Named { name: "SomeUnresolvableType".into(), args: vec![] }),
+        };
+        let result =
+            super::collected::resolve_collected_type(&ct, Utf8Path::new("/test/button.tsx"), &ctx, &mut state, 0);
+        assert!(
+            matches!(&result, PropType::Opaque(d) if matches!(d.reason(), OpaqueReason::MultiParamFunction)),
+            "Expected MultiParamFunction opaque, got {:?}",
+            result
+        );
+        assert_eq!(
+            state.diagnostics.len(),
+            1,
+            "expected exactly one diagnostic (the MultiParamFunction opaque one) — \
+             not a second, spurious diagnostic about the discarded return-type resolution, got {:?}",
+            state.diagnostics
+        );
+        assert_eq!(state.diagnostics[0].code, DiagnosticCode::OpaqueType);
+    }
+
     // ── Test 17: tsconfig path stripping ─────────────────────────────────────
 
     #[test]

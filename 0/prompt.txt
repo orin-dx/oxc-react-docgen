@@ -1,0 +1,201 @@
+Are we done?
+
+---
+
+not done???
+
+---
+
+We should bring this to main please
+
+---
+
+/proof
+
+---
+
+Take a look at the ~/Projects/plugin-agents repo to understand our new SDD + semantic model way of coding + examples of our specs in the ~/Projects/callisto repo. We would like to comprehensively review our current codebase in the context of our goals to formulate specs and validate against those.
+
+  We want to make sure we're thinking about the entire library of crates across the entire repo when considering changes. Considering comphrehensively how our code is modeled and works together. We want to semantically model our architecture and address any issues/bugs within that semantic model view.
+
+---
+
+Are you using our plugins or duplicating?
+
+---
+
+Pickup the work
+
+---
+
+<task-notification>
+<task-id>ab4ac17d5ee8dea99</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0ae3953f-9438-46c4-a76a-88fce9eed529/tasks/ab4ac17d5ee8dea99.output</output-file>
+<status>completed</status>
+<summary>Agent "Draft spec@1 for pipeline orchestration" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The corrected spec@1 for SPEC-PIPELINE-001 is complete (shown above) and has been relayed to `canon-draft-pipeline`.
+
+Key corrections made, with two notable cases where I overrode the requested fix direction after re-checking source (not blindly following the audit's suggestion):
+
+- **AC-010** — the auditor suggested "lowest byte-offset/first wins" as the deterministic tie-break, but reading `crates/core/src/pipeline/mod.rs`'s Phase-5 collect loop shows `components.insert(key, entry)` always keeps the *current* (later-iterated) entry. I wrote the criterion to match reality: later-declared duplicate wins.
+- **AC-022** — the auditor asked for a "malformed glob" error case, but `discover.rs` shows `exclude_patterns` is matched via plain substring `.contains()`, not glob syntax. I replaced it with a criterion documenting the actual always-valid-input contract instead of inventing glob validation that doesn't exist.
+- **AC-019** (new) — verified `WatchSession::component_cache` is never pruned when a file is deleted; wrote the criterion around the real (stale) behavior rather than asserting removal, and extended `non_goals` to cover it as a documented gap parallel to the existing ReverseDeps staleness note.
+- **AC-021** (new) — grounded directly in the existing test `initialize_recovers_from_a_poisoned_lock_instead_of_panicking` in `crates/core/src/pipeline/watch.rs`.
+
+All other requested fixes (AC-014 timing→counter proxy, AC-012 field-level grounding, AC-018 exact `DiagnosticSeverity::Info`, PipelineOptions fields in `api_surface`, AC-020 pre-initialize behavior) were applied as requested and verified against source. AC-009 and AC-011 were kept unchanged since both have direct source grounding (plugin.rs's diagnostic label format, and Invariant 2's pre-mapping dedup mechanism).</result>
+<usage><subagent_tokens>86746</subagent_tokens><tool_uses>13</tool_uses><duration_ms>217365</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>abc4298baf42ab09f</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0ae3953f-9438-46c4-a76a-88fce9eed529/tasks/abc4298baf42ab09f.output</output-file>
+<status>completed</status>
+<summary>Agent "Draft spec@1 for CLI commands" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>v2 of SPEC-CLI-001 is complete and returned above (full JSON, not written to disk). Summary of what changed from v1:
+
+- **AC-007/008/009 (watch shutdown)**: Verified against the actual watchexec 8.2.0 crate source that SIGINT is unhandled (the action closure never calls `action.quit()`), so the *only* working quit path is the keyboard 'q'/'c' handler, which calls `std::process::exit(0)` unconditionally and never reads the tracked `exit_code`. This means the "exits non-zero on shutdown if errors" requirement is currently unmet on the only reachable path — I documented this precisely instead of asserting the unmet claim, and moved the fix itself to `non_goals`.
+- **AC-012 (inspect not-found)**: pinned to exit code 1, traced through `?`-propagation to `main()`'s `Result&lt;(), E&gt;` Termination.
+- **AC-014/015 (write failures)**: pinned exact exit codes, and surfaced a second real gap — `extract --out` uses plain `std::fs::write`, not `write_atomic` like `watch --out`, contradicting `docs/edge-cases.md`'s claim that both were fixed.
+- **AC-031/032**: added completions criteria, confirming clap rejects an invalid `Shell` value at parse time (exit code 2, clap's `USAGE_CODE`) before `cmd_completions` ever runs.
+- **AC-013, AC-025/030**: enumerated exactly which commands write files (extract, watch only) and which load config (extract, watch, check, inspect only; schema/lsp/completions accept `--config` syntactically but ignore it).
+- **AC-023 (LSP EOF)**: rewritten with exact exit code (0) and explicit "no stdout write" claim.
+- **AC-026, AC-009**: added `--config` pointing to a nonexistent file, and watchexec's `CriticalError` propagation path — both real, traced through source, not invented.
+- **AC-029**: named the exact flags/fields for precedence (`--config`, `--extra-builtins` on extract only, `--src` on all four).
+
+Sent a message to `canon-draft-cli` flagging the two source-vs-documentation discrepancies (watch's dead exit-code wiring, extract's non-atomic write) since both mean REQ-CLI-001 isn't fully satisfied by current code — that's a product/implementation decision beyond what a spec draft should resolve unilaterally.</result>
+<usage><subagent_tokens>135106</subagent_tokens><tool_uses>20</tool_uses><duration_ms>506804</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ab4ac17d5ee8dea99</task-id>
+<tool-use-id>toolu_01USBWMH9tASLyUV5C95M2WS</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0ae3953f-9438-46c4-a76a-88fce9eed529/tasks/ab4ac17d5ee8dea99.output</output-file>
+<status>completed</status>
+<summary>Agent "Draft spec@1 for pipeline orchestration" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The third-pass revision of SPEC-PIPELINE-001 is complete (full JSON above) and relayed to `canon-draft-pipeline`, addressing all four exit-gate findings:
+
+- **AC-001**: added the gitignore/git-exclude exclusion clause, verified against `crates/core/src/pipeline/discover.rs:24-25`.
+- **AC-020**: replaced the internal-state claim with an externally observable proxy (unresolved/opaque type or diagnostic).
+- **AC-010 / AC-012**: added a self-contained phase-numbering definition to `scope` so "Phase 4/5" and "Phase 3.5" are no longer undefined jargon.
+- **AC-016a**: re-verified against current `crates/core/src/pipeline/watch.rs:195-232` and found the round-2 premise stale — `resolve_component` in `update_file()` is now panic-contained, but the panic branch inserts a stub `ComponentEntry` (correct name/path, empty props) rather than excluding the component. Reworded to match this real, tested behavior (test: `a_panic_during_incremental_resolve_degrades_to_a_diagnostic_not_a_crash`), dropping the earlier "not yet implemented" framing.
+
+Files consulted for grounding this round: `crates/core/src/pipeline/discover.rs`, `crates/core/src/pipeline/watch.rs`, `crates/core/src/pipeline/mod.rs`.</result>
+<usage><subagent_tokens>114917</subagent_tokens><tool_uses>3</tool_uses><duration_ms>90185</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ab4ac17d5ee8dea99</task-id>
+<tool-use-id>toolu_01APeAK3ZU1G1ZA56ZfE17zL</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0ae3953f-9438-46c4-a76a-88fce9eed529/tasks/ab4ac17d5ee8dea99.output</output-file>
+<status>completed</status>
+<summary>Agent "Draft spec@1 for pipeline orchestration" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The fourth-pass (final) revision of SPEC-PIPELINE-001 is complete (full JSON above) and relayed to `canon-draft-pipeline`, applying all six mechanical fixes:
+
+1. **AC-008** — corrected to match AC-016a's already-correct "stub present, not absent" framing, verified against `pipeline/mod.rs`'s Phase-4 stub-build and Phase-5 insert.
+2. **AC-010** — fixed the worked example to three duplicate declarations (two duplicates can't collide under the count-based disambiguation rule), verified against the in-repo test comment.
+3. **AC-001** — corrected the gitignore exception scope (node_modules disables only `.gitignore`-file rules, not global/exclude/`.ignore` rules) and added the git-work-tree precondition.
+4. **AC-002/AC-003** — dropped unverifiable literal-message quoting and the false "exactly one diagnostic" claim; both now use severity+code+substring matching.
+5. **AC-024** — corrected "empty updated_components" to "no entry for the changed file itself," since transitive importers legitimately still appear.
+6. **AC-016a** — tightened the test citation to what's actually covered vs. correct-but-untested.
+
+One item flagged back to the peer: their message contained an internal contradiction (item 4 explicitly modifies AC-003, but the closing "do not touch" list also names AC-003). I resolved it in favor of the specific instruction and noted the conflict in both the `revision_note` and my reply, so it can be corrected if my reading was wrong.</result>
+<usage><subagent_tokens>132301</subagent_tokens><tool_uses>4</tool_uses><duration_ms>116075</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ab4ac17d5ee8dea99</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0ae3953f-9438-46c4-a76a-88fce9eed529/tasks/ab4ac17d5ee8dea99.output</output-file>
+<status>completed</status>
+<summary>Agent "Draft spec@1 for pipeline orchestration" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The fifth-pass (final) revision of SPEC-PIPELINE-001 is complete (full JSON above) and relayed to `canon-draft-pipeline`, with all four items independently verified against source before returning:
+
+1. **AC-001** — rewritten entirely as fixture-level Given/Then criteria (real `.gitignore`/`.ignore` files, real directories, `extract()`'s output) with zero internal `ignore`-crate vocabulary, replacing three rounds of internal-mechanism prose that each got the flag semantics wrong in a new way. Trailing-slash issue on `__snapshots__`/`node_modules` fixed to match `discover.rs`'s actual substring checks.
+2. **AC-002** — actually changed "exactly one" to "at least one diagnostic" this time, confirmed by direct text comparison against the prior round's output before sending.
+3. **AC-014** — corrected the false diagnostics-equality claim after re-reading `watch.rs:92-96`/`126-140`: `initialize()`'s second call short-circuits to `snapshot()`, which only ever reflects `update_file()`-written diagnostics, never the first call's own cold-run diagnostics.
+4. **AC-016a** — filled in the previously dangling test reference with its fully-qualified name.
+
+Files consulted this round: `crates/core/src/pipeline/discover.rs`, `crates/core/src/pipeline/watch.rs`.</result>
+<usage><subagent_tokens>147631</subagent_tokens><tool_uses>4</tool_uses><duration_ms>116603</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ab4ac17d5ee8dea99</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0ae3953f-9438-46c4-a76a-88fce9eed529/tasks/ab4ac17d5ee8dea99.output</output-file>
+<status>completed</status>
+<summary>Agent "Draft spec@1 for pipeline orchestration" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The sixth-pass (final) revision of SPEC-PIPELINE-001 is complete (full JSON above) and relayed to `canon-draft-pipeline`, applying exactly the three directed changes:
+
+1. **AC-001** — fixed the node_modules exception self-contradiction with the exact ground-truth wording supplied, dropped "global" gitignore as an independently fixture-tested pair (moved to `non_goals`), redefined the node_modules trigger as a path-string substring check (not on-disk location), and added the required negative fixture pair.
+2. **AC-018** — fixed the "identical diagnostics" vs. "plus one extra diagnostic" self-contradiction.
+3. **exclude_prefixes** — verified as a deliberate opt-in filter (`crates/core/src/pipeline/mod.rs:75-76`'s doc comment, `discover.rs`'s `starts_with` matching) rather than a gap; applied only as an `AC-001` scoping clause and a `non_goals` entry, with no new criterion, per the explicit instruction not to treat it as a fix target.
+
+Files consulted this round: `crates/core/src/pipeline/mod.rs`, `crates/core/src/pipeline/discover.rs`.</result>
+<usage><subagent_tokens>161529</subagent_tokens><tool_uses>4</tool_uses><duration_ms>101896</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ab4ac17d5ee8dea99</task-id>
+<tool-use-id>toolu_01JcXttqUEyonMVELywAoyiQ</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0ae3953f-9438-46c4-a76a-88fce9eed529/tasks/ab4ac17d5ee8dea99.output</output-file>
+<status>completed</status>
+<summary>Agent "Draft spec@1 for pipeline orchestration" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The seventh-pass (final) revision of SPEC-PIPELINE-001 is complete (full JSON above) and relayed to `canon-draft-pipeline`.
+
+Notably, for this round I didn't just apply the supplied AC-001 replacement text — I located the actual vendored `ignore 0.4.26` crate source at `~/.cargo/registry/src/.../ignore-0.4.26/src/dir.rs` and traced `add_parents`, `add_child_path`, and `matched_ignore` myself to confirm the asymmetric git-presence gating (ancestors gated only by `git_ignore`, the walked subtree gated by `git_ignore || git_exclude`) before committing to the precise wording rather than the authorized lower-precision fallback.
+
+Other fixes this round: AC-023's diagnostic requirement was dropped (confirmed `discover.rs` performs no validation of `exclude_patterns` content, so no such diagnostic could exist), and AC-018 gained a dirty-cache precondition plus a complementary "no diagnostic when nothing was cached" clause (confirmed against `crates/core/src/cache.rs`'s `save_to_disk`/`dirty` logic).
+
+Files consulted this round: `crates/core/src/pipeline/discover.rs`, `crates/core/src/cache.rs`, and the vendored `ignore-0.4.26` crate source.</result>
+<usage><subagent_tokens>186783</subagent_tokens><tool_uses>9</tool_uses><duration_ms>218978</duration_ms></usage>
+</task-notification>
+
+---
+
+Are we done?
+
+---
+
+Completed?
+
+---
+
+I feel like we routinely miss regressions and gaps that leave bugs behind. How we can we improve that?
+
+---
+
+Let's make all sets of improvements we can make to close the gaps extensively
+
+---
+
+Are we confident that we have the entirety of the happy path and the corner cases properly account for in TDD and SDD?
+
+---
+
+Can you save a file of the current important context so we can pickup in a fresh session with a prompt to get us started? This session has built a massive context and it's time to switch up
+
+---
+
+What prompts should we give the new session?

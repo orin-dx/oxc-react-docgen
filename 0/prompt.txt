@@ -203,3 +203,7 @@ What prompts should we give the new session?
 ---
 
 Let's start by commiting here and giving a prompt for 3 right?
+
+---
+
+We should save the settings and hooks but not worktrees

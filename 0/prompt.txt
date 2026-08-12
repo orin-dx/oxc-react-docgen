@@ -199,3 +199,7 @@ Can you save a file of the current important context so we can pickup in a fresh
 ---
 
 What prompts should we give the new session?
+
+---
+
+Let's start by commiting here and giving a prompt for 3 right?

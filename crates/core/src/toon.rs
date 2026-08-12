@@ -298,4 +298,51 @@ mod tests {
         let out = format_type_compact(&intersection);
         assert!(out.contains("...(+1)"), "expected a truncation indicator for the 1 dropped member, got: {out}");
     }
+
+    // ── SPEC-SERIALIZATION-001 AC-5: at-or-under-cap fixtures (no truncation
+    // marker at all) and a multi-digit-N fixture, per variant, so the
+    // "no format truncates silently" claim is falsifiable in both directions
+    // and N isn't assumed single-digit.
+
+    #[test]
+    fn test_format_type_compact_union_at_cap_has_no_truncation_marker() {
+        let union = PropType::Union(vec![
+            PropType::StringLiteral("a".into()),
+            PropType::StringLiteral("b".into()),
+            PropType::StringLiteral("c".into()),
+            PropType::StringLiteral("d".into()),
+        ]);
+        let out = format_type_compact(&union);
+        assert!(!out.contains("...(+"), "at-cap union must not truncate, got: {out}");
+    }
+
+    #[test]
+    fn test_format_type_compact_intersection_at_cap_has_no_truncation_marker() {
+        let intersection = PropType::Intersection(vec![
+            PropType::Named { name: "A".into(), args: vec![] },
+            PropType::Named { name: "B".into(), args: vec![] },
+            PropType::Named { name: "C".into(), args: vec![] },
+            PropType::Named { name: "D".into(), args: vec![] },
+        ]);
+        let out = format_type_compact(&intersection);
+        assert!(!out.contains("...(+"), "at-cap intersection must not truncate, got: {out}");
+    }
+
+    #[test]
+    fn test_format_type_compact_literal_union_at_cap_has_no_truncation_marker() {
+        let literal_union = PropType::LiteralUnion {
+            members: vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into(), "f".into()],
+            has_default: false,
+        };
+        let out = format_type_compact(&literal_union);
+        assert!(!out.contains("...(+"), "at-cap literal union must not truncate, got: {out}");
+    }
+
+    #[test]
+    fn test_format_type_compact_literal_union_multi_digit_truncation_count() {
+        let members: Vec<String> = (0..20).map(|i| format!("v{i}")).collect();
+        let literal_union = PropType::LiteralUnion { members, has_default: false };
+        let out = format_type_compact(&literal_union);
+        assert!(out.contains("...(+14)"), "expected a 2-digit truncation count (20 members, cap 6 -> +14), got: {out}");
+    }
 }

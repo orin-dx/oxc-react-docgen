@@ -1,41 +1,13 @@
 use miette::{IntoDiagnostic, Result};
 
 use crate::config::{build_options, BuildOptionsArgs};
-use crate::output::{print_diagnostics, print_summary};
+use crate::output::{print_diagnostics, print_summary, write_atomic};
 
 /// Watch mode never runs `--strict` — there's no CLI flag for it — so this
 /// is always `exit_code(false)`. Named seam so `cmd_watch`'s wiring has
 /// something unit-testable without spinning up watchexec.
 fn watch_exit_code(output: &oxc_react_docgen_core::types::ExtractionOutput) -> i32 {
     output.exit_code(false)
-}
-
-/// Writes `contents` to `path` via a same-directory temp file + rename, so a
-/// mid-write failure (disk full, permission revoked) can never leave `path`
-/// truncated or half-written. Returns the `io::Error` on failure instead of
-/// swallowing it — callers must report it, not discard the `Result`.
-fn write_atomic(path: &str, contents: &str) -> std::io::Result<()> {
-    let target = std::path::Path::new(path);
-    let dir = match target.parent() {
-        Some(p) if !p.as_os_str().is_empty() => p,
-        _ => std::path::Path::new("."),
-    };
-    let file_name = target.file_name().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("'{path}' has no file name component"))
-    })?;
-    let mut tmp_name = std::ffi::OsString::from(".");
-    tmp_name.push(file_name);
-    tmp_name.push(".tmp");
-    let tmp_path = dir.join(tmp_name);
-    if let Err(e) = std::fs::write(&tmp_path, contents) {
-        let _ = std::fs::remove_file(&tmp_path);
-        return Err(e);
-    }
-    if let Err(e) = std::fs::rename(&tmp_path, target) {
-        let _ = std::fs::remove_file(&tmp_path);
-        return Err(e);
-    }
-    Ok(())
 }
 
 pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>) -> Result<i32> {
@@ -91,6 +63,7 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
     let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
     let running_clone = running.clone();
     let session_clone = session.clone();
+    let exit_code_kb = exit_code.clone();
 
     std::thread::spawn(move || {
         use crossterm::event::{self, Event, KeyCode};
@@ -100,7 +73,12 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Char('c') => {
                         let _ = crossterm::terminal::disable_raw_mode();
-                        std::process::exit(0);
+                        // watchexec has no reachable graceful-quit handle from this
+                        // thread, so this still hard-exits — but with the last-observed
+                        // tracked exit code (see `exit_code`/`watch_exit_code`) instead
+                        // of a hardcoded 0, so a session that quit with an unresolved
+                        // error still reports failure to the shell.
+                        std::process::exit(exit_code_kb.load(std::sync::atomic::Ordering::Relaxed));
                     }
                     KeyCode::Char('r') => {
                         let _ = session_clone.initialize();
@@ -187,43 +165,6 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn write_atomic_surfaces_error_when_parent_dir_is_missing() {
-        let result = write_atomic("/nonexistent-rdt-watch-dir-xyz-123/out.json", "{}");
-        assert!(result.is_err(), "write to a missing parent directory should surface an error, not succeed silently");
-    }
-
-    #[test]
-    fn write_atomic_cleans_up_temp_file_when_rename_fails() {
-        let dir = std::env::temp_dir().join(format!("rdt-watch-atomic-rename-fail-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("create test dir");
-        // A directory can't be the rename target of a regular file — forces
-        // the rename step (not the write-to-tmp step) to fail.
-        let target_as_dir = dir.join("out.json");
-        std::fs::create_dir_all(&target_as_dir).expect("create target-as-dir");
-
-        let result = write_atomic(target_as_dir.to_str().expect("utf8 path"), "{\"a\":1}");
-        assert!(result.is_err(), "renaming onto an existing directory should fail");
-
-        let tmp_path = dir.join(".out.json.tmp");
-        assert!(!tmp_path.exists(), "temp file should be cleaned up after a failed rename, found {tmp_path:?}");
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn write_atomic_writes_via_temp_then_rename() {
-        let dir = std::env::temp_dir().join(format!("rdt-watch-atomic-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("create test dir");
-        let target = dir.join("out.json");
-
-        write_atomic(target.to_str().expect("utf8 path"), "{\"a\":1}").expect("write should succeed");
-
-        let contents = std::fs::read_to_string(&target).expect("read back written file");
-        assert_eq!(contents, "{\"a\":1}");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 
     #[test]
     fn watch_exit_code_mirrors_extraction_output_exit_code_non_strict() {

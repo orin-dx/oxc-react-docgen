@@ -130,9 +130,9 @@ mod tests {
                 true,
                 Some(DefaultValue { value: "\"a\"".into(), computed: false }),
                 "desc".into(),
-                BTreeMap::new(),
+                BTreeMap::from([("since".to_string(), "1.0".to_string())]),
                 Some(PropParent { name: "ButtonProps".into(), file_name: "Button.tsx".into() }),
-                vec![],
+                vec![PropParent { name: "ButtonProps".into(), file_name: "Button.tsx".into() }],
             ),
         );
 
@@ -147,11 +147,23 @@ mod tests {
                 inheritance: vec![InheritedLayer {
                     type_name: "ButtonHTMLAttributes".into(),
                     file_name: "react.d.ts".into(),
-                    omitted: vec![],
+                    omitted: vec!["ref".into()],
                     html_element: Some("button".into()),
                     total_props: 3,
                 }],
-                notable_inherited: BTreeMap::new(),
+                notable_inherited: BTreeMap::from([(
+                    "onClick".to_string(),
+                    ParsedProp::new(
+                        "onClick".into(),
+                        PropType::EventHandler { event_type: "MouseEvent".into(), param_name: None },
+                        false,
+                        None,
+                        String::new(),
+                        BTreeMap::new(),
+                        None,
+                        vec![],
+                    ),
+                )]),
                 discriminant_prop: Some("variant".into()),
                 composes: vec!["SomeUnresolved".into()],
                 tags: BTreeMap::from([("deprecated".to_string(), String::new())]),
@@ -176,7 +188,7 @@ mod tests {
                 components_skipped: 1,
                 files_parsed: 1,
                 dts_files_parsed: 1,
-                dts_cache_hits: 0,
+                dts_cache_hits: 3,
                 duration_ms: 5,
                 tier1_count: 1,
                 tier3_count: 1,
@@ -208,5 +220,33 @@ mod tests {
         let schema_str = serde_json::to_string(&schema_value()).expect("schema must serialize");
         let missing: Vec<&String> = real_fields.iter().filter(|f| !schema_str.contains(f.as_str())).collect();
         assert!(missing.is_empty(), "schema.rs is missing field(s) present in real serialized output: {missing:?}");
+
+        // ── SPEC-SERIALIZATION-001 AC-7: the fixture must populate every
+        // optional/collection field at these 5 sampled paths with a real,
+        // non-default value — a runtime assertion, not just a substring
+        // presence check, so a field silently missing from schema_value()
+        // shows up as an actual non-default value the diff above can catch.
+        let button = &value["components"]["Button"];
+        assert_ne!(button["notableInherited"], serde_json::json!({}), "notableInherited must be non-empty");
+        assert_ne!(button["inheritance"][0]["omitted"], serde_json::json!([]), "omitted must be non-empty");
+        assert!(!button["discriminantProp"].is_null(), "discriminantProp must be non-null");
+        assert_ne!(button["composes"], serde_json::json!([]), "composes must be non-empty");
+        assert_ne!(button["tags"], serde_json::json!({}), "component tags must be non-empty");
+
+        let variant = &button["props"]["variant"];
+        assert_ne!(variant["tags"], serde_json::json!({}), "prop tags must be non-empty");
+        assert_ne!(variant["declarations"], serde_json::json!([]), "declarations must be non-empty");
+        assert!(!variant["parent"].is_null(), "parent must be non-null");
+        assert!(!variant["defaultValue"].is_null(), "defaultValue must be non-null");
+
+        let diag = &value["diagnostics"][0];
+        assert!(!diag["line"].is_null(), "diagnostic line must be non-null");
+        assert!(!diag["column"].is_null(), "diagnostic column must be non-null");
+        assert!(!diag["help"].is_null(), "diagnostic help must be non-null");
+
+        let stats = value["stats"].as_object().expect("stats must be an object");
+        for (key, val) in stats {
+            assert_ne!(val, &serde_json::json!(0), "ExtractionStats field '{key}' must be non-zero in the fixture");
+        }
     }
 }

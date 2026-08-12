@@ -8,13 +8,15 @@
 
 ## Decision
 
-`PropType`, `CollectedType`, and `OpaqueReason` don't derive `Serialize`/`Deserialize`. Each has a hand-written impl (`to_json_value`/`from_json_value` for the first two) that builds a `serde_json::Value` directly instead of going through serde's derive machinery.
+`PropType` and `CollectedType` don't derive `Serialize`/`Deserialize`. Each has a hand-written impl (`to_json_value`/`from_json_value`) that builds a `serde_json::Value` directly instead of going through serde's derive machinery.
+
+**Correction (2026-08-12):** this ADR originally listed `OpaqueReason` alongside `PropType`/`CollectedType` as hand-written. That was wrong — `OpaqueReason` derives `Serialize`/`Deserialize` normally (`crates/core/src/types/output.rs`) and isn't recursive (every variant holds a `String` or nothing), so it was never subject to the recursion-limit problem this ADR is about. What's manual is `PropType::to_tagged_value`/`from_tagged_value` assembling `OpaqueReason`'s JSON shape by hand as part of `PropType`'s own impl — `OpaqueReason` itself needs no special treatment. Found while building `.claude/semantic-model/types-and-output-contract.md`.
 
 ## Consequences
 
 - Adding a new variant means updating the manual match in both directions by hand — the compiler won't remind you the way a derive would. `resolver/mod.rs`'s "no wildcard matches" convention is what catches a missed arm here instead.
 - `CollectedObjectField` (a struct nested inside `CollectedType::Object`, not an enum) still derives normally — the recursion problem is specific to the recursive _enums_, not every type that touches them.
-- The `#![recursion_limit = "2048"]` attribute in `crates/core/src/lib.rs` is left over from the old derive-based design. Verified 2026-07-22: the full workspace builds and every test passes with it removed — nothing in the current manual-impl code path needs it. Worth deleting as a follow-up; left as-is here since confirming that wasn't the point of this decision.
+- The `#![recursion_limit = "2048"]` attribute that used to sit in `crates/core/src/lib.rs`, left over from the old derive-based design, has since been deleted — confirmed absent as of this correction. The full workspace builds and every test passes without it.
 
 ## Alternatives considered
 

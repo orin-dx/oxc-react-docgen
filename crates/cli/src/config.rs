@@ -112,6 +112,16 @@ pub fn load_config_file(start_dir: &std::path::Path) -> Result<Option<PipelineOp
 pub fn try_load_config(path: &std::path::Path) -> Result<Option<PipelineOptions>> {
     use std::io::Write;
 
+    // Canonicalize before passing to node — command.current_dir(dir) below
+    // changes the working directory to the config's parent, and a *relative*
+    // __DOCGEN_CONFIG_PATH would then resolve against that new cwd instead of
+    // the cwd this path was originally relative to (e.g. `--config
+    // plain/docgen.config.ts` would fail with ERR_MODULE_NOT_FOUND even though
+    // the file exists). Falls back to the original path if canonicalization
+    // fails (e.g. the file doesn't exist) so the resulting "file not found"
+    // error still names the path the user actually typed.
+    let path = &path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+
     // Pass the config path via environment variable to avoid any path content
     // being interpreted as JavaScript (command injection via crafted filenames).
     let script = "import { pathToFileURL } from 'node:url';\
@@ -314,6 +324,37 @@ export default {
         assert_eq!(opts.src_dirs, vec![camino::Utf8PathBuf::from("src/components")]);
         assert_eq!(opts.html_attributes, HtmlAttributeMode::Full);
         assert!(!opts.cross_package);
+    }
+
+    #[test]
+    fn try_load_config_resolves_a_relative_path_whose_parent_is_not_the_cwd() {
+        // Found while validating SPEC-CLI-001d's AC-1: try_load_config changes
+        // the node subprocess's cwd to the config file's parent (so the
+        // subprocess resolves tsx/imports relative to the config, not to
+        // wherever the CLI happened to be invoked from), but was passing the
+        // *relative* input path through unchanged — node then re-resolved
+        // that same relative string against the NEW cwd it had just been
+        // given, not the cwd the caller meant it relative to. A relative
+        // --config path whose parent directory differs from the process's
+        // actual cwd failed with ERR_MODULE_NOT_FOUND even though the file
+        // existed. Constructs a relative path without mutating the process's
+        // actual cwd (cargo test's default cwd for this crate is
+        // CARGO_MANIFEST_DIR, i.e. crates/cli — mirrors how `validate_dir`
+        // above is itself expressed relative to that same cwd) so this stays
+        // safe under parallel test execution.
+        let validate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/validate");
+        let tmp = tempfile::TempDir::new_in(&validate_dir).unwrap();
+        let config_path = tmp.path().join("docgen.config.ts");
+        std::fs::write(&config_path, "export default { srcDirs: [\"src/components\"] };\n").unwrap();
+
+        let tmp_dir_name = tmp.path().file_name().expect("tmp dir has a name");
+        let relative_config_path =
+            std::path::Path::new("../../apps/validate").join(tmp_dir_name).join("docgen.config.ts");
+
+        let opts = try_load_config(&relative_config_path)
+            .expect("a relative --config path should resolve regardless of its parent directory")
+            .expect("expected Some(PipelineOptions)");
+        assert_eq!(opts.src_dirs, vec![camino::Utf8PathBuf::from("src/components")]);
     }
 
     #[test]

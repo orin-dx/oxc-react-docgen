@@ -26,8 +26,8 @@ pub(super) fn resolve_props_chain(
     depth: u8,
 ) -> ResolvedChain {
     if depth > MAX_DEPTH {
-        state.diagnostics.push(super::max_depth_diagnostic(&format!("type '{}'", type_name), consuming_file));
-        return ResolvedChain::empty_with_compose(type_name.to_owned());
+        let diag = super::max_depth_diagnostic(&format!("type '{}'", type_name), consuming_file);
+        return ResolvedChain::give_up(type_name.to_owned(), Some(diag), state);
     }
 
     // Cycle detection — scoped by file so same type name in different files is OK.

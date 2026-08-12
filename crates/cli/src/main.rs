@@ -212,5 +212,61 @@ fn init_tracing(verbose: u8) {
         2 => "debug",
         _ => "trace",
     };
-    fmt().with_env_filter(EnvFilter::new(filter)).init();
+    // stderr, never stdout: `lsp` reserves stdout exclusively for
+    // Content-Length-framed protocol messages — any other byte written there
+    // (a tracing::error!/warn! call firing mid-session) corrupts the
+    // transport and desyncs a real editor's LSP client. stderr is safe for
+    // every command, so this isn't LSP-specific special-casing.
+    fmt().with_env_filter(EnvFilter::new(filter)).with_writer(std::io::stderr).init();
+}
+
+#[cfg(test)]
+mod tests {
+    // ── SPEC-CLI-001a AC-017: command handlers return their exit code from
+    // cmd_extract/cmd_check/etc. rather than calling std::process::exit
+    // directly, so main() is the sole place that terminates the process —
+    // this makes the exit decision testable. Nothing previously enforced
+    // this beyond visual inspection; this test greps the actual committed
+    // source for every `std::process::exit(` call site and pins the
+    // allow-list to exactly the two known, documented exceptions.
+
+    #[test]
+    fn only_main_and_watchs_keyboard_quit_call_process_exit_directly() {
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offending = Vec::new();
+        for entry in walk(&src_dir) {
+            if entry.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let content = std::fs::read_to_string(&entry).expect("read source file");
+            for (i, line) in content.lines().enumerate() {
+                if line.contains("std::process::exit(") || line.contains("process::exit(") {
+                    let rel = entry.strip_prefix(&src_dir).unwrap_or(&entry);
+                    let allowed = matches!(rel.to_str(), Some("main.rs") | Some("commands/watch.rs"));
+                    if !allowed {
+                        offending.push(format!("{}:{}", rel.display(), i + 1));
+                    }
+                }
+            }
+        }
+        assert!(
+            offending.is_empty(),
+            "found std::process::exit outside the allow-listed call sites (main.rs, commands/watch.rs's \
+             documented keyboard-quit exception): {offending:?}"
+        );
+    }
+
+    fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+        let mut files = Vec::new();
+        let Ok(entries) = std::fs::read_dir(dir) else { return files };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                files.extend(walk(&path));
+            } else {
+                files.push(path);
+            }
+        }
+        files
+    }
 }

@@ -1,7 +1,7 @@
 use miette::{IntoDiagnostic, Result, WrapErr};
 
 use crate::config::{build_options, BuildOptionsArgs};
-use crate::output::{print_diagnostics, print_summary};
+use crate::output::{print_diagnostics, print_summary, write_atomic};
 
 /// Returns the process exit code (0 = success, 2 = extraction reported an
 /// error-severity diagnostic) rather than calling `std::process::exit`
@@ -58,7 +58,7 @@ pub fn cmd_extract(args: crate::ExtractArgs, quiet: bool, config_path: Option<&s
         };
 
         match args.out {
-            Some(ref path) => std::fs::write(path, &json).into_diagnostic().wrap_err(format!("Writing to {path}"))?,
+            Some(ref path) => write_atomic(path, &json).into_diagnostic().wrap_err(format!("Writing to {path}"))?,
             None => println!("{json}"),
         }
     }
@@ -224,5 +224,158 @@ export function Comp(props: CompProps) { return null; }
         let parsed: serde_json::Value = serde_json::from_str(&rdt_json).unwrap();
         let composes = parsed["Comp"]["composes"].as_array().expect("expected a composes array in RDT output");
         assert!(!composes.is_empty(), "expected the unresolvable Weird<'x'> member to appear in RDT's composes field");
+    }
+
+    // ── SPEC-SERIALIZATION-001 AC-1/AC-2/AC-3/AC-4: rdt_type_json had zero
+    // direct tests — it's private and was only ever exercised indirectly.
+
+    use oxc_react_docgen_core::types::PropType;
+
+    #[test]
+    fn rdt_type_json_zero_and_one_member_unions_never_produce_enum_shape() {
+        assert_eq!(rdt_type_json(&PropType::Union(vec![])), serde_json::json!({"name": ""}));
+        assert_eq!(
+            rdt_type_json(&PropType::Union(vec![PropType::StringLiteral("x".into())])),
+            serde_json::json!({"name": "\"x\""})
+        );
+        assert_eq!(
+            rdt_type_json(&PropType::LiteralUnion { members: vec![], has_default: false }),
+            serde_json::json!({"name": ""})
+        );
+        assert_eq!(
+            rdt_type_json(&PropType::LiteralUnion { members: vec!["only".into()], has_default: false }),
+            serde_json::json!({"name": "\"only\""})
+        );
+    }
+
+    #[test]
+    fn rdt_type_json_two_plus_member_literal_unions_produce_exact_enum_shape() {
+        let union = PropType::Union(vec![PropType::StringLiteral("red".into()), PropType::NumberLiteral(5.0)]);
+        assert_eq!(
+            rdt_type_json(&union),
+            serde_json::json!({"name": "enum", "value": [{"value": "\"red\""}, {"value": "5"}]})
+        );
+
+        let literal_union = PropType::LiteralUnion { members: vec!["red".into(), "blue".into()], has_default: false };
+        assert_eq!(
+            rdt_type_json(&literal_union),
+            serde_json::json!({"name": "enum", "value": [{"value": "\"red\""}, {"value": "\"blue\""}]})
+        );
+    }
+
+    #[test]
+    fn rdt_type_json_enum_shape_matches_is_literal_union_exactly() {
+        let fixtures: Vec<PropType> = vec![
+            PropType::Union(vec![]),
+            PropType::Union(vec![PropType::StringLiteral("a".into())]),
+            PropType::Union(vec![PropType::StringLiteral("a".into()), PropType::StringLiteral("b".into())]),
+            PropType::Union(vec![
+                PropType::StringLiteral("a".into()),
+                PropType::StringLiteral("b".into()),
+                PropType::StringLiteral("c".into()),
+            ]),
+            PropType::Union(vec![
+                PropType::StringLiteral("a".into()),
+                PropType::Named { name: "Foo".into(), args: vec![] },
+            ]),
+            PropType::LiteralUnion { members: vec![], has_default: false },
+            PropType::LiteralUnion { members: vec!["a".into()], has_default: false },
+            PropType::LiteralUnion { members: vec!["a".into(), "b".into()], has_default: false },
+        ];
+        for fixture in fixtures {
+            let is_enum_shape = rdt_type_json(&fixture)["name"] == "enum";
+            assert_eq!(
+                is_enum_shape,
+                fixture.is_literal_union(),
+                "rdt_type_json's enum-shape decision must exactly match is_literal_union() for {fixture:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rdt_type_json_union_with_one_non_literal_member_never_produces_enum_shape() {
+        let union = PropType::Union(vec![
+            PropType::StringLiteral("a".into()),
+            PropType::StringLiteral("b".into()),
+            PropType::Named { name: "Foo".into(), args: vec![] },
+        ]);
+        let json = rdt_type_json(&union);
+        assert_ne!(
+            json["name"], "enum",
+            "a union with a non-literal member must not produce the enum shape, got {json}"
+        );
+    }
+
+    // ── SPEC-SERIALIZATION-001 AC-8: serialize_rdt emits composes verbatim —
+    // strengthened from a non-empty check to an exact match.
+
+    #[test]
+    fn serialize_rdt_emits_composes_exactly() {
+        use oxc_react_docgen_core::types::ComponentEntry;
+        let entry = ComponentEntry {
+            display_name: "Widget".to_string(),
+            file_path: "Widget.tsx".into(),
+            description: String::new(),
+            props: Default::default(),
+            inheritance: vec![],
+            notable_inherited: Default::default(),
+            discriminant_prop: None,
+            composes: vec!["BaseA".to_string(), "BaseB".to_string()],
+            tags: Default::default(),
+            methods: vec![],
+        };
+        let mut components = std::collections::BTreeMap::new();
+        components.insert("Widget".to_string(), entry);
+        let output = oxc_react_docgen_core::types::ExtractionOutput {
+            components,
+            enums: Default::default(),
+            diagnostics: vec![],
+            stats: Default::default(),
+        };
+
+        let rdt_json = serialize_rdt(&output);
+        let parsed: serde_json::Value = serde_json::from_str(&rdt_json).unwrap();
+        assert_eq!(parsed["Widget"]["composes"], serde_json::json!(["BaseA", "BaseB"]));
+    }
+
+    // ── SPEC-SERIALIZATION-001 AC-10: end-to-end — a props interface
+    // extending a string-literal-union type alias routes through
+    // ResolvedChain::give_up (resolver/alias.rs), producing a composes value
+    // with each member quote-wrapped by to_raw_string(), and that exact
+    // quoted value survives into serialize_rdt's output.
+
+    #[test]
+    fn literal_union_extends_base_produces_quoted_composes_end_to_end() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = tempfile::TempDir::new_in(manifest_dir).unwrap();
+        std::fs::write(
+            tmp.path().join("Variant.tsx"),
+            r#"
+type Variant = 'a' | 'b';
+interface Props extends Variant {}
+export function Comp(props: Props) { return null; }
+"#,
+        )
+        .unwrap();
+
+        let dir = camino::Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = oxc_react_docgen_core::pipeline::PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(camino::Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+        let output = oxc_react_docgen_core::pipeline::extract(&options);
+
+        let comp = output.components.get("Comp").expect("expected a Comp component");
+        assert_eq!(
+            comp.composes,
+            vec!["\"a\" | \"b\"".to_string()],
+            "expected quote-wrapped members in composes, got {:?}",
+            comp.composes
+        );
+
+        let rdt_json = serialize_rdt(&output);
+        let parsed: serde_json::Value = serde_json::from_str(&rdt_json).unwrap();
+        assert_eq!(parsed["Comp"]["composes"], serde_json::json!(["\"a\" | \"b\""]));
     }
 }

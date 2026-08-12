@@ -1693,9 +1693,270 @@ interface ButtonProps {
         let path = Utf8Path::new("/test/deep-conditional.ts");
         let data = parse_file(path, &source);
 
+        // Multi-child TSType form (TSConditionalType descends into 4 children —
+        // check_type/extends_type/true_type/false_type — simultaneously at the
+        // boundary depth), so this emits one diagnostic per child branch that
+        // individually crosses the threshold, not a single diagnostic the way a
+        // single-child nesting chain (TSTypeReference, TSArrayType, ...) does.
+        // See SPEC-EXTRACTOR-001's AC-023 for the single-child-vs-multi-child
+        // distinction this exact count is pinned to.
+        let count = data.diagnostics.iter().filter(|d| d.code == DiagnosticCode::MaxDepthExceeded).count();
+        assert_eq!(count, 4, "expected exactly 4 MaxDepthExceeded diagnostics (one per TSConditionalType child branch that crosses the threshold), got {count}: {:?}", data.diagnostics);
+        assert!(data.diagnostics.iter().all(|d| d.severity == DiagnosticSeverity::Warning));
+    }
+
+    #[test]
+    fn deeply_nested_single_child_type_chain_emits_exactly_one_max_depth_diagnostic() {
+        // SPEC-EXTRACTOR-001 AC-023: a single-child nesting form (each level has
+        // exactly one nested TSType descendant, unlike TSConditionalType's four)
+        // must emit exactly ONE MaxDepthExceeded diagnostic for the whole chain,
+        // not one per over-deep node — descent stops at the first node that trips
+        // the guard. Contrast with the TSConditionalType case above, which emits 4.
+        let mut ty = "string".to_owned();
+        for _ in 0..250 {
+            ty = format!("Array<{ty}>");
+        }
+        let source = format!("type Deep = {ty};");
+        let path = Utf8Path::new("/test/deep-array.ts");
+        let data = parse_file(path, &source);
+
+        let count = data.diagnostics.iter().filter(|d| d.code == DiagnosticCode::MaxDepthExceeded).count();
+        assert_eq!(
+            count, 1,
+            "expected exactly 1 MaxDepthExceeded diagnostic for a single-child chain, got {count}: {:?}",
+            data.diagnostics
+        );
+    }
+
+    // ── SPEC-EXTRACTOR-001 AC-004: the ForwardRefExoticComponent no-init
+    // pattern is the sole pattern NOT gated by file extension — assert it
+    // maps in a plain .ts file.
+
+    #[test]
+    fn forward_ref_exotic_component_no_init_maps_in_plain_ts_file() {
+        let source = r#"
+            interface IconProps { size: number; }
+            declare const Icon: React.ForwardRefExoticComponent<IconProps>;
+        "#;
+        let path = Utf8Path::new("/test/icon.ts");
+        let data = parse_file(path, source);
+
+        let mapping = data.component_mappings.iter().find(|m| m.component_name == "Icon");
+        assert!(mapping.is_some(), "expected an Icon mapping in a plain .ts file, got {:?}", data.component_mappings);
+        assert_eq!(mapping.unwrap().props_type_name, "IconProps");
+    }
+
+    // ── SPEC-EXTRACTOR-001 AC-008: file-extension gating matrix — one fixture
+    // across three source-type contexts.
+
+    #[test]
+    fn file_extension_gating_matrix() {
+        let source = r#"
+            interface AProps { a: string; }
+            export function A(props: AProps) { return null; }
+
+            interface BProps { b: string; }
+            const B: React.ForwardRefComponent<BProps> = null as any;
+
+            interface CProps { c: string; }
+            declare const C: React.ForwardRefExoticComponent<CProps>;
+        "#;
+
+        let tsx = parse_file(Utf8Path::new("/test/matrix.tsx"), source);
+        let names: Vec<&str> = tsx.component_mappings.iter().map(|m| m.component_name.as_str()).collect();
         assert!(
-            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::MaxDepthExceeded),
-            "expected a MaxDepthExceeded diagnostic from the new depth counter, got: {:?}",
+            names.contains(&"A") && names.contains(&"B") && names.contains(&"C"),
+            "expected A, B, C in .tsx, got {names:?}"
+        );
+
+        let dts = parse_file(Utf8Path::new("/test/matrix.d.ts"), source);
+        let names: Vec<&str> = dts.component_mappings.iter().map(|m| m.component_name.as_str()).collect();
+        assert!(
+            names.contains(&"A") && names.contains(&"B") && names.contains(&"C"),
+            "expected A, B, C in .d.ts, got {names:?}"
+        );
+
+        let ts = parse_file(Utf8Path::new("/test/matrix.ts"), source);
+        let names: Vec<&str> = ts.component_mappings.iter().map(|m| m.component_name.as_str()).collect();
+        assert_eq!(names, vec!["C"], "expected ONLY the AC-004 no-init pattern to map in plain .ts, got {names:?}");
+    }
+
+    // ── SPEC-EXTRACTOR-001 AC-014: a forward reference (target declared
+    // lexically LATER) must not match — the target isn't yet an
+    // already-collected component when the wrapping binding is visited.
+
+    #[test]
+    fn forward_referenced_wrap_target_is_not_yet_collected_and_is_skipped() {
+        let source = r#"
+            const Wrap = memo(Later);
+            interface LaterProps { x: string; }
+            function Later(props: LaterProps) { return null; }
+        "#;
+        let path = Utf8Path::new("/test/forward-ref.tsx");
+        let data = parse_file(path, source);
+
+        assert!(
+            !data.component_mappings.iter().any(|m| m.component_name == "Wrap"),
+            "no Wrap mapping should exist for a forward reference, got {:?}",
+            data.component_mappings
+        );
+        assert!(
+            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::SkippedCandidate),
+            "expected a SkippedCandidate diagnostic, got {:?}",
+            data.diagnostics
+        );
+    }
+
+    // ── SPEC-EXTRACTOR-001 AC-015: a lowercase top-level binding matching an
+    // otherwise-recognized component shape is silently omitted — no mapping,
+    // no diagnostic.
+
+    #[test]
+    fn lowercase_top_level_binding_is_silently_omitted() {
+        let source = r#"
+            interface ButtonProps { label: string; }
+            const button = React.forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => null);
+        "#;
+        let path = Utf8Path::new("/test/lowercase.tsx");
+        let data = parse_file(path, source);
+
+        assert!(!data.component_mappings.iter().any(|m| m.component_name == "button"));
+        assert!(
+            data.diagnostics.is_empty(),
+            "lowercase bindings are documented silent omissions, expected no diagnostics, got {:?}",
+            data.diagnostics
+        );
+    }
+
+    // ── SPEC-EXTRACTOR-001 AC-016: a no-initializer PascalCase binding whose
+    // type is neither ForwardRefExoticComponent nor an FC-family annotation
+    // is silently omitted.
+
+    #[test]
+    fn unrelated_no_init_type_annotation_is_silently_omitted() {
+        let source = r#"
+            declare const Ghost: SomeOtherType;
+        "#;
+        let path = Utf8Path::new("/test/ghost.tsx");
+        let data = parse_file(path, source);
+
+        assert!(!data.component_mappings.iter().any(|m| m.component_name == "Ghost"));
+        assert!(data.diagnostics.is_empty(), "expected no diagnostics, got {:?}", data.diagnostics);
+    }
+
+    // ── SPEC-EXTRACTOR-001 AC-018: computed/symbol keys are silently omitted;
+    // a numeric-literal key extracts as its decimal string form.
+
+    #[test]
+    fn computed_symbol_and_numeric_interface_keys() {
+        let source = r#"
+            interface Props {
+                [key: string]: unknown;
+                [Symbol.iterator]?: () => void;
+                0: string;
+                normal: number;
+            }
+            export function Widget(props: Props) { return null; }
+        "#;
+        let path = Utf8Path::new("/test/keys.tsx");
+        let data = parse_file(path, source);
+
+        let iface = data.interfaces.values().find(|i| i.name == "Props").expect("expected Props interface");
+        let prop_names: Vec<&str> = iface.props.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(prop_names, vec!["0", "normal"], "expected only the numeric and normal keys, got {prop_names:?}");
+        assert!(data.diagnostics.is_empty(), "computed/symbol key omission is silent, got {:?}", data.diagnostics);
+    }
+
+    // ── SPEC-EXTRACTOR-001 AC-019: a zero-byte file produces empty
+    // collections and no diagnostics.
+
+    #[test]
+    fn empty_source_file_produces_empty_collections_and_no_diagnostics() {
+        let path = Utf8Path::new("/test/empty.tsx");
+        let data = parse_file(path, "");
+
+        assert!(data.component_mappings.is_empty());
+        assert!(data.interfaces.is_empty());
+        assert!(data.type_aliases.is_empty());
+        assert!(data.enums.is_empty());
+        assert!(data.imports.is_empty());
+        assert!(data.exports.is_empty());
+        assert!(data.diagnostics.is_empty());
+    }
+
+    // ── SPEC-EXTRACTOR-001 AC-022: a recoverable parse error still extracts
+    // every other cleanly-parsed declaration — the clause distinguishing this
+    // from AC-026's fatal, whole-file-empty case.
+
+    #[test]
+    fn recoverable_parse_error_still_extracts_other_clean_declarations() {
+        let source = "type Bad = Partial<>; function Ok(props: OkProps) { return null; }";
+        let path = Utf8Path::new("/test/recoverable.tsx");
+        let data = parse_file(path, source);
+
+        assert!(
+            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::ParseError),
+            "expected a ParseError diagnostic, got {:?}",
+            data.diagnostics
+        );
+        assert!(
+            data.component_mappings.iter().any(|m| m.component_name == "Ok"),
+            "expected Ok's mapping to survive the earlier recoverable parse error, got {:?}",
+            data.component_mappings
+        );
+    }
+
+    // ── SPEC-EXTRACTOR-001 AC-024/AC-025: inline union/intersection/object
+    // props types synthesize an anonymous alias; the FC-family no-init
+    // pattern's own first type argument routes through the same mechanism.
+
+    #[test]
+    fn inline_union_intersection_object_props_synthesize_anonymous_aliases() {
+        let source = r#"
+            function Card(props: { title: string }) { return null; }
+            function Boxy(props: A | B) { return null; }
+            declare const Widget: React.FC<{ label: string }>;
+        "#;
+        let path = Utf8Path::new("/test/anon.tsx");
+        let data = parse_file(path, source);
+
+        for name in ["Card", "Boxy", "Widget"] {
+            let mapping = data.component_mappings.iter().find(|m| m.component_name == name);
+            assert!(mapping.is_some(), "expected a mapping for {name}, got {:?}", data.component_mappings);
+            let props_type_name = &mapping.unwrap().props_type_name;
+            assert!(props_type_name.starts_with("__anon_"), "expected an anon alias for {name}, got {props_type_name}");
+            let scoped_key = format!("{}:{}", path, props_type_name);
+            assert!(
+                data.type_aliases.contains_key(&scoped_key),
+                "expected a type_aliases entry keyed {scoped_key}, got keys {:?}",
+                data.type_aliases.keys().collect::<Vec<_>>()
+            );
+        }
+        assert!(
+            data.diagnostics.is_empty(),
+            "no diagnostic expected for the anon-alias path, got {:?}",
+            data.diagnostics
+        );
+    }
+
+    // ── SPEC-EXTRACTOR-001 AC-026: a fatal parse error empties every named
+    // collection for the whole file.
+
+    #[test]
+    fn fatal_parse_error_empties_the_whole_file() {
+        let source = "function Card(props: Props) { return ;;; ) }";
+        let path = Utf8Path::new("/test/fatal.tsx");
+        let data = parse_file(path, source);
+
+        assert!(data.component_mappings.is_empty());
+        assert!(data.interfaces.is_empty());
+        assert!(data.type_aliases.is_empty());
+        assert!(data.enums.is_empty());
+        assert!(data.imports.is_empty());
+        assert!(data.exports.is_empty());
+        assert!(
+            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::ParseError),
+            "expected a ParseError diagnostic, got {:?}",
             data.diagnostics
         );
     }

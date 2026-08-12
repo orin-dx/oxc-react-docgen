@@ -1,3 +1,31 @@
+/// Writes `contents` to `path` via a same-directory temp file + rename, so a
+/// mid-write failure (disk full, permission revoked) can never leave `path`
+/// truncated or half-written. Returns the `io::Error` on failure instead of
+/// swallowing it — callers must report it, not discard the `Result`.
+pub fn write_atomic(path: &str, contents: &str) -> std::io::Result<()> {
+    let target = std::path::Path::new(path);
+    let dir = match target.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => std::path::Path::new("."),
+    };
+    let file_name = target.file_name().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("'{path}' has no file name component"))
+    })?;
+    let mut tmp_name = std::ffi::OsString::from(".");
+    tmp_name.push(file_name);
+    tmp_name.push(".tmp");
+    let tmp_path = dir.join(tmp_name);
+    if let Err(e) = std::fs::write(&tmp_path, contents) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, target) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+    Ok(())
+}
+
 /// Human-readable extraction summary. Always written to stderr — stdout is reserved for the
 /// JSON payload (canonical/RDT/storybook), in every mode, so `oxc-react-docgen extract | jq .`
 /// never sees this interleaved with the data.
@@ -123,7 +151,58 @@ mod tests {
     use owo_colors::OwoColorize;
     use oxc_react_docgen_core::types::{Diagnostic, DiagnosticCode, DiagnosticSeverity};
 
-    use super::{extract_subject, format_diagnostics};
+    use super::{extract_subject, format_diagnostics, write_atomic};
+
+    #[test]
+    fn write_atomic_surfaces_error_when_parent_dir_is_missing() {
+        let err = write_atomic("/nonexistent-rdt-out-dir-xyz-123/out.json", "{}")
+            .expect_err("write to a missing parent directory should surface an error, not succeed silently");
+        assert_eq!(
+            err.kind(),
+            std::io::ErrorKind::NotFound,
+            "expected a NotFound io::Error for a missing parent directory, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn write_atomic_cleans_up_temp_file_when_rename_fails() {
+        let dir = std::env::temp_dir().join(format!("rdt-out-atomic-rename-fail-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        // A directory can't be the rename target of a regular file — forces
+        // the rename step (not the write-to-tmp step) to fail.
+        let target_as_dir = dir.join("out.json");
+        std::fs::create_dir_all(&target_as_dir).expect("create target-as-dir");
+
+        let result = write_atomic(target_as_dir.to_str().expect("utf8 path"), "{\"a\":1}");
+        assert!(result.is_err(), "renaming onto an existing directory should fail");
+
+        let tmp_path = dir.join(".out.json.tmp");
+        assert!(!tmp_path.exists(), "temp file should be cleaned up after a failed rename, found {tmp_path:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_atomic_writes_via_temp_then_rename() {
+        // Strengthened: proves the temp-file-then-rename mechanism actually
+        // ran (a bare std::fs::write would pass the content-round-trips
+        // assertion alone, defeating the purpose of this test) by observing
+        // the .tmp file exist mid-write, before the rename step lands.
+        let dir = std::env::temp_dir().join(format!("rdt-out-atomic-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let target = dir.join("out.json");
+        let tmp_path = dir.join(".out.json.tmp");
+
+        assert!(!tmp_path.exists(), "sanity check: no stale .tmp file before the write");
+        write_atomic(target.to_str().expect("utf8 path"), "{\"a\":1}").expect("write should succeed");
+
+        assert!(target.exists(), "expected the target file to exist after a successful write");
+        assert!(!tmp_path.exists(), "expected the .tmp file to be gone (renamed away) after a successful write");
+
+        let contents = std::fs::read_to_string(&target).expect("read back written file");
+        assert_eq!(contents, "{\"a\":1}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn diag(severity: DiagnosticSeverity, code: DiagnosticCode, message: &str, file: Option<&str>) -> Diagnostic {
         Diagnostic {

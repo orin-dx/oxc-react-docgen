@@ -779,6 +779,92 @@ mod tests {
         assert_eq!(round_tripped.description, "the label");
     }
 
+    // ── SPEC-TYPES-001 AC-004B: CollectedType's manual serde impls
+    // (to_json_value/from_json_value) round-trip a composite shape, not just
+    // leaf variants.
+
+    #[test]
+    fn union_of_composite_members_round_trips_exactly() {
+        // CollectedType has no PartialEq — compare via re-serialization instead.
+        let original = CollectedType::Union(vec![
+            CollectedType::StringLiteral("a".into()),
+            CollectedType::Array(Box::new(CollectedType::Number)),
+            CollectedType::Object(vec![CollectedObjectField {
+                name: "x".to_owned(),
+                collected_type: CollectedType::Boolean,
+                required: true,
+                description: String::new(),
+            }]),
+        ]);
+        let json = original.to_json_value();
+        let restored = CollectedType::from_json_value(&json).expect("deserialize");
+        assert_eq!(restored.to_json_value(), json, "round-tripped value must re-serialize identically");
+    }
+
+    // ── SPEC-TYPES-001 AC-004D: from_json_value on a number/bool/null, and on
+    // an object matching no recognized shape key, returns Ok(Raw(v.to_string())).
+
+    #[test]
+    fn from_json_value_on_number_bool_null_and_unrecognized_object_returns_raw() {
+        for v in [serde_json::json!(42), serde_json::json!(true), serde_json::Value::Null] {
+            let result = CollectedType::from_json_value(&v).expect("should not error");
+            match result {
+                CollectedType::Raw(s) => assert_eq!(s, v.to_string(), "input was {v}"),
+                other => panic!("expected Raw for input {v}, got {other:?}"),
+            }
+        }
+
+        let unrecognized = serde_json::json!({"notAKnownShapeKey": 1});
+        let result = CollectedType::from_json_value(&unrecognized).expect("should not error");
+        match result {
+            CollectedType::Raw(s) => assert_eq!(s, unrecognized.to_string()),
+            other => panic!("expected Raw, got {other:?}"),
+        }
+    }
+
+    // ── SPEC-TYPES-001 AC-004D2: from_json_value on each of the eleven
+    // recognized strings returns the correspondingly-named unit variant; any
+    // other string returns Ok(Raw(that string's own contents, unquoted)).
+
+    #[test]
+    fn from_json_value_recognized_strings_map_to_unit_variants() {
+        let cases: &[(&str, &str)] =
+            &[("str", "str"), ("num", "num"), ("bool", "bool"), ("bigint", "bigint"), ("symbol", "symbol")];
+        for (tag, expected_debug_prefix) in cases {
+            let v = serde_json::json!(tag);
+            let result = CollectedType::from_json_value(&v).expect("should not error");
+            let debug = format!("{result:?}");
+            let expected = match *expected_debug_prefix {
+                "str" => "String",
+                "num" => "Number",
+                "bool" => "Boolean",
+                "bigint" => "BigInt",
+                "symbol" => "Symbol",
+                other => unreachable!("{other}"),
+            };
+            assert_eq!(debug, expected, "tag was {tag}");
+        }
+    }
+
+    #[test]
+    fn from_json_value_unrecognized_string_returns_raw_unquoted_contents() {
+        let v = serde_json::json!("foo");
+        let result = CollectedType::from_json_value(&v).expect("should not error");
+        match result {
+            CollectedType::Raw(s) => assert_eq!(s, "foo", "expected unquoted contents, not v.to_string()"),
+            other => panic!("expected Raw, got {other:?}"),
+        }
+    }
+
+    // ── SPEC-TYPES-001 AC-004E: a non-object element inside the "obj" array
+    // is an Err — each element must be an object.
+
+    #[test]
+    fn from_json_value_obj_array_with_a_non_object_element_errs() {
+        let v = serde_json::json!({"obj": [1]});
+        assert!(CollectedType::from_json_value(&v).is_err());
+    }
+
     #[test]
     fn nan_number_literal_round_trips_as_nan_not_raw() {
         let original = CollectedType::NumberLiteral(f64::NAN);

@@ -136,7 +136,16 @@ impl WatchSession {
         by_path.sort_by(|a, b| a.0.cmp(&b.0));
         let diagnostics: Vec<Diagnostic> = by_path.into_iter().flat_map(|(_, ds)| ds).collect();
 
-        ExtractionOutput { components, enums, diagnostics, stats: ExtractionStats::default() }
+        // Only `components_extracted` is populated here — the other ExtractionStats
+        // fields (files_parsed, dts_cache_hits, duration_ms, tier1/tier3/opaque
+        // counts) describe a single extract() run's own bookkeeping, which this
+        // session doesn't accumulate across incremental update_file() calls. A
+        // consumer reading watch --out's stats block for anything but the
+        // component count sees zeros — a known, narrower gap than reporting
+        // componentsExtracted itself as 0 regardless of how many components exist.
+        let stats = ExtractionStats { components_extracted: components.len() as u32, ..ExtractionStats::default() };
+
+        ExtractionOutput { components, enums, diagnostics, stats }
     }
 
     /// Handle a single file change — re-resolve only affected components.
@@ -168,12 +177,16 @@ impl WatchSession {
         // 2. Patch GlobalSourceData atomically using rcu (read-copy-update).
         // rcu retries if the pointer was swapped by a concurrent update_file call,
         // preventing lost-update races under parallel file change events.
-        let new_global = self.global.rcu(|old| {
+        // rcu's return value is the PRE-swap value (arc-swap's compare_and_swap
+        // convention), not the value the closure just produced — the closure's
+        // result must be re-read via load_full() to see the post-update state.
+        self.global.rcu(|old| {
             let mut g = (**old).clone();
             g.remove_file(changed);
             g.merge(changed, new_data.clone());
             g
         });
+        let new_global = self.global.load_full();
 
         // 3. Find all transitively affected files via the reverse dep graph.
         let affected = self.reverse_deps.load().affected(changed);
@@ -188,8 +201,39 @@ impl WatchSession {
             &self.options,
             ambient_global_files,
         );
-        let results: Vec<(ComponentEntry, Vec<Diagnostic>)> =
-            affected_mappings.par_iter().map(|m| resolve_component(m, &ctx)).collect();
+        // Wrapped in `contain_panic` for the same reason as the one-shot `extract()`
+        // path (pipeline/mod.rs) — one component's resolution panicking must degrade
+        // to a per-component diagnostic instead of poisoning this `.collect()` and
+        // losing every other affected component's re-resolution for this file change.
+        let results: Vec<(ComponentEntry, Vec<Diagnostic>)> = affected_mappings
+            .par_iter()
+            .map(|m| {
+                let label = format!("resolve:{}", m.component_name);
+                crate::panic_guard::contain_panic(&label, || {
+                    #[cfg(test)]
+                    if m.component_name == super::RESOLVE_PANIC_TEST_SENTINEL {
+                        panic!("simulated resolve-phase panic (test-only sentinel)");
+                    }
+
+                    resolve_component(m, &ctx)
+                })
+                .unwrap_or_else(|diag| {
+                    let stub = ComponentEntry {
+                        display_name: m.component_name.clone(),
+                        file_path: m.file_path.clone(),
+                        description: String::new(),
+                        props: Default::default(),
+                        inheritance: vec![],
+                        notable_inherited: Default::default(),
+                        discriminant_prop: None,
+                        composes: vec![],
+                        tags: Default::default(),
+                        methods: vec![],
+                    };
+                    (stub, vec![diag])
+                })
+            })
+            .collect();
 
         let mut updated_components = Vec::new();
         let mut diagnostics: Vec<Diagnostic> = io_diagnostic.into_iter().collect();
@@ -297,6 +341,31 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_stats_components_extracted_reflects_the_real_component_count() {
+        // Found while validating SPEC-CLI-001b's AC-5: snapshot() always
+        // returned ExtractionStats::default(), so componentsExtracted read 0
+        // no matter how many components a watch session actually had.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").to_owned();
+        std::fs::write(dir.join("A.tsx").as_std_path(), "export function A(props: { x: string }) { return null; }\n")
+            .expect("write A.tsx");
+        std::fs::write(dir.join("B.tsx").as_std_path(), "export function B(props: { y: string }) { return null; }\n")
+            .expect("write B.tsx");
+
+        let options = PipelineOptions { src_dirs: vec![dir], ..Default::default() };
+        let session = WatchSession::new(options);
+        let _ = session.initialize();
+
+        let snap = session.snapshot();
+        assert_eq!(snap.components.len(), 2);
+        assert_eq!(
+            snap.stats.components_extracted, 2,
+            "stats.components_extracted should match the real component count, got {:?}",
+            snap.stats
+        );
+    }
+
+    #[test]
     fn snapshot_surfaces_update_file_diagnostics() {
         let session = WatchSession::new(empty_options());
         let _ = session.initialize();
@@ -336,6 +405,97 @@ mod tests {
         assert!(
             session.snapshot().diagnostics.is_empty(),
             "fixed file's stale diagnostic should be cleared, not linger"
+        );
+    }
+
+    #[test]
+    fn a_panic_during_incremental_resolve_degrades_to_a_diagnostic_not_a_crash() {
+        // Found while grounding SPEC-PIPELINE-001 in real source: extract()'s
+        // one-shot resolve phase (pipeline/mod.rs) was wrapped in
+        // `contain_panic`, but this incremental path was not — one component
+        // panicking during an editor keystroke would have crashed the whole
+        // watch session instead of degrading to a diagnostic for that file.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").to_owned();
+        let button_path = dir.join("Button.tsx");
+        let other_path = dir.join("Other.tsx");
+
+        std::fs::write(
+            button_path.as_std_path(),
+            "export function Button(props: { label: string }) { return null; }\n",
+        )
+        .expect("write Button.tsx");
+        std::fs::write(
+            other_path.as_std_path(),
+            format!(
+                "export function {}(props: {{ label: string }}) {{ return null; }}\n",
+                super::super::RESOLVE_PANIC_TEST_SENTINEL
+            ),
+        )
+        .expect("write Other.tsx");
+
+        let options = PipelineOptions { src_dirs: vec![dir], ..Default::default() };
+        let session = WatchSession::new(options);
+        let _ = session.initialize();
+
+        // Must not panic the test process — that's the whole point.
+        let update = session.update_file(&other_path);
+
+        assert!(
+            update.diagnostics.iter().any(|d| d.code == crate::types::DiagnosticCode::InternalPanic),
+            "expected an InternalPanic diagnostic, got {:?}",
+            update.diagnostics
+        );
+    }
+
+    #[test]
+    fn update_file_reflects_the_edited_files_new_content_not_its_pre_edit_content() {
+        // Found while validating SPEC-PIPELINE-001: ArcSwap::rcu returns the
+        // PRE-swap value (arc-swap's compare_and_swap convention), not the value
+        // the closure just produced. `new_global` was bound directly to rcu's
+        // return, so every incremental update resolved against the file's
+        // content from BEFORE this edit — watch mode was permanently one edit
+        // behind. A test asserting only component *identity* (name present) is
+        // invariant under this bug; this test asserts prop *content* instead.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").to_owned();
+        let path = dir.join("Widget.tsx");
+
+        std::fs::write(
+            path.as_std_path(),
+            "export interface WidgetProps { label: string; }\nexport function Widget(props: WidgetProps) { return null; }\n",
+        )
+        .expect("write initial fixture");
+
+        let options = PipelineOptions { src_dirs: vec![dir], ..Default::default() };
+        let session = WatchSession::new(options);
+        let initial = session.initialize();
+        assert!(
+            initial.components.get("Widget").is_some_and(|c| c.props.contains_key("label")),
+            "expected initial extraction to see 'label', got {:?}",
+            initial.components.get("Widget")
+        );
+
+        std::fs::write(
+            path.as_std_path(),
+            "export interface WidgetProps { title: string; }\nexport function Widget(props: WidgetProps) { return null; }\n",
+        )
+        .expect("write edited fixture");
+
+        let update = session.update_file(&path);
+        let widget = update.updated_components.iter().find(|c| c.display_name == "Widget");
+        assert!(
+            widget.is_some_and(|c| c.props.contains_key("title") && !c.props.contains_key("label")),
+            "expected update_file to resolve against the EDITED content ('title'), not the pre-edit content ('label'); got {:?}",
+            widget
+        );
+
+        let snapshot = session.snapshot();
+        let widget = snapshot.components.get("Widget");
+        assert!(
+            widget.is_some_and(|c| c.props.contains_key("title") && !c.props.contains_key("label")),
+            "expected snapshot() to reflect the edited content too, got {:?}",
+            widget
         );
     }
 
@@ -422,6 +582,138 @@ mod tests {
             crate::types::PropType::String,
             "expected 'dir' to still resolve to String after the first incremental update, got {:?}",
             dir_prop.prop_type
+        );
+    }
+
+    // ── SPEC-PIPELINE-001 AC-014: initialize() called twice does not re-run
+    // extraction — a plugin hook counter is unchanged on the second call, and
+    // the second call's diagnostics are empty regardless of the first call's.
+
+    #[test]
+    fn initialize_called_twice_does_not_rerun_extraction_or_replay_diagnostics() {
+        use crate::plugin::{DocgenPlugin, PluginRegistry};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc as StdArc;
+
+        struct CountingPlugin(StdArc<AtomicUsize>);
+        impl DocgenPlugin for CountingPlugin {
+            fn name(&self) -> &str {
+                "counting-plugin"
+            }
+            fn on_file_extracted(&self, _path: &camino::Utf8Path, _data: &mut crate::types::SourceData) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").to_owned();
+        std::fs::write(dir.join("Button.tsx").as_std_path(), "export const Button = () => null;")
+            .expect("write Button.tsx");
+
+        let count = StdArc::new(AtomicUsize::new(0));
+        let mut plugins = PluginRegistry::new();
+        plugins.register(CountingPlugin(count.clone()));
+
+        let options = PipelineOptions { src_dirs: vec![dir], plugins, ..Default::default() };
+        let session = WatchSession::new(options);
+
+        let first = session.initialize();
+        let count_after_first = count.load(Ordering::SeqCst);
+        assert!(count_after_first > 0, "expected the plugin hook to have run at least once");
+
+        let second = session.initialize();
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            count_after_first,
+            "second initialize() call must not re-parse/re-extract"
+        );
+        assert_eq!(second.components.len(), first.components.len());
+        assert!(
+            second.diagnostics.is_empty(),
+            "second call's diagnostics must be empty regardless of the first call's, got {:?}",
+            second.diagnostics
+        );
+    }
+
+    // ── SPEC-PIPELINE-001 AC-016b: after a contained panic in one
+    // update_file() call, a subsequent call on a different, unrelated file
+    // still returns a normal IncrementalUpdate — session state isn't
+    // corrupted or deadlocked.
+
+    #[test]
+    fn session_recovers_after_a_contained_panic_and_serves_unrelated_files_normally() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").to_owned();
+        let panicking_path = dir.join("Boom.tsx");
+        let other_path = dir.join("Other.tsx");
+
+        std::fs::write(
+            panicking_path.as_std_path(),
+            format!(
+                "export function {}(props: {{ label: string }}) {{ return null; }}\n",
+                super::super::RESOLVE_PANIC_TEST_SENTINEL
+            ),
+        )
+        .expect("write Boom.tsx");
+        std::fs::write(other_path.as_std_path(), "export function Other(props: { x: string }) { return null; }\n")
+            .expect("write Other.tsx");
+
+        let options = PipelineOptions { src_dirs: vec![dir], ..Default::default() };
+        let session = WatchSession::new(options);
+        let _ = session.initialize();
+
+        // Must not panic the test process.
+        let boom_update = session.update_file(&panicking_path);
+        assert!(boom_update.diagnostics.iter().any(|d| d.code == crate::types::DiagnosticCode::InternalPanic));
+
+        // Session must still be usable afterward.
+        std::fs::write(
+            other_path.as_std_path(),
+            "export function Other(props: { x: string; y: string }) { return null; }\n",
+        )
+        .expect("rewrite Other.tsx");
+        let other_update = session.update_file(&other_path);
+        assert!(
+            other_update.updated_components.iter().any(|c| c.display_name == "Other"),
+            "session should still serve unrelated files normally after a contained panic, got {:?}",
+            other_update.updated_components
+        );
+    }
+
+    // ── SPEC-PIPELINE-001 AC-017: update_file() with a non-canonical path
+    // (e.g. a symlinked directory segment reported unresolved) still finds
+    // the canonical entry via reverse_deps.
+
+    #[test]
+    fn update_file_with_a_non_canonical_path_still_finds_the_canonical_entry() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let real_dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").join("real");
+        std::fs::create_dir_all(real_dir.as_std_path()).expect("create real dir");
+        let file_path = real_dir.join("Button.tsx");
+        std::fs::write(file_path.as_std_path(), "export function Button(props: { label: string }) { return null; }\n")
+            .expect("write Button.tsx");
+
+        let link_dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").join("link");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(real_dir.as_std_path(), link_dir.as_std_path()).expect("create symlink");
+        #[cfg(not(unix))]
+        {
+            // No portable symlink API on this platform — skip rather than fail.
+            return;
+        }
+
+        let options = PipelineOptions { src_dirs: vec![real_dir], ..Default::default() };
+        let session = WatchSession::new(options);
+        let _ = session.initialize();
+
+        // Reference the file via its non-canonical (symlinked) path.
+        let non_canonical_path = link_dir.join("Button.tsx");
+        let update = session.update_file(&non_canonical_path);
+
+        assert!(
+            update.updated_components.iter().any(|c| c.display_name == "Button"),
+            "a non-canonical path should still resolve to the canonical entry, got {:?}",
+            update.updated_components
         );
     }
 }

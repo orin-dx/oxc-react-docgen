@@ -606,6 +606,81 @@ mod tests {
         );
     }
 
+    // ── SPEC-RESOLVER-001 AC-1b: the same source-before-known precedence
+    // applies at the resolve_named call site (a field's own type reference),
+    // not just chain.rs's extends-clause path tested above ──────────────────
+
+    #[test]
+    fn test_field_typed_as_project_defined_sx_props_is_not_replaced_by_known_shortcut() {
+        let file_path = Utf8PathBuf::from("/test/widget.tsx");
+
+        let mut global = GlobalSourceData::default();
+        global.interfaces.insert(
+            format!("{}:SxProps", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:SxProps", file_path),
+                name: "SxProps".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "customSx".into(),
+                    collected_type: CollectedType::String,
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interfaces.insert(
+            format!("{}:WidgetProps", file_path),
+            CollectedInterface {
+                scoped_key: format!("{}:WidgetProps", file_path),
+                name: "WidgetProps".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "sx".into(),
+                    collected_type: CollectedType::Named { name: "SxProps".into(), args: vec![] },
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Widget".into(),
+            props_type_name: "WidgetProps".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, _diagnostics) = resolve_component(&mapping, &ctx);
+
+        let sx_prop = entry.props.get("sx").expect("expected a resolved 'sx' prop");
+        assert!(
+            matches!(&sx_prop.prop_type, PropType::Named { name, .. } if name == "SxProps"),
+            "expected the field's type to resolve to the project's own SxProps interface \
+             (PropType::Named), got {:?} — this means resolve_named's known-pattern shortcut \
+             won instead of the project's own source-defined interface",
+            sx_prop.prop_type
+        );
+    }
+
     // ── Test 5: Indexed access - CSSProperties ────────────────────────────────
 
     #[test]
@@ -2008,6 +2083,29 @@ mod tests {
         assert!(matches!(result, PropType::Array(inner) if *inner == PropType::String));
     }
 
+    // ── SPEC-SERIALIZATION-001 AC-9: ResolvedChain::give_up, called directly,
+    // pushes the given diagnostic and populates composes — nothing in the
+    // suite called this shared "give up" entry point directly before.
+
+    #[test]
+    fn resolved_chain_give_up_pushes_diagnostic_and_populates_composes() {
+        let mut state = ResolveState::default();
+        let diag = Diagnostic {
+            severity: DiagnosticSeverity::Info,
+            message: "gave up".into(),
+            file: None,
+            line: None,
+            column: None,
+            help: None,
+            code: DiagnosticCode::MaxDepthExceeded,
+        };
+
+        let chain = ResolvedChain::give_up("SomeUnresolved".to_string(), Some(diag.clone()), &mut state);
+
+        assert_eq!(chain.composes, vec!["SomeUnresolved".to_string()]);
+        assert_eq!(state.diagnostics, vec![diag]);
+    }
+
     // ── Test 12: Template literal — opaque on unresolvable parts ─────────────
 
     #[test]
@@ -2463,6 +2561,66 @@ mod tests {
         assert!(
             diagnostics.iter().any(|d| d.message.to_lowercase().contains("circular")),
             "Expected a diagnostic about the circular extends reference, got {:?}",
+            diagnostics
+        );
+    }
+
+    // ── SPEC-RESOLVER-001 AC-2b: a chain of DISTINCT (non-repeating) interfaces
+    // exceeding MAX_DEPTH must give up via ResolvedChain::give_up (same
+    // construction path as the cycle-detected case above), producing a
+    // Warning-severity MaxDepthExceeded diagnostic — distinct from the cycle
+    // case's Info-severity "Circular type reference detected" message ────────
+
+    #[test]
+    fn test_non_cyclic_depth_exhaustion_emits_max_depth_diagnostic() {
+        let file_path = Utf8PathBuf::from("/test/deep_chain.tsx");
+        let depth: u32 = u32::from(MAX_DEPTH) + 5;
+
+        let mut global = GlobalSourceData::default();
+        for level in 0..=depth {
+            let name = format!("Level{level}");
+            let extends = if level == depth {
+                vec![]
+            } else {
+                vec![ExtendsRef::SameFile { name: format!("Level{}", level + 1).into(), type_args: vec![] }]
+            };
+            global.interfaces.insert(
+                format!("{}:{}", file_path, name),
+                CollectedInterface {
+                    scoped_key: format!("{}:{}", file_path, name),
+                    name: name.clone().into(),
+                    file_path: file_path.clone(),
+                    props: vec![],
+                    extends,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                },
+            );
+        }
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Deep".into(),
+            props_type_name: "Level0".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (_entry, diagnostics) = resolve_component(&mapping, &ctx);
+
+        assert!(
+            diagnostics.iter().any(|d| {
+                d.severity == DiagnosticSeverity::Warning
+                    && d.code == DiagnosticCode::MaxDepthExceeded
+                    && d.message.contains("Max resolution depth exceeded")
+            }),
+            "expected a Warning-severity MaxDepthExceeded diagnostic containing \
+             'Max resolution depth exceeded', got {:?}",
             diagnostics
         );
     }

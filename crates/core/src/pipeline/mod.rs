@@ -1837,4 +1837,150 @@ Button.defaultProps = { size: 'md' };
         );
         assert_eq!(output.stats.files_parsed, 1, "the overlapping file must be parsed once, not twice");
     }
+
+    // ── SPEC-PIPELINE-001 AC-001: built-in __snapshots__/node_modules
+    // substring exclusions.
+
+    #[test]
+    fn test_discover_files_excludes_snapshots_and_node_modules() {
+        let tmp = TempDir::new().unwrap();
+        write_file(&tmp, "Button.tsx", "export const Button = () => null;");
+        fs::create_dir_all(tmp.path().join("__snapshots__")).unwrap();
+        write_file(&tmp, "__snapshots__/Button.snap.tsx", "export const X = 1;");
+        fs::create_dir_all(tmp.path().join("node_modules/some-lib")).unwrap();
+        write_file(&tmp, "node_modules/some-lib/index.tsx", "export const Y = 1;");
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let (files, _diagnostics) = discover_files(&[dir], &[]);
+
+        let names: Vec<&str> = files.iter().map(|f| f.file_name().unwrap()).collect();
+        assert!(names.contains(&"Button.tsx"));
+        assert!(!files.iter().any(|f| f.as_str().contains("__snapshots__")), "should skip __snapshots__");
+        assert!(!files.iter().any(|f| f.as_str().contains("node_modules")), "should skip node_modules by default");
+    }
+
+    // ── SPEC-PIPELINE-001 AC-001: exclude_prefixes filters components after
+    // resolution, silently and by design.
+
+    #[test]
+    fn test_exclude_prefixes_filters_matching_components() {
+        let tmp = TempDir::new().unwrap();
+        write_file(&tmp, "Button.tsx", "export function Button(props: { label: string }) { return null; }\n");
+        write_file(
+            &tmp,
+            "InternalWidget.tsx",
+            "export function InternalWidget(props: { x: string }) { return null; }\n",
+        );
+
+        let options = PipelineOptions {
+            src_dirs: vec![Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap()],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            exclude_prefixes: vec!["Internal".to_string()],
+            ..Default::default()
+        };
+        let output = extract(&options);
+
+        assert!(output.components.contains_key("Button"));
+        assert!(!output.components.contains_key("InternalWidget"), "excluded-prefix component must not appear");
+        assert!(
+            output.diagnostics.is_empty(),
+            "exclude_prefixes is a deliberate, silent, opt-in filter — no diagnostic expected, got {:?}",
+            output.diagnostics
+        );
+    }
+
+    // ── SPEC-PIPELINE-001 AC-006: deterministic ordering across two separate
+    // extract() calls on the same unchanged source.
+
+    #[test]
+    fn test_extract_is_deterministic_across_repeated_calls() {
+        let tmp = TempDir::new().unwrap();
+        for name in ["Alpha", "Beta", "Gamma", "Delta"] {
+            write_file(
+                &tmp,
+                &format!("{name}.tsx"),
+                &format!("export function {name}(props: {{ x: string }}) {{ return null; }}\n"),
+            );
+        }
+
+        let options = PipelineOptions {
+            src_dirs: vec![Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap()],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let first = extract(&options);
+        let second = extract(&options);
+
+        let first_keys: Vec<&String> = first.components.keys().collect();
+        let second_keys: Vec<&String> = second.components.keys().collect();
+        assert_eq!(first_keys, second_keys, "component key order must be identical across repeated extract() calls");
+    }
+
+    // ── SPEC-PIPELINE-001 AC-010: a triple same-file duplicate declaration
+    // produces exactly two entries (bare-name 1st occurrence, disambiguated
+    // 2nd/3rd collide, later wins deterministically) plus a collision
+    // diagnostic.
+
+    #[test]
+    fn test_triple_duplicate_declaration_produces_exactly_two_entries() {
+        let tmp = TempDir::new().unwrap();
+        write_file(
+            &tmp,
+            "Button.tsx",
+            "export function Button(props: { a: string }) { return null; }\n\
+             export function Button(props: { b: string }) { return null; }\n\
+             export function Button(props: { c: string }) { return null; }\n",
+        );
+
+        let options = PipelineOptions {
+            src_dirs: vec![Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap()],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+        let output = extract(&options);
+
+        let button_keys: Vec<&String> = output.components.keys().filter(|k| k.starts_with("Button")).collect();
+        assert_eq!(button_keys.len(), 2, "expected exactly 2 entries (bare + disambiguated), got {button_keys:?}");
+        assert!(
+            output.diagnostics.iter().any(|d| d.code == DiagnosticCode::ComponentKeyCollision),
+            "expected a ComponentKeyCollision diagnostic, got {:?}",
+            output.diagnostics
+        );
+    }
+
+    // ── SPEC-PIPELINE-001 AC-022: exclude_patterns entries containing
+    // glob-invalid characters are inert (plain substring match).
+
+    #[test]
+    fn test_exclude_patterns_with_glob_invalid_characters_are_inert() {
+        let tmp = TempDir::new().unwrap();
+        write_file(&tmp, "Button.tsx", "export const Button = () => null;");
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let (files, diagnostics) = discover_files(&[dir], &["[unclosed*".to_string()]);
+
+        let names: Vec<&str> = files.iter().map(|f| f.file_name().unwrap()).collect();
+        assert!(
+            names.contains(&"Button.tsx"),
+            "a glob-invalid pattern that doesn't literally match must not exclude anything, got {names:?}"
+        );
+        assert!(diagnostics.is_empty(), "no error/panic expected for a glob-invalid but harmless pattern");
+    }
+
+    // ── SPEC-PIPELINE-001 AC-023: an empty-string exclude_patterns entry
+    // excludes every file (str::contains("") is always true).
+
+    #[test]
+    fn test_exclude_patterns_empty_string_excludes_everything() {
+        let tmp = TempDir::new().unwrap();
+        write_file(&tmp, "Button.tsx", "export const Button = () => null;");
+        write_file(&tmp, "Widget.tsx", "export const Widget = () => null;");
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let (files, diagnostics) = discover_files(&[dir], &["".to_string()]);
+
+        assert!(files.is_empty(), "an empty-string pattern should exclude every file, got {files:?}");
+        assert!(diagnostics.is_empty());
+    }
 }

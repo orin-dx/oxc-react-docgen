@@ -1,0 +1,181 @@
+{
+  "id": "SPEC-PIPELINE-001",
+  "purpose": "Define the observable contract of crates/core::pipeline \u2014 the orchestration layer that discovers source files, parses and resolves React components in parallel, merges results into a single deterministic ExtractionOutput, degrades on partial failure via Diagnostic rather than aborting, and supports an incremental watch session for editor/CLI callers.",
+  "scope": "pipeline::extract(), pipeline::PipelineOptions, pipeline::WatchSession (new/initialize/update_file/snapshot), pipeline::discover_files, the DTS parse cache's staleness contract as observed through extraction output, and panic containment as observed at the file/component/plugin granularity. Covers only externally observable behavior of these entry points \u2014 not internal phase implementation. This document's own phase numbering, used by several criteria below, is: Discover(1) -> Parse(2) -> Merge(3, with an optional 3.5 sub-step that merges @types/react when html_attributes == HtmlAttributeMode::Full, and a 3.6 sub-step that merges ambient TS lib files unconditionally) -> Resolve(4) -> Collect/dedup(5). Component output key disambiguation rule, also referenced by multiple criteria below: within a single extraction run, the first resolved occurrence of a given display_name keys as the bare display_name; every subsequent occurrence of that same display_name keys as \"<display_name> (<file_path>)\".",
+  "non_goals": [
+    "AST visiting and component-shape detection (extractor crate) \u2014 not specified here.",
+    "Type resolution semantics, e.g. how a prop type is resolved from a TS type node (resolver crate) \u2014 not specified here.",
+    "CLI argument parsing, terminal/progress output formatting, or config-file loading (crates/cli) \u2014 not specified here.",
+    "NAPI/Node session lifecycle and binding-layer error translation (crates/binding) \u2014 not specified here.",
+    "Closing the DTS cache's known mtime+size same-tick staleness gap. This spec requires that the gap be documented and bounded (scoped to .d.ts files only, cache.rs), not that it be fixed \u2014 a content-hash or fast-hash based fix is an explicit non-goal of this spec per the locked design decision in the pipeline-orchestration reference.",
+    "Making ReverseDeps incrementally update within a live watch session as imports change, or pruning WatchSession::component_cache when a file is deleted mid-session. Both are the same class of documented, deliberately deferred staleness: this spec requires the session's currently-observed behavior be specified accurately (see AC-019), not that either gap be closed within a session's lifetime short of restart.",
+    "Extending plugin hooks (on_file_extracted/on_component_resolved) to run during WatchSession::update_file(). Today they run only in the cold extract()/initialize() path \u2014 this spec does not require update_file() to invoke plugins.",
+    "watch --out file-write atomicity and error surfacing \u2014 that is CLI-layer behavior (crates/cli/src/commands/watch.rs), not part of this pipeline contract.",
+    "Explaining or naming the `ignore` crate's internal gating mechanism (flags, precedence rules between VCS-ignore sources, or whether a directory 'has_git'/'is inside a git work tree' by internal detection) beyond what AC-001 itself asserts as fixture-observable input/output pairs. AC-001 is written entirely in terms of real .gitignore/.ignore/.git/info/exclude fixture layouts and extract()'s output \u2014 a tester needs no knowledge of the `ignore` crate's internals to check it.",
+    "Testing the machine-global gitignore (core.excludesFile) sub-case specifically \u2014 no test fixture can construct a machine-global gitignore in isolation, so this spec does not require a fixture-level pair for it; the concept is referenced only in describing what is disabled by the node_modules exception, not as an independently fixture-tested clause.",
+    "Documenting exclude_prefixes' full matching semantics (start-of-string vs. substring) or its lack of a per-skip diagnostic as a gap. Like exclude_patterns, this is a deliberate, silent, user-opted-in filter (see PipelineOptions.exclude_prefixes doc comment: 'Component name prefixes to skip') \u2014 a user who configures it is intentionally removing components from output, which is not the kind of undetectable failure CLAUDE.md non-negotiable #6 is about."
+  ],
+  "api_surface": [
+    {
+      "name": "extract",
+      "signature": "pub fn extract(options: &PipelineOptions) -> ExtractionOutput",
+      "description": "One-shot, cold, whole-tree extraction: discover -> parse -> merge -> resolve -> collect (this document's Phase 1-5, see scope). Never panics out to the caller; failures at any per-file/per-component/per-plugin granularity are contained and surfaced as Diagnostic entries in the returned ExtractionOutput."
+    },
+    {
+      "name": "PipelineOptions",
+      "signature": "pub struct PipelineOptions { pub src_dirs: Vec<Utf8PathBuf>, pub exclude_patterns: Vec<String>, pub exclude_prefixes: Vec<String>, pub html_attributes: HtmlAttributeMode, .. }",
+      "description": "Configuration for a run. Fields referenced by this spec's criteria: `src_dirs` \u2014 directories walked by discovery (AC-001, AC-002, AC-003, AC-011); whether a given entry counts as 'located under node_modules' for AC-001's exception is a property of that entry's configured path *string* (does it contain 'node_modules' as a substring, checked pre-canonicalization), not of the directory's true on-disk location. `exclude_patterns` \u2014 extra strings matched by plain substring containment against each candidate file's pre-canonicalization walk-emitted path, not its final canonicalized file_path (`path_str.contains(pattern)`, same pre-canonicalization string AC-001's built-in patterns match against); this is NOT glob syntax, so every non-empty UTF-8 string is a valid, always-inert-or-matching pattern with no malformed-pattern failure mode (AC-022), except the specific degenerate case of an empty-string entry, which matches every path via Rust's `str::contains(\"\")` always returning true (AC-023); discover_files performs zero validation of this field's contents. `exclude_prefixes` \u2014 component display-name prefixes to skip entirely (start-of-string match); a deliberate, silent, user-opted-in filter (see non_goals) referenced by AC-001. `html_attributes: HtmlAttributeMode` (`Curated` | `Full` | `None`) \u2014 when `Full`, gates Phase 3.5's merge of @types/react's real HTMLAttributes/AriaAttributes/DOMAttributes/<Element>HTMLAttributes interface chain into the merged GlobalSourceData before resolution; `Curated`/`None` skip this merge (AC-012)."
+    },
+    {
+      "name": "WatchSession::new",
+      "signature": "pub fn new(options: PipelineOptions) -> WatchSession",
+      "description": "Constructs a watch session in an uninitialized state (empty global state, empty caches). Performs no I/O and no extraction."
+    },
+    {
+      "name": "WatchSession::initialize",
+      "signature": "pub fn initialize(&self) -> ExtractionOutput",
+      "description": "Runs one full cold extraction (same Phase 1-5 pipeline as extract()) and seeds the session's internal caches and reverse-dependency graph from it. Idempotent: calling it more than once on the same session short-circuits to returning self.snapshot() without re-running the pipeline a second time \u2014 see AC-014 for what that means for diagnostics specifically. Guarded by a Mutex<bool>; if a prior call panicked while holding that guard (poisoning the lock), a subsequent call recovers via the poisoned lock's inner value rather than propagating a second panic (AC-021)."
+    },
+    {
+      "name": "WatchSession::update_file",
+      "signature": "pub fn update_file(&self, changed: &Utf8Path) -> IncrementalUpdate",
+      "description": "Incrementally re-parses only `changed`, then re-resolves every component in every file transitively affected by that change (a BFS over the reverse-dependency graph captured at the last initialize() \u2014 this includes `changed` itself and every file that imports it, directly or transitively), and returns only that delta. Does not re-run full discovery or re-parse unaffected files. Does not invoke registered plugin hooks (on_file_extracted/on_component_resolved run only during the cold extract()/initialize() path, never here). Each affected component's resolution is individually panic-contained the same way extract()'s Phase 4 is (AC-016a/AC-016b)."
+    },
+    {
+      "name": "WatchSession::snapshot",
+      "signature": "pub fn snapshot(&self) -> ExtractionOutput",
+      "description": "Returns the session's current full merged state: all components in component_cache, enums from the current global state, and diagnostics assembled only from entries written by update_file() calls (self.diagnostics) \u2014 never from a cold initialize() call's own diagnostics, which are not persisted anywhere snapshot() reads. Triggers no parsing or re-resolution."
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-001",
+      "criterion": "All substring-based exclusion checks in this criterion (the built-in patterns, exclude_patterns, and the node_modules-string exception) match against the walk-emitted path string reported for each candidate file BEFORE canonicalization \u2014 not against the canonicalized file_path that ultimately appears in output.components. These two strings normally agree, but can diverge for a src_dir reached through a symlink (see the negative pair below), so 'full path' throughout this criterion means that pre-canonicalization walk-emitted string specifically. Given a PipelineOptions.src_dirs containing one or more directories that exist on disk, extract() returns an ExtractionOutput whose components include every React component declared in every .ts/.tsx file reachable under those directories, excluding files whose pre-canonicalization walk-emitted path contains any of the plain substrings '.stories.', '.test.', '.spec.', '__snapshots__', or 'node_modules' (unless a src_dir's configured path string itself contains 'node_modules' as a substring, in which case the 'node_modules' substring exclusion is skipped for that src_dir's walk), excluding any file whose pre-canonicalization walk-emitted path contains a user-supplied entry from options.exclude_patterns as a substring, and, when PipelineOptions.exclude_prefixes is non-empty, excluding any component whose display_name starts with any of its entries (see non_goals for this filter's exact semantics \u2014 it is a deliberate, silent, user-opted-in exclusion, not a failure case). Additionally, using only fixture-observable input/output pairs: (1) given a src_dir inside a real git work tree (a `.git` directory present in the src_dir or an ancestor of it) containing a `.gitignore` file (in the src_dir itself or any ancestor directory up to the work tree root) that matches a candidate file, that file is excluded from the output \u2014 UNLESS that src_dir's configured path string itself contains 'node_modules' as a substring, in which case NO `.gitignore` file at any level (the src_dir's own, any ancestor's, or any nested directory's within the walk) excludes anything from that src_dir's walk, regardless of whether the src_dir or any directory beneath it has its own `.git` directory: every such file IS included in the output. Separately and independently: when that src_dir's path string contains 'node_modules' AND the src_dir itself has no `.git` directory of its own, `.git/info/exclude` also does not exclude anything for that src_dir's walk \u2014 UNLESS some directory nested beneath the src_dir (not the src_dir itself) has its own `.git` directory, in which case that nested subtree's own `.git/info/exclude` file DOES still exclude matching files within that nested subtree specifically. As a negative pair: a src_dir that is physically located inside a node_modules directory on disk, but whose configured path string does NOT contain the substring 'node_modules' (e.g. reached via a relative path or symlink whose literal string doesn't include it), is NOT exempt from any of the above \u2014 ordinary `.gitignore`/`.git/info/exclude` behavior (ancestor-.git-gated, as in the non-node_modules case) applies to it. Separately, and independent of gitignore handling entirely: because every substring exclusion in this criterion matches against the pre-canonicalization walk-emitted path (per the note at the top of this criterion), a matching file under such a src_dir is included in output.components even though its canonicalized file_path \u2014 computed after the exclusion check runs \u2014 does contain the substring 'node_modules'; a tester checking output.components purely by scanning file_path strings for 'node_modules' would incorrectly expect this file to have been excluded, but it is not; (2) given a src_dir (in or out of a git work tree, under node_modules or not) containing an `.ignore` file that matches a candidate file, that file is excluded from the output, with no exception; (3) given a src_dir that is NOT inside any git work tree at all (no `.git` directory anywhere in its ancestry) containing a `.gitignore` file that matches a candidate file, that file IS included in the output (gitignore rules have no effect outside a git work tree), while an `.ignore` file in the same non-git-work-tree src_dir still excludes matching files per (2).",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-002",
+      "criterion": "Given PipelineOptions.src_dirs is an empty list ([]), extract() returns an ExtractionOutput with zero components and at least one diagnostic with severity Error and code IoError whose message contains, case-insensitively, 'source directories' and 'empty' \u2014 distinct from AC-003's diagnostic, whose message instead contains, case-insensitively, 'source directories' and 'exist'.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-003",
+      "criterion": "Given PipelineOptions.src_dirs is non-empty but none of the listed directories exist on disk, extract() returns an ExtractionOutput with zero components and at least one diagnostic with severity Error and code IoError whose message contains, case-insensitively, 'source directories' and 'exist' \u2014 distinct from AC-002's diagnostic, whose message instead contains, case-insensitively, 'source directories' and 'empty'.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-004",
+      "criterion": "Given a src_dir containing a subdirectory the process lacks permission to read, extract() completes (does not abort or return an error result), returns components discovered from every readable file, and includes in its diagnostics at least one entry naming the specific unreadable directory's path.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-005",
+      "criterion": "Given a src_dir containing a file whose path bytes are not valid UTF-8, extract() completes, returns components from every other, valid file, and includes in its diagnostics at least one entry that identifies the skipped path (by its available lossy/byte representation) rather than omitting any mention of it.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-006",
+      "criterion": "Given the same set of source files extracted twice in separate extract() calls (no filesystem changes between calls, any thread-pool size), the two resulting ExtractionOutput values contain the same components in the same key order and the same diagnostics in the same order \u2014 i.e. output ordering does not vary with parallel-phase thread scheduling.",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-007",
+      "criterion": "Given a source file whose content triggers a panic during its own parsing/extraction, extract() still returns a result covering every other file (does not abort the run), that file contributes zero components, and the output diagnostics include an entry attributing a failure specifically to that file's path.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-008",
+      "criterion": "Given a component whose resolution triggers a panic during extract(), extract() still returns a result covering every other component (does not abort the run), that component is present in output.components as a stub entry carrying its correct display_name and file_path but empty/default props \u2014 identical to AC-016a's watch-path behavior \u2014 and the output diagnostics include an entry attributing a failure specifically to that component.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-009",
+      "criterion": "Given a registered DocgenPlugin whose on_file_extracted or on_component_resolved hook panics for one specific file/component during extract(), extract() completes, every other file's extraction and every other component's resolution proceeds unaffected (including other registered plugins still running their hooks on that same file/component), and the diagnostics include an entry whose message contains the panicking plugin's own name() value (not merely a generic 'a plugin failed' message).",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-010",
+      "criterion": "Given three components declared in the same file that all produce the same display name (a genuine triple duplicate declaration, e.g. `function Button() {}` appearing three times in one file \u2014 per this document's disambiguation rule in scope, the 1st occurrence keys as the bare display_name and the 2nd and 3rd both key as \"<display_name> (<file_path>)\", so it is the 2nd and 3rd that collide with each other), extract() returns exactly two component entries for that display name in that file (the bare-name entry from the 1st occurrence, unaffected, plus one disambiguated-key entry) \u2014 and the disambiguated-key entry is always the one from whichever of the 2nd/3rd occurrences is iterated later during Resolve/Collect (extraction visits a file's declarations and builds its list of component mappings in top-to-bottom source order for non-nested top-level declarations, and that same order is preserved through Resolve and Collect per AC-006's determinism guarantee) \u2014 plus a diagnostic reporting the component-key collision that names the colliding file path. This selection is deterministic and identical across repeated extract() calls on the same unchanged source.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-011",
+      "criterion": "Given two entries in src_dirs where one directory is nested inside the other (e.g. './src' and './src/components'), such that a component's source file is physically reachable via both, extract() returns exactly one ComponentMapping/component entry for that file \u2014 not two \u2014 and no diagnostic is emitted for this case (deduplication happens before any component mapping is created, silently, by design \u2014 distinct from AC-010's collision case, which happens after mapping creation and does emit a diagnostic).",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-012",
+      "criterion": "Given a .d.ts file that itself produces a parse diagnostic (e.g. excessive nesting), that diagnostic survives into the returned ExtractionOutput's diagnostics regardless of which merge path produced it: (a) a .d.ts file discovered via the normal src_dirs walk (Phase 3), (b) with PipelineOptions.html_attributes == HtmlAttributeMode::Full, the @types/react declaration file merged in during Phase 3.5 to resolve HTMLAttributes/AriaAttributes/etc., or (c) the ambient lib.es5.d.ts/lib.dom.d.ts files merged in during Phase 3.6, unconditionally, regardless of html_attributes. In no case is the diagnostic silently dropped.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-013",
+      "criterion": "Given a .d.ts file already present in the DTS parse cache, re-running extract() against a copy of that file whose mtime AND file size have both changed produces output that reflects the file's new content (a prop/type added or removed in the edit is present/absent accordingly), never the cached, stale content.",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-014",
+      "criterion": "Given a WatchSession with a registered DocgenPlugin whose on_file_extracted hook increments an externally-observable counter each time it is called, and initialize() is called twice in sequence: the counter's value after the second call equals its value after the first call (unchanged \u2014 proving no file was re-parsed/re-extracted on the second call), the second call's returned ExtractionOutput has the same components as the first, and the second call's diagnostics list is empty regardless of what the first call's diagnostics contained (initialize()'s second call short-circuits to snapshot(), which derives its diagnostics only from entries written by update_file() calls \u2014 none have occurred yet \u2014 never from the first call's own cold-run diagnostics).",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-015",
+      "criterion": "Given a WatchSession that has completed initialize(), calling update_file() with the path of a file that was atomically replaced (editor writes to a temp file then renames it over the original path) using content that changes one component's props returns an IncrementalUpdate reflecting that component's new props, and a subsequent snapshot() reflects the same updated state \u2014 the session does not miss or misinterpret the change as a deletion.",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-016a",
+      "criterion": "Given a WatchSession that has completed initialize(), and a subsequent update_file() call whose affected-set includes a component whose resolution triggers a panic: the returned IncrementalUpdate's updated_components list contains an entry for that component with its correct display_name and file_path but empty/default props (a stub, not the real resolved props), the returned diagnostics include an entry attributing a failure specifically to that component, and every other affected component in the same call is resolved normally (real, non-stub props) and present in updated_components. Implemented at pipeline/watch.rs; the test crates/core/src/pipeline/watch.rs::tests::a_panic_during_incremental_resolve_degrades_to_a_diagnostic_not_a_crash currently covers only the InternalPanic diagnostic \u2014 the stub's presence/shape in updated_components and the sibling-resolution guarantee are correct per source inspection but not yet covered by an existing test.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-016b",
+      "criterion": "Given a WatchSession where one update_file() call's resolve step was contained after a panic (per AC-016a), a subsequent update_file() call on a different, unrelated file still returns a normal IncrementalUpdate reflecting that file's change \u2014 the session's internal state (global, component_cache, reverse_deps) is not left corrupted or the session deadlocked by the earlier panic.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-017",
+      "criterion": "Given a WatchSession that has completed initialize(), calling update_file() with a file path whose canonical form differs from how it was passed (e.g. a symlinked directory segment reported in its pre-resolution form by a file watcher) still results in re-resolution of every component in files that transitively import the changed file, matching the same affected-set that would result from passing the canonical path directly.",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-018",
+      "criterion": "Given an extraction run in which at least one .d.ts file was parsed and inserted into the DTS cache during that run (so DtsCache::dirty is true and a cache write is actually attempted), and that write fails to persist to disk (e.g. the cache directory is not writable): the run still returns identical components to a run where the cache write succeeded, and identical diagnostics except for the single added cache-write entry described below; that entry has severity exactly DiagnosticSeverity::Info \u2014 never DiagnosticSeverity::Warning or DiagnosticSeverity::Error. When no .d.ts file was inserted during the run, no cache-write diagnostic is emitted at all, regardless of whether the cache directory is writable.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-019",
+      "criterion": "Given a WatchSession that has completed initialize(), where file G imports a type that is declared only in file F, and F is subsequently deleted from disk: calling update_file() with F's path returns an IncrementalUpdate whose diagnostics include an IoError entry for F. The component(s) previously resolved from F remain present in WatchSession::component_cache and therefore in the next snapshot() call's output (they are not pruned by update_file \u2014 a documented staleness gap, closed only by constructing a new WatchSession). F's removal from the session's internal type graph is externally observable through G, not through F itself: a subsequent update_file() call with G's path produces, for the prop/type that used to resolve against F's declaration, either a diagnostic naming the unresolvable reference or an unresolved/opaque prop type in G's re-resolved component \u2014 it does not resolve as if F's declaration still existed.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-020",
+      "criterion": "Given a freshly-constructed WatchSession on which initialize() has never been called, calling snapshot() does not panic and returns an ExtractionOutput with zero components, zero enums, and zero diagnostics. Calling update_file() on such a session does not panic; it returns an IncrementalUpdate whose updated_components contains only the just-parsed changed file's own component(s), and any prop on that component whose type would normally require resolving a cross-file import or an ambient global (e.g. React's own HTMLAttributes, or a type imported from another project file) appears either as an unresolved/opaque prop type or is accompanied by a diagnostic naming the unresolvable reference, rather than being fully resolved as it would be after a real initialize() call.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-021",
+      "criterion": "Given a WatchSession whose internal initialization guard was poisoned by a prior panic that occurred while the guard was held (before initialize() completed), a subsequent call to initialize() does not panic \u2014 it recovers the poisoned guard's inner value and proceeds to run (or re-run) the full cold extraction, returning a valid ExtractionOutput rather than propagating a second panic to the caller.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-022",
+      "criterion": "PipelineOptions.exclude_patterns entries are matched against each discovered file's pre-canonicalization walk-emitted path (see AC-001's note on this distinction) using plain substring containment, not glob/wildcard syntax \u2014 every non-empty UTF-8 string is a structurally valid pattern (there is no such thing as a malformed pattern in this field). Given any exclude_patterns value containing characters that would be invalid glob syntax elsewhere (e.g. an unmatched '[' or '*'), extract() never panics or emits an error diagnostic on account of that pattern's content; it is simply used as a literal substring to match against candidate paths.",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-023",
+      "criterion": "Given PipelineOptions.exclude_patterns contains an empty string (\"\") entry, extract() excludes every discovered file (an empty-string substring match is true for every path, checked against the pre-canonicalization walk-emitted path per AC-001's note) and returns zero components. No diagnostic is emitted for this condition \u2014 discover_files performs no validation of exclude_patterns content, so an empty-string entry silently produces a zero-component result, indistinguishable in the diagnostics list from a genuinely empty (no-matching-files) project.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-024",
+      "criterion": "Given a WatchSession that has completed initialize(), calling update_file() with the path of a file that exists on disk but whose byte content is not valid UTF-8 (distinct from AC-005, which concerns the discovered file *path* being non-UTF8, not its contents) returns an IncrementalUpdate with an IoError diagnostic naming that file, and does not panic. updated_components contains no entry whose file_path equals the changed file itself (that file's own component(s), if any existed, are not re-resolved successfully) \u2014 but updated_components MAY still contain entries for other files that transitively import the changed file, since those are independently re-resolved as part of the same affected-set walk.",
+      "is_error_case": true
+    }
+  ],
+  "linked_requirement": "REQ-PIPELINE-001",
+  "revision_note": "Seventh-pass (final) revision applying the three changes directed by team-lead. (1) AC-001, git-ignore clause (1) \u2014 adopted the PRECISE empirically-derived replacement text as-is, after independently re-verifying it against the actual `ignore 0.4.26` crate source (vendored at ~/.cargo/registry/src/.../ignore-0.4.26/src/dir.rs), not merely trusting the supplied description. Traced three specific functions: `add_parents` computes each ancestor Ignore node's `has_git` using only `require_git && git_ignore` (git_exclude is NOT part of that condition) \u2014 so with discover.rs's `git_ignore(!dir_is_in_node_modules)` setting git_ignore=false for node_modules-string src_dirs, every ancestor's has_git is unconditionally false, regardless of git_exclude's value. `add_child_path` computes has_git for the src_dir itself and any directory walked into beneath it using `require_git && (git_ignore || git_exclude)` \u2014 since git_exclude stays at its crate default (true, untouched by discover.rs), this is true wherever a `.git` directory actually exists at or below the src_dir. `matched_ignore`'s `any_git = !require_git || parents().any(has_git)` gate controls both the `.gitignore` matcher (m_gi) and the `.git/info/exclude` matcher (m_gi_exclude) \u2014 but m_gi is ALSO independently short-circuited to `Gitignore::empty()` whenever `!opts.git_ignore` in `add_child_path`, before any_git is even evaluated, confirming .gitignore is unconditionally inert for node_modules-string src_dirs with no .git-presence gating at all. m_gi_exclude has no such independent short-circuit \u2014 it depends purely on any_git, which (per the has_git analysis above) is false unless the src_dir itself or a directory nested within the walk has its own .git, exactly matching the supplied text's asymmetric git-presence condition scoped to 'the src_dir and everything beneath it,' not ancestors. Given this line-by-line confirmation against the real dependency source, I used the PRECISE version, not the lower-precision fallback team-lead authorized as a last resort. (2) AC-023 \u2014 removed the diagnostic requirement entirely; confirmed via discover.rs:12-67 that extra_excludes/exclude_patterns undergoes zero validation of any kind (only a `.contains()` substring check), so no code path could emit such a diagnostic. Criterion now asserts only the exclusion-of-everything behavior, and notes explicitly (for future implementers) that this makes the empty-project and empty-pattern cases diagnostically indistinguishable, without requiring that distinction be added. (3) AC-018 \u2014 added the dirty-cache precondition to the antecedent and the complementary 'no diagnostic when nothing was cached' sentence, confirmed against cache.rs:149-161's `save_to_disk` (`if !self.dirty.load(...) { return None; }`) and the `dirty` flag only being set true when a .d.ts file is actually inserted into the cache (cache.rs:135). All prior rounds' fixes and groundings (AC-002/003 severity+code convention, AC-008/016a stub framing, AC-010's three-declaration collision mechanics, AC-014's diagnostics-provenance correction, AC-016a's fully-qualified test citation, AC-019/AC-020/AC-024's observable-proxy phrasing, the exclude_prefixes reframe) carry forward unchanged.",
+  "reasoning": "This round required going beyond reading crates/core's own source, since the question was about a third-party dependency's (ignore 0.4.26) internal matching semantics \u2014 I located the actual vendored crate source under ~/.cargo/registry and read dir.rs's add_parents/add_child_path/matched_ignore functions directly rather than accepting the supplied empirical description without independent verification, per the standing practice in this revision chain of re-deriving every claim before committing it to the spec. The trace confirmed the supplied text exactly, including the specific asymmetry (has_git computed differently for ancestors vs. the walked subtree) that made this edge case so hard to get right through reasoning alone across six prior rounds \u2014 an empirical/fixture-based approach combined with direct source confirmation was the right call here, matching team-lead's judgment to trust it over further pure reasoning.",
+  "spec_file_path": ".claude/specs/SPEC-PIPELINE-001.json"
+}

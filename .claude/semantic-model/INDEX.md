@@ -1,0 +1,44 @@
+# Semantic Model — Index
+
+Read this first. Load only the files your task requires — never load all seven at once. This index is ~500 tokens; each topic file is 1200-3700 words. The goal is progressive loading, not a single monolithic architecture doc.
+
+**The spec@1 is the authority; these files are the reference layer beneath it.** When a spec (`.claude/specs/`) and a semantic-model file disagree, the spec wins for the feature it covers — but that usually means the semantic-model file is stale and should be corrected, not ignored. Each file states its `Source:` — the real `.rs` files it's distilled from — so staleness is always checkable against ground truth.
+
+## Task → file routing
+
+| Working on... | Load |
+| --- | --- |
+| File discovery, parallel parse/resolve orchestration, the DTS cache, watch mode, panic containment, plugin hook points | `pipeline-orchestration.md` |
+| OXC AST visiting, component detection patterns, JSDoc/default-value extraction, `SourceData` | `extractor-ast-visiting.md` |
+| Type resolution, generic substitution, the source-vs-known-pattern precedence rule, give-up/degrade discipline, cycle detection | `resolver-type-resolution.md` |
+| `PropType`/`CollectedType`/`ComponentEntry`/`Diagnostic` shapes, manual serde, `ParsedProp`'s sealed constructor, the msgpack cache wire format | `types-and-output-contract.md` |
+| RDT-compat/Storybook/TOON/JSON-Schema output, the `enum` shape rule, `composes`, truncation | `serialization-formats.md` |
+| Any `crates/cli` command, exit codes, config loading, the LSP scaffold | `cli-commands.md` |
+| `crates/binding` (NAPI/Node), session lifecycle, FFI panic safety | `napi-binding.md` |
+
+## What does NOT live here
+
+- **Source code** — read it directly from the crate. These files summarize invariants, they don't replace reading the function you're about to change.
+- **Spec@1 artifacts** (`.claude/specs/`) — testable acceptance criteria for a specific unit of work. These files are broader and looser; specs are narrow and binding.
+- **`docs/edge-cases.md` / `docs/root-cause-analysis.md`** — the project's bug/gap tracker and its root-cause analysis. Semantic-model files cross-reference these rather than duplicating them; check those docs directly for current, itemized gap status.
+- **`docs/adr/`** — hard-to-reverse decisions with their own record format. Semantic-model files cite the relevant ADR by number rather than re-explaining the decision.
+- **`ARCHITECTURE.md`, `CLAUDE.md` files** — human-facing prose reference and contributor rules. Treat as context, not as the invariant source — the semantic-model files here are the ones checked against real source per-subsystem.
+
+## Cross-cutting invariants (span every file — not worth repeating seven times)
+
+- No `unwrap()`/`expect()` outside `#[cfg(test)]` anywhere in `crates/core` or `crates/cli` (verified repeatedly across this project's own audits — holds today).
+- `FxHashMap` for internal maps, `BTreeMap` for anything serialized to JSON output (determinism).
+- Always emit a `Diagnostic` when degrading — the single most-violated-then-fixed rule in this project's history; every semantic-model file below documents where this discipline is solid and where residual gaps remain.
+- `panic_guard::contain_panic` is the one sanctioned panic-containment boundary (ADR-0005) — see `pipeline-orchestration.md` and `napi-binding.md` for where it's wired in.
+
+## Known doc-hygiene corrections found while writing this layer (2026-08-12)
+
+Writing these seven files against real source turned up several places where existing docs had drifted from the code they describe. Fixed inline in the source docs as part of this pass (see `docs/adr/0002-manual-serialize-for-prop-type.md`, `docs/root-cause-analysis.md`, `docs/edge-cases.md` for the corrections) — noted here so the correction itself doesn't get lost:
+
+- ADR-0002 claimed `OpaqueReason` hand-writes `Serialize`/is recursive — it doesn't and isn't; only `PropType`/`CollectedType` actually need the manual impl.
+- ADR-0002's "worth deleting as a follow-up" note about `#![recursion_limit = "2048"]` — already deleted; the ADR just hadn't been updated to say so.
+- `root-cause-analysis.md`'s claim that `build_substitution` silently truncates unfilled generic params — already fixed (pushes `GenericArgumentMismatch`); the doc was stale.
+- `root-cause-analysis.md`'s "empty RDT enum" gap — real, but imprecisely located; the serialization layer's `is_literal_union()` already correctly excludes 0/1-member unions, so the residual gap is upstream at resolver construction sites, not in serialization.
+- `edge-cases.md` P1-9 (NAPI `create_session`/`close_session` panic safety) — resolved by ADR-0005; was still listed as open.
+
+One new, previously-untracked gap surfaced and added to `edge-cases.md`: `resolve_named` (named.rs) has no cycle detection, unlike its chain-level sibling `resolve_props_chain` — bounded only by `MAX_DEPTH=20`, not caught with a friendly "circular reference" diagnostic. See `resolver-type-resolution.md` for detail.

@@ -1,0 +1,65 @@
+{
+  "id": "SPEC-RESOLVER-001",
+  "purpose": "Ensure crates/core::resolver's resolve_component() resolves a component's props type into a ComponentEntry by consistently applying source-before-known-pattern precedence and by terminating every recursive/combinatorial resolution path with a diagnostic-bearing degrade rather than infinite recursion, a panic, or a silent zero-props/contradictory result.",
+  "scope": [
+    "crates/core/src/resolver/precedence.rs — resolve_source_defined_or_known, the single shared precedence function used by both chain.rs and named.rs",
+    "crates/core/src/resolver/chain.rs — resolve_props_chain, its cycle detection via state.visited keyed by (file, type_name, type_args), and its non-cyclic MAX_DEPTH exhaustion path",
+    "crates/core/src/resolver/named.rs — resolve_named's use of the shared precedence function only (not its cycle-detection behavior, which is a documented non-goal)",
+    "crates/core/src/resolver/alias.rs — LiteralUnion-as-props-base rejection path",
+    "crates/core/src/resolver/func.rs — multi-parameter function type degrade path",
+    "crates/core/src/resolver/substitute.rs — build_substitution's handling of partially-applied generic aliases",
+    "crates/core/src/resolver/template.rs — MAX_TEMPLATE_LITERAL_EXPANSIONS-bounded Cartesian product expansion"
+  ],
+  "non_goals": [
+    "resolve_named (named.rs) has no cycle-detection visited-set of its own, unlike resolve_props_chain — it is bounded only by MAX_DEPTH=20 with no dedicated 'circular type reference' diagnostic. Known, still-open gap — see docs/edge-cases.md, section 'Resolver — new, previously-untracked gap' (the entry citing resolver/named.rs:17-25). No criterion in this spec asserts resolve_named detects cycles.",
+    "AST extraction (owned by crates/core::extractor)",
+    "Serialization of the resolved PropType/CollectedType output (owned by crates/core::types::output and the serialization layer)",
+    "Generic substitution through nested builtin generic chains (e.g. Ariakit's Props<T, O> = O & Omit<ComponentPropsWithoutRef<T>, keyof O>) — documented open gap in docs/benchmarks.md, not addressed here",
+    "The two residual (non-P0-1) precedence divergences between chain.rs and named.rs — React-builtin-check ordering and is_ts_utility_type check ordering — flagged as open follow-up in docs/root-cause-analysis.md §8, not fixed by this spec",
+    "Over-supplied generic type arguments (more type arguments than a generic alias declares parameters) are silently truncated to the first N via build_substitution's .zip() with no diagnostic pushed. Real, distinct gap from the under-application case covered by AC-5, but out of scope here — REQ-RESOLVER-001 done_when[4] covers under-application only."
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "criterion": "Given a project defines its own `interface SxProps { customSx: string }` (or any interface name colliding with a known.rs library shortcut) and a component's props type reaches that interface via an `extends` clause, resolve_props_chain's resolution includes `customSx` as a resolved prop and does NOT substitute the known-pattern (e.g. MUI SxProps) opaque shortcut.",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-1b",
+      "criterion": "Given the same project-defined SxProps-colliding interface from AC-1 is instead reached as a field's type (e.g. `sx: SxProps` inside another resolved interface, not via extends), resolve_named returns PropType::Named { name: \"SxProps\", .. } referencing the project's own interface, and does NOT substitute the known-pattern opaque shortcut — confirming resolve_source_defined_or_known's precedence order is applied identically at both call sites.",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-2",
+      "criterion": "Given a self-referential interface (an interface whose extends clause, directly or transitively, references itself) or a mutually-recursive pair of interfaces reached as a component's props base, resolve_props_chain terminates before MAX_DEPTH (20) is exhausted, returns a ResolvedChain produced via ResolvedChain::give_up (never a bare ResolvedChain::default()), and the returned diagnostics contain at least one Info-severity diagnostic with DiagnosticCode::MaxDepthExceeded containing the phrase 'Circular type reference detected', attributed to the interface whose (file, type_name, type_args) key is found already present in state.visited when re-encountered.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-2b",
+      "criterion": "Given a props chain of distinct (non-repeating) interfaces — no (file, type_name, type_args) key repeated — whose extends-chain depth exceeds MAX_DEPTH (20) hops, resolve_props_chain returns a ResolvedChain produced via ResolvedChain::give_up (never ResolvedChain::default()), and the returned diagnostics contain at least one Warning-severity diagnostic with DiagnosticCode::MaxDepthExceeded whose message contains the phrase 'Max resolution depth exceeded'.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-3",
+      "criterion": "Given a prop typed as a function with two or more parameters (e.g. `onChange: (a: string, b: number) => void`), the resolved PropType for that prop is PropType::Opaque with OpaqueReason::MultiParamFunction, and the returned diagnostics contain at least one Info-severity diagnostic whose message contains the exact substring `(<p1>, <p2>, ...) => <returnType>` where each `<pN>` is that parameter's `to_raw_string()` rendering, parameters are joined with `, `, and `<returnType>` is the return type's `to_raw_string()` rendering — i.e. byte-for-byte what `format!(\"({}) => {}\", param_strs.join(\", \"), return_type.to_raw_string())` produces.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-4",
+      "criterion": "Given a component's props type resolves (directly or via a type alias) to a LiteralUnion type used as the props base itself (not as an individual prop's value type), resolution does not silently produce zero props; the returned diagnostics contain a Warning-severity diagnostic with DiagnosticCode::OpaqueType whose message contains both the substring \"is a literal union and can't be used as a component's props base\" and the substring \"expected an interface, intersection, union, or inline object type\", in that order.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-5",
+      "criterion": "Given a generic type alias declaring N type parameters (e.g. `type Foo<T, U> = ...`) is invoked at a call site supplying fewer than N type arguments (e.g. `Foo<string>`), build_substitution's resulting substitution map contains no entry for any unfilled parameter name — so any reference to an unfilled parameter elsewhere in the alias body is left as the bare, unreplaced parameter name rather than being substituted with any caller-supplied or synthesized type — AND the returned diagnostics contain a Warning-severity diagnostic with DiagnosticCode::GenericArgumentMismatch naming every unfilled parameter (e.g. 'U') by name in its message.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-6",
+      "criterion": "Given a template-literal type whose per-part alternative counts multiply (via unions in interpolated positions) to a Cartesian product exceeding MAX_TEMPLATE_LITERAL_EXPANSIONS (4096) possible string members, the resolved PropType is PropType::Opaque with OpaqueReason::TemplateLiteral, no expanded member list (no LiteralUnion / no Vec<String> of concrete expanded strings) is present anywhere in the resolved output for that prop, and the returned diagnostics contain at least one Info-severity diagnostic with DiagnosticCode::TemplateLiteralOpaque whose message contains the substring \"could not be statically expanded\".",
+      "is_error_case": true
+    }
+  ],
+  "linked_requirement": "REQ-RESOLVER-001",
+  "spec_file_path": ".claude/specs/SPEC-RESOLVER-001.json"
+}

@@ -1,0 +1,75 @@
+{
+  "id": "SPEC-SERIALIZATION-001",
+  "requirement_id": "REQ-SERIALIZATION-001",
+  "purpose": "Guarantee that every consumer-facing projection of ExtractionOutput -- RDT-compat JSON, Storybook JSON, TOON text, and the exported JSON Schema -- faithfully represents the canonical data, with no silent truncation, no misleading enum-shapes, and no undetected schema drift, so tools that treat oxc-react-docgen as a drop-in react-docgen-typescript replacement can trust the output without re-deriving it from the resolver's internal types.",
+  "scope": [
+    "crates/cli/src/commands/extract.rs: serialize_rdt, rdt_type_json (serialize_storybook is referenced only in non_goals for context -- no acceptance criterion here constrains its output shape)",
+    "crates/core/src/toon.rs: render_output_toon, render_component_toon, format_type_compact, truncate_with_indicator",
+    "crates/cli/src/commands/schema.rs: schema_value, cmd_schema, and its drift-detection test",
+    "crates/core/src/types/output.rs: PropType::is_literal_union() as the single gate rdt_type_json must route through",
+    "crates/core/src/resolver/mod.rs: ResolvedChain::give_up / empty_with_compose (mod.rs:376-390) -- note this is a distinct function from OpaqueDetail::give_up in types/output.rs, which returns PropType::Opaque and never touches composes; only ResolvedChain::give_up's output is in scope here, insofar as it must round-trip through serialize_rdt"
+  ],
+  "non_goals": [
+    "The schema-coverage test (schema_covers_every_field_name_the_real_output_serializes) is a targeted substring-presence check over 5 sampled nesting points (component, one prop, one inheritance layer, one diagnostic, stats) in one hand-built fixture. It does NOT verify nesting/placement correctness, does NOT verify declared JSON types match real serialized types, does NOT walk nested substructures outside those 5 paths (e.g. defaultValue/tags/declarations internals), and does NOT catch a schema field that's stale/removed on the Rust side. This spec does not attempt to close any of those gaps -- deriving schemars::JsonSchema (ADR-0006, proposed not accepted) is out of scope here.",
+    "The underlying PropType/CollectedType representation the resolver produces is out of scope -- this spec covers only how an already-resolved ComponentEntry tree is serialized.",
+    "Mapped types, conditional types, and other real-type-inference gaps OXC does not attempt are tracked in docs/type-checker-integration.md and rdt-coverage.md, not re-litigated here.",
+    "ref/key omission from all three formats is a locked, separately-documented decision (Invariant 5 in the serialization-formats semantic model) -- not reopened by this spec.",
+    "methods: [] being hardcoded empty in both RDT and Storybook output is a locked design decision (class components out of scope) -- not reopened by this spec.",
+    "Distinguishing, within the composes field itself, RDT's native 'props from elsewhere' population from this resolver's 'gave up resolving' population is explicitly not required -- Invariant 4 documents this as an intentional, undifferentiated reuse; a consumer must cross-reference diagnostics to disambiguate, and that mechanism is not part of this spec.",
+    "Whether serialize_storybook should or should not include an enum-shaped type, a composes key, or a parent key is not asserted by this spec in either direction. The requirement's 'faithfully representing the underlying data without misrepresenting it' language does not clearly mandate Storybook's current field omissions (Invariant 6 in the serialization-formats semantic model) over the alternative of including them, so no acceptance criterion locks in or changes serialize_storybook's current shape -- a future spec should address Storybook format fidelity explicitly if that becomes a stakeholder concern.",
+    "SPEC-CLI-001a's AC-016 currently asserts the same schema_covers_every_field_name_the_real_output_serializes test property this spec's AC-6/AC-7 assert, including its 'ExtractionStats whose every numeric field is non-zero' clause; AC-7 below now fully subsumes that clause (stats assertions included) so the two specs no longer conflict, but they still duplicate the same test's contract. This spec claims sole ownership going forward; SPEC-CLI-001a should be updated to defer to this spec rather than re-specifying it, but that edit is not made by this spec (cross-spec edits are out of scope for a single spec@1 document -- flagged for the spec owner/reviewer to reconcile)."
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "description": "rdt_type_json(&PropType::Union(vec![])) equals exactly json!({\"name\": \"\"}); rdt_type_json(&PropType::Union(vec![PropType::StringLiteral(\"x\".into())])) equals exactly json!({\"name\": \"\\\"x\\\"\"}); rdt_type_json(&PropType::LiteralUnion { members: vec![], has_default: false }) equals exactly json!({\"name\": \"\"}); rdt_type_json(&PropType::LiteralUnion { members: vec![\"only\".into()], has_default: false }) equals exactly json!({\"name\": \"\\\"only\\\"\"}) -- all four verified with assert_eq! against the exact json!() literal shown (not a partial/contains or name-is-not-\"enum\" check), so a regression that produces the wrong non-enum shape, not just an enum shape, is caught too.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-2",
+      "description": "rdt_type_json(&PropType::Union(vec![PropType::StringLiteral(\"red\".into()), PropType::NumberLiteral(5.0)])) equals exactly json!({\"name\": \"enum\", \"value\": [{\"value\": \"\\\"red\\\"\"}, {\"value\": \"5\"}]}) -- the StringLiteral member's \"value\" is the JSON string containing two literal double-quote characters around red, the NumberLiteral member's \"value\" is the bare digit string with no quotes added. Separately, rdt_type_json(&PropType::LiteralUnion { members: vec![\"red\".into(), \"blue\".into()], has_default: false }) equals exactly json!({\"name\": \"enum\", \"value\": [{\"value\": \"\\\"red\\\"\"}, {\"value\": \"\\\"blue\\\"\"}]}) -- every LiteralUnion member's \"value\" is quote-wrapped unconditionally, regardless of content. Both fixtures are verified with assert_eq! against the exact json!() literal shown, not a partial/contains check.",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-3",
+      "description": "For a fixture table spanning PropType::Union and PropType::LiteralUnion at 0, 1, 2, and 3 members, plus a PropType::Union at 2 members with one non-literal (e.g. Named) member mixed in, rdt_type_json returns the {\"name\": \"enum\", ...} shape if and only if prop_type.is_literal_union() returns true for that same value -- verified by calling both functions on each fixture value and asserting the equivalence directly (not by inspecting rdt_type_json's source).",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-4",
+      "description": "For a PropType::Union with 2+ members where at least one member is not a StringLiteral/NumberLiteral/BoolLiteral (e.g. one Named type mixed with one StringLiteral), rdt_type_json returns {\"name\": <raw_string>} and never the enum shape -- verified with a 3-member fixture containing exactly one non-literal member.",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-5",
+      "description": "Calling format_type_compact directly (not render_component_toon or any other end-to-end path, since format_type_compact is the function that actually performs truncation and is independently unit-testable, matching the existing test convention at toon.rs:259-298) on a Union, Intersection, or LiteralUnion value: the returned string contains the substring \"...(+N)\" if and only if the formatted member list exceeds its branch's display cap (Union/Intersection: 4, LiteralUnion: 6), where N is the plain decimal string rendering of (member_count - cap) (not assumed to be a single digit -- a fixture with cap+10 members must render \"...(+10)\", not truncate or reformat N itself) -- verified per variant with two fixtures: one over-cap fixture (using a member count large enough that member_count - cap is 2+ digits for at least one variant, to prove N isn't assumed single-digit) asserting the marker's literal decimal digits match (member_count - cap) exactly, and one at-or-under-cap fixture asserting no \"...(+\" substring appears at all. Both fixtures are required per variant so the truncation behavior required by REQ-SERIALIZATION-001's done_when item 2 ('any list truncated to the display cap appends a visible indicator...no format truncates silently') is falsifiable in both directions, not just checked for marker presence when already-truncated.",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-6",
+      "description": "schema_value()'s stringified output contains every field name serde emits at the following real ExtractionOutput fixture paths: the component object, a prop object, an inheritance-layer object, a diagnostic object, and the stats object -- verified by the existing schema_covers_every_field_name_the_real_output_serializes test continuing to pass against a fixture that populates every field at those 5 paths, including optional ones (description, defaultValue, tags, parent, declarations, discriminantProp, composes, notableInherited, omitted, htmlElement, line, column, help).",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-7",
+      "description": "The drift test's fixture, at the 5 sampled paths, contains no field left at its Rust default/empty value where a non-default value is constructible -- verified by explicit runtime assertions in the test body: assert_ne!(value[\"components\"][\"Button\"][\"notableInherited\"], json!({})); assert_ne!(value[\"components\"][\"Button\"][\"inheritance\"][0][\"omitted\"], json!([])) (fixture sets omitted to a non-empty Vec, e.g. vec![\"ref\".into()]); assert_ne!(value[\"components\"][\"Button\"][\"props\"][\"variant\"][\"tags\"], json!({})) (fixture sets tags to a non-empty map); assert_ne!(value[\"components\"][\"Button\"][\"props\"][\"variant\"][\"declarations\"], json!([])) (fixture sets declarations to a non-empty Vec); !value[\"components\"][\"Button\"][\"discriminantProp\"].is_null(), !value[\"components\"][\"Button\"][\"props\"][\"variant\"][\"parent\"].is_null(), !value[\"components\"][\"Button\"][\"props\"][\"variant\"][\"defaultValue\"].is_null(), and, on the diagnostic object, !value[\"diagnostics\"][0][\"line\"].is_null(), !value[\"diagnostics\"][0][\"column\"].is_null(), !value[\"diagnostics\"][0][\"help\"].is_null(); plus, on the stats object (matching SPEC-CLI-001a's AC-016 clause so the two specs no longer conflict), assert every one of componentsExtracted, componentsSkipped, filesParsed, dtsFilesParsed, dtsCacheHits, durationMs, tier1Count, tier3Count, and opaqueCount is non-zero in the fixture and present in the serialized stats object. This makes a field silently missing from schema_value() detectable via a real, non-empty/non-zero field value rather than relying on a source-inspection judgment call.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-8",
+      "description": "serialize_rdt emits entry.composes verbatim as the component's \"composes\" JSON array -- verified with a fixture ComponentEntry whose composes field is non-empty, asserting the emitted JSON's \"composes\" array matches it exactly.",
+      "is_error_case": false
+    },
+    {
+      "id": "AC-9",
+      "description": "Calling ResolvedChain::give_up(\"SomeUnresolved\".to_string(), Some(diag), &mut state) directly returns a ResolvedChain whose composes equals vec![\"SomeUnresolved\".to_string()] (via empty_with_compose), and pushes diag onto state.diagnostics -- verified by this direct call with a representative type name and Some(_) diagnostic, asserting both the returned composes value and the mutated state.diagnostics contents.",
+      "is_error_case": true
+    },
+    {
+      "id": "AC-10",
+      "description": "Running the resolver end-to-end (resolve_component or pipeline::extract) on a fixture source file where a component's props interface extends a type alias that is itself a string-literal union (e.g. `type Variant = 'a' | 'b'; interface Props extends Variant {}`) -- which resolve_base_as_chain's CollectedTypeAlias::LiteralUnion arm (resolver/alias.rs) routes through ResolvedChain::give_up -- produces a ComponentEntry whose composes field equals vec![\"\\\"a\\\" | \\\"b\\\"\".to_string()] (members.iter().map(|m| format!(\"\\\"{m}\\\"\")).join(\" | \") -- collected.rs's to_raw_string() quote-wraps each string-literal member before joining, per CollectedType::StringLiteral's raw_string arm, so the composed value is `\"a\" | \"b\"` with literal embedded double-quote characters, NOT the unquoted `a | b`), and passing that same ComponentEntry through serialize_rdt produces JSON whose \"composes\" array is exactly [\"\\\"a\\\" | \\\"b\\\"\"] -- verified end-to-end on one fixture file, proving the round-trip claimed in this spec's scope rather than testing give_up and serialize_rdt only in isolation (as AC-8 and AC-9 do separately). This exemplar is chosen because it is a real, currently-reachable call site of ResolvedChain::give_up (resolver/alias.rs:132), not OpaqueDetail::give_up (a distinct function in types/output.rs that a conditional type reaches instead and which never touches composes).",
+      "is_error_case": false
+    }
+  ],
+  "spec_file_path": ".claude/specs/SPEC-SERIALIZATION-001.json"
+}

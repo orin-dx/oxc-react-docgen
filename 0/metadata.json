@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.10.1-nightly.202608121908.a47cf0c70",
+  "checkpoint_id": "01KZXRDDTDA0SYEDYW6GFH8ZVP",
+  "session_id": "c2e627b7-dced-422f-8477-6a94b0b84862",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-13T14:29:03.476963Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "crates/core/src/extractor/mod.rs",
+    "crates/core/src/extractor/component.rs",
+    "crates/core/src/extractor/visit.rs",
+    "crates/core/src/extractor/interface.rs",
+    "docs/edge-cases.md",
+    "docs/STATUS.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "ae6007ee5be5",
+  "checkpoint_transcript_start": 4835,
+  "transcript_lines_at_start": 4835,
+  "compact_transcript_start": 730,
+  "token_usage": {
+    "input_tokens": 194,
+    "cache_creation_tokens": 227686,
+    "cache_read_tokens": 20671052,
+    "output_tokens": 91554,
+    "api_call_count": 97
+  },
+  "session_metrics": {
+    "turn_count": 35
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-13T14:29:02.914559Z",
+    "agent_lines": 772,
+    "agent_removed": 40,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 772,
+    "total_lines_changed": 812,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}

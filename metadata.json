@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.10.1-nightly.202608121908.a47cf0c70",
+  "checkpoint_id": "01KZXRDDTDA0SYEDYW6GFH8ZVP",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "crates/core/src/extractor/component.rs",
+    "crates/core/src/extractor/interface.rs",
+    "crates/core/src/extractor/mod.rs",
+    "crates/core/src/extractor/visit.rs",
+    "docs/STATUS.md",
+    "docs/edge-cases.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 194,
+    "cache_creation_tokens": 227686,
+    "cache_read_tokens": 20671052,
+    "output_tokens": 91554,
+    "api_call_count": 97
+  }
+}

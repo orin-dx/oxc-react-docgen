@@ -468,4 +468,45 @@ export default {
         let names: Vec<String> = opts.extra_builtins.iter().map(|s| s.to_string()).collect();
         assert_eq!(names, vec!["FromCli".to_string()]);
     }
+
+    // ── SPEC-CLI-001a AC-018: a --config load failure returns Err from
+    // build_options (mapped to exit code 1 by main()'s shared Err path, same
+    // mechanism as AC-010/AC-013/AC-017) rather than any exit_code()-derived
+    // value. extract/check/inspect/watch all call build_options the same way
+    // (`build_options(...)?`), so this proves the shared mechanism once.
+
+    #[test]
+    fn build_options_propagates_a_config_load_failure_as_err() {
+        let result = build_options(BuildOptionsArgs {
+            src: &[],
+            no_cross_package: false,
+            react_version: None,
+            cache_dir: None,
+            html_attributes: None,
+            config_path: Some("/nonexistent-parent-dir-xyz/docgen.config.ts"),
+            extra_builtins: &[],
+        });
+        assert!(result.is_err(), "expected build_options to return Err for a failing --config path");
+    }
+
+    // ── SPEC-CLI-001a AC-021: --react-version accepted by clap (a plain
+    // Option<String>, not a value_enum) but rejected by build_options because
+    // it's neither "react18" nor "react19" — distinct from AC-020's clap-level
+    // exit 2, this is build_options's own Err, exit 1.
+
+    #[test]
+    fn build_options_rejects_an_unrecognized_react_version_value() {
+        let err = build_options(BuildOptionsArgs {
+            src: &[],
+            no_cross_package: false,
+            react_version: Some("react17"),
+            cache_dir: None,
+            html_attributes: None,
+            config_path: None,
+            extra_builtins: &[],
+        })
+        .expect_err("expected an Err for an unrecognized --react-version value");
+        let message = format!("{err:?}");
+        assert!(message.contains("react17"), "expected the error to name the bad value, got {message}");
+    }
 }

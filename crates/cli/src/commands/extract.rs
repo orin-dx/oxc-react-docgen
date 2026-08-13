@@ -190,6 +190,23 @@ mod tests {
         assert_eq!(code, 2);
     }
 
+    // ── SPEC-CLI-001a AC-001: extract against a source directory that
+    // produces zero Error-severity diagnostics returns exit code 0.
+
+    #[test]
+    fn clean_run_returns_exit_code_zero() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = tempfile::TempDir::new_in(manifest_dir).unwrap();
+        std::fs::write(
+            tmp.path().join("Widget.tsx"),
+            "export function Widget(props: { label: string }) { return null; }\n",
+        )
+        .unwrap();
+        let code = cmd_extract(args_for(tmp.path().to_str().unwrap(), true), true, None)
+            .expect("cmd_extract should not error");
+        assert_eq!(code, 0, "expected exit code 0 for a clean run");
+    }
+
     // ── SPEC-CLI-001b AC-002/AC-003/AC-004: extract --out's actual call site,
     // not just write_atomic in isolation — these previously had zero coverage;
     // a regression reverting extract.rs's --out handling to a bare

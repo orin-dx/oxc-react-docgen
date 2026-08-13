@@ -377,8 +377,25 @@ impl CollectedType {
                         .iter()
                         .map(|f| {
                             let o = f.as_object().ok_or_else(|| "expected object for field".to_string())?;
+                            // A missing/wrong-type "name" would otherwise silently
+                            // default to "" — indistinguishable from a real (if
+                            // unusual) empty-string prop name, unlike every other
+                            // field in this struct, which either has a visible
+                            // Raw("null") escape hatch (`t`, via the recursive
+                            // from_json_value call) or a low-stakes default
+                            // (`req`/`desc`). Erroring here surfaces malformed
+                            // cache data as a deserialize failure — cache.rs's
+                            // `rmp_serde::from_slice(&bytes).ok()?` already treats
+                            // any such error as a full cache miss, falling back to
+                            // re-parsing from source, rather than serving a
+                            // corrupted-but-plausible-looking prop.
+                            let name = o
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| "object field missing a 'name' string".to_string())?
+                                .to_owned();
                             Ok(CollectedObjectField {
-                                name: o.get("name").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
+                                name,
                                 collected_type: Self::from_json_value(o.get("t").unwrap_or(&serde_json::Value::Null))?,
                                 required: o.get("req").and_then(|v| v.as_bool()).unwrap_or(false),
                                 description: o.get("desc").and_then(|v| v.as_str()).unwrap_or("").to_owned(),
@@ -869,6 +886,41 @@ mod tests {
     fn from_json_value_obj_array_with_a_non_object_element_errs() {
         let v = serde_json::json!({"obj": [1]});
         assert!(CollectedType::from_json_value(&v).is_err());
+    }
+
+    // ── A malformed cache entry (corrupted "obj" field missing its own
+    // "name") must surface as a deserialize error, not silently become a
+    // plausible-looking empty-string prop name — see the fix's doc comment
+    // at the "obj" match arm.
+
+    #[test]
+    fn from_json_value_obj_field_missing_name_errs() {
+        let v = serde_json::json!({"obj": [{"t": "str", "req": true, "desc": "d"}]});
+        assert!(
+            CollectedType::from_json_value(&v).is_err(),
+            "an object field with no 'name' key must be rejected, not silently default to an empty name"
+        );
+    }
+
+    #[test]
+    fn from_json_value_obj_field_with_a_non_string_name_errs() {
+        let v = serde_json::json!({"obj": [{"name": 42, "t": "str", "req": true, "desc": "d"}]});
+        assert!(CollectedType::from_json_value(&v).is_err(), "a non-string 'name' must be rejected");
+    }
+
+    #[test]
+    fn from_json_value_obj_field_with_a_valid_name_still_round_trips() {
+        // Regression guard: the fix above must not break the normal path.
+        let v = serde_json::json!({"obj": [{"name": "label", "t": "str", "req": true, "desc": "d"}]});
+        let restored = CollectedType::from_json_value(&v).expect("a well-formed object field must still parse");
+        match restored {
+            CollectedType::Object(fields) => {
+                assert_eq!(fields.len(), 1);
+                assert_eq!(fields[0].name, "label");
+                assert!(fields[0].required);
+            }
+            other => panic!("expected Object, got {other:?}"),
+        }
     }
 
     #[test]

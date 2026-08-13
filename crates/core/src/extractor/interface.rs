@@ -3,9 +3,9 @@
 use oxc_ast::ast::*;
 use rustc_hash::FxHashMap;
 
-use crate::types::{DefaultSource, EnumEntry, EnumValue, RawDefault};
+use crate::types::{ComponentMapping, DefaultSource, DiagnosticCode, EnumEntry, EnumValue, RawDefault};
 
-use super::SourceDataCollector;
+use super::{is_pascal_case, SourceDataCollector};
 
 /// Extract the binding name and the `as const`-peeled inner expression from
 /// `const NAME = <expr> as const` (or `<const><expr>`). Shared by
@@ -241,6 +241,89 @@ impl<'src> SourceDataCollector<'src> {
 
         if let Some(mapping) = self.data.component_mappings.iter_mut().find(|m| m.component_name == obj_name) {
             mapping.param_defaults.extend(defaults);
+        }
+    }
+
+    // ─── `Object.assign(Parent, { Sub: ... })` inline-only sub-components ────
+
+    /// Detect `Object.assign(Parent, { Sub: function(...) {...}, ... })` and
+    /// synthesize a component mapping for each inline function/arrow-function
+    /// value whose key is PascalCase — the one sub-case of this pattern that
+    /// isn't already covered: a sub-component that exists ONLY inside the
+    /// object-literal argument, with no independent top-level binding of its
+    /// own. A bare identifier reference (`{ Icon: IconImpl }`) is
+    /// deliberately left alone: `IconImpl` is independently declared and
+    /// already detected under its own name via Pattern 4/HOC, and
+    /// `rdt-coverage.md`'s "compound components" investigation found no
+    /// real-world case needing anything more than that — cosmetic
+    /// dot-qualified naming (`"Parent.Sub"`) was considered and explicitly
+    /// declined there as speculative.
+    pub(super) fn try_scan_object_assign_sub_components<'a>(&mut self, stmt: &ExpressionStatement<'a>) {
+        let Expression::CallExpression(call) = &stmt.expression else { return };
+        let Expression::StaticMemberExpression(callee) = &call.callee else { return };
+        if !matches!(&callee.object, Expression::Identifier(id) if id.name.as_str() == "Object") {
+            return;
+        }
+        if callee.property.name.as_str() != "assign" {
+            return;
+        }
+        let Some(Argument::Identifier(parent_id)) = call.arguments.first() else { return };
+        if !is_pascal_case(parent_id.name.as_str()) {
+            return;
+        }
+        let Some(second_arg) = call.arguments.get(1) else { return };
+        let Some(Expression::ObjectExpression(obj)) = second_arg.as_expression() else { return };
+
+        for prop in &obj.properties {
+            let ObjectPropertyKind::ObjectProperty(op) = prop else { continue };
+            let Some(key_name) = op.key.static_name().map(|n| n.to_string()) else { continue };
+            if !is_pascal_case(&key_name) {
+                continue;
+            }
+
+            // Only inline function/arrow expressions carry a sub-component that
+            // would otherwise be entirely unreachable; a bare identifier
+            // reference is already independently detected under its own name.
+            let (params, span_start, span_end) = match &op.value {
+                Expression::FunctionExpression(fe) => (&fe.params, fe.span.start, fe.span.end),
+                Expression::ArrowFunctionExpression(afe) => (&afe.params, afe.span.start, afe.span.end),
+                _ => continue,
+            };
+
+            let Some(first_param) = params.items.first() else { continue };
+            let Some(type_ann) = &first_param.type_annotation else {
+                self.record_skip(
+                    DiagnosticCode::SkippedCandidate,
+                    format!("'{key_name}' is an Object.assign-attached sub-component with an untyped first param"),
+                    first_param.span,
+                );
+                continue;
+            };
+            let Some((props_name, type_args)) = self.extract_type_name_from_type(&type_ann.type_annotation) else {
+                self.record_skip(
+                    DiagnosticCode::SkippedCandidate,
+                    format!(
+                        "'{key_name}' is an Object.assign-attached sub-component whose first param's type \
+                         annotation isn't a recognizable props type reference"
+                    ),
+                    type_ann.span,
+                );
+                continue;
+            };
+
+            let (description, tags) = self.find_jsdoc_with_tags(span_start);
+            let param_defaults = self.extract_param_defaults(params);
+            self.data.component_mappings.push(ComponentMapping {
+                component_name: key_name,
+                props_type_name: props_name,
+                props_type_args: type_args,
+                file_path: self.file_path.clone(),
+                description,
+                tags,
+                span_start,
+                span_end,
+                param_defaults,
+            });
         }
     }
 }

@@ -2,23 +2,56 @@
 
 use std::collections::BTreeMap;
 
+use camino::Utf8Path;
 use oxc_ast::ast::*;
 
-use crate::types::ComponentMapping;
+use crate::types::{ComponentMapping, DiagnosticCode};
 
 use super::{is_pascal_case, SourceDataCollector};
 
-/// Peel any wrapping `as X` casts down to the real expression underneath.
-/// Needed because component libraries commonly cast a forwardRef/HOC call to a
-/// hand-rolled wrapper type instead of relying on `@types/react`'s own generics
-/// (Fluent UI's own source notes this is "required due to lack of distributive
-/// union to support unions on @types/react").
+/// Peel any wrapping `as X` casts or `satisfies X` checks down to the real
+/// expression underneath. Needed because component libraries commonly cast a
+/// forwardRef/HOC call to a hand-rolled wrapper type instead of relying on
+/// `@types/react`'s own generics (Fluent UI's own source notes this is
+/// "required due to lack of distributive union to support unions on
+/// @types/react"); `satisfies` (TS 4.9+) is the modern equivalent of the same
+/// pattern and must be peeled the same way.
 fn unwrap_as_expression<'a, 'b>(expr: &'b Expression<'a>) -> &'b Expression<'a> {
     let mut expr = expr;
-    while let Expression::TSAsExpression(as_expr) = expr {
-        expr = &as_expr.expression;
+    loop {
+        expr = match expr {
+            Expression::TSAsExpression(as_expr) => &as_expr.expression,
+            Expression::TSSatisfiesExpression(sat_expr) => &sat_expr.expression,
+            _ => return expr,
+        };
     }
-    expr
+}
+
+/// Names `@types/react` (and its `React.`-qualified form) recognizes as a
+/// function-component type. Shared between `extract_props_from_type_annotation`
+/// (which additionally requires the props argument itself to resolve) and
+/// `type_annotation_is_fc_family` below (which only needs to know the
+/// annotation *looked like* one of these) so the two checks can't drift apart.
+const FC_FAMILY_TYPE_NAMES: &[&str] =
+    &["FC", "FunctionComponent", "ComponentType", "VFC", "VoidFunctionComponent", "ForwardRefComponent"];
+
+/// PascalCase a file's stem for naming an anonymous default-exported
+/// component that has no identifier of its own — e.g. `button-group.tsx` →
+/// `ButtonGroup`, `useButton.tsx` → `UseButton`. Splits on any non-alphanumeric
+/// separator (`-`, `_`, `.`, space) and capitalizes each segment's first
+/// character. Returns `None` when the path has no usable stem at all (e.g.
+/// nothing but separators).
+fn pascal_case_from_file_stem(file_path: &Utf8Path) -> Option<String> {
+    let stem = file_path.file_stem()?;
+    let mut pascal = String::new();
+    for segment in stem.split(|c: char| !c.is_alphanumeric()) {
+        let mut chars = segment.chars();
+        if let Some(first) = chars.next() {
+            pascal.extend(first.to_uppercase());
+            pascal.push_str(chars.as_str());
+        }
+    }
+    (!pascal.is_empty()).then_some(pascal)
 }
 
 impl<'src> SourceDataCollector<'src> {
@@ -72,14 +105,7 @@ impl<'src> SourceDataCollector<'src> {
             TSType::TSTypeReference(tr) => {
                 let type_name = self.extract_type_ref_name(tr);
                 let bare_name = type_name.strip_prefix("React.").unwrap_or(&type_name);
-                if !matches!(
-                    bare_name,
-                    "FC" | "FunctionComponent"
-                        | "ComponentType"
-                        | "VFC"
-                        | "VoidFunctionComponent"
-                        | "ForwardRefComponent"
-                ) {
+                if !FC_FAMILY_TYPE_NAMES.contains(&bare_name) {
                     return None;
                 }
                 let (props_name, type_args) = self.extract_props_arg(&tr.type_arguments)?;
@@ -277,6 +303,136 @@ impl<'src> SourceDataCollector<'src> {
             span_end: decl.span.end,
             param_defaults: rustc_hash::FxHashMap::default(),
         })
+    }
+
+    /// Try to detect: `export default function(props: Props) { ... }` — an
+    /// anonymous default-exported function component, common in Next.js page
+    /// files. There's no identifier to name it after, so the PascalCased
+    /// file stem is used instead. Mirrors Pattern 4's
+    /// (`visit_function`'s named-function handling) exact contract: a
+    /// missing type annotation is a flagged skip, but zero declared params
+    /// at all is silent — same as the named-function sibling.
+    pub(super) fn try_anonymous_default_export_component<'a>(&mut self, func: &Function<'a>) {
+        let Some(name) = pascal_case_from_file_stem(&self.file_path) else { return };
+
+        let Some(first_param) = func.params.items.first() else { return };
+        let Some(type_ann) = &first_param.type_annotation else {
+            self.record_skip(
+                DiagnosticCode::SkippedCandidate,
+                format!("'{name}' is an anonymous default-exported function component with an untyped first param"),
+                first_param.span,
+            );
+            return;
+        };
+        let Some((props_name, type_args)) = self.extract_type_name_from_type(&type_ann.type_annotation) else {
+            self.record_skip(
+                DiagnosticCode::SkippedCandidate,
+                format!(
+                    "'{name}' is an anonymous default-exported function component whose first param's type \
+                     annotation isn't a recognizable props type reference"
+                ),
+                type_ann.span,
+            );
+            return;
+        };
+
+        let (description, tags) = self.find_jsdoc_with_tags(func.span.start);
+        let param_defaults = self.extract_param_defaults(&func.params);
+        self.data.component_mappings.push(ComponentMapping {
+            component_name: name,
+            props_type_name: props_name,
+            props_type_args: type_args,
+            file_path: self.file_path.clone(),
+            description,
+            tags,
+            span_start: func.span.start,
+            span_end: func.span.end,
+            param_defaults,
+        });
+    }
+
+    /// True when `class`'s `extends` clause is `Component`/`PureComponent`
+    /// (bare or `React.`-qualified). Returns the matched bare name for use in
+    /// diagnostic messages.
+    pub(super) fn super_class_is_component_family<'a>(&self, class: &Class<'a>) -> Option<&'static str> {
+        let super_class = class.super_class.as_ref()?;
+        let super_name = self.expression_to_ident_name(super_class);
+        let bare = super_name.strip_prefix("React.").unwrap_or(&super_name);
+        match bare {
+            "Component" => Some("Component"),
+            "PureComponent" => Some("PureComponent"),
+            _ => None,
+        }
+    }
+
+    /// Try to detect: `class Button extends React.Component<Props> { ... }`
+    /// (or bare `Component`/`PureComponent`). Shared by both a named
+    /// `ClassDeclaration` (called directly from `visit_class`) and an
+    /// anonymous `ClassExpression` assigned to a variable (via
+    /// `try_class_expression_wrapped` below). Silent on every failure path,
+    /// mirroring `try_fc_annotation`/`try_forward_ref`/`try_hoc_wrapped`'s own
+    /// contract — callers decide whether and how to surface a diagnostic.
+    pub(super) fn try_class_component<'a>(&mut self, class: &Class<'a>, name: &str) -> Option<ComponentMapping> {
+        self.super_class_is_component_family(class)?;
+        let type_args = class.super_type_arguments.as_ref()?;
+        let props_type = type_args.params.first()?;
+        let (props_name, props_type_args) = self.extract_type_name_from_type(props_type)?;
+        let (description, tags) = self.find_jsdoc_with_tags(class.span.start);
+        Some(ComponentMapping {
+            component_name: name.to_owned(),
+            props_type_name: props_name,
+            props_type_args,
+            file_path: self.file_path.clone(),
+            description,
+            tags,
+            span_start: class.span.start,
+            span_end: class.span.end,
+            param_defaults: rustc_hash::FxHashMap::default(),
+        })
+    }
+
+    /// Try to detect: `const Button = class extends React.Component<Props> { ... }`
+    /// — an anonymous class expression assigned to a PascalCase binding. Only
+    /// fires when the class expression has no name of its own; a self-named
+    /// one (`class Button extends ...`) is instead picked up directly by
+    /// `visit_class` under its own identifier, avoiding a duplicate mapping
+    /// under both names.
+    pub(super) fn try_class_expression_wrapped<'a>(
+        &mut self,
+        decl: &VariableDeclarator<'a>,
+        name: &str,
+    ) -> Option<ComponentMapping> {
+        let init = decl.init.as_ref()?;
+        let Expression::ClassExpression(class) = init else { return None };
+        if class.id.is_some() {
+            return None;
+        }
+        self.try_class_component(class, name)
+    }
+
+    /// True when `decl`'s type annotation (after peeling parens) is a bare
+    /// reference to one of the FC-family type names, regardless of whether
+    /// its props type argument is itself extractable.
+    ///
+    /// Used by the no-initializer Pattern 5 diagnostic guard in `visit.rs`:
+    /// `try_fc_annotation` already runs unconditionally for every PascalCase
+    /// declarator (init or no init) and would have produced a mapping had the
+    /// props argument resolved, so reaching this check with no mapping means
+    /// the props argument specifically was the unrecognized part — an exotic
+    /// `TSType` shape `extract_type_name_from_type` doesn't match — not that
+    /// the declaration isn't FC-shaped at all.
+    pub(super) fn type_annotation_is_fc_family<'a>(&self, decl: &VariableDeclarator<'a>) -> bool {
+        fn peel_parens<'t, 'a>(ty: &'t TSType<'a>) -> &'t TSType<'a> {
+            match ty {
+                TSType::TSParenthesizedType(p) => peel_parens(&p.type_annotation),
+                other => other,
+            }
+        }
+        let Some(type_ann) = decl.type_annotation.as_ref() else { return false };
+        let TSType::TSTypeReference(tr) = peel_parens(&type_ann.type_annotation) else { return false };
+        let type_name = self.extract_type_ref_name(tr);
+        let bare_name = type_name.strip_prefix("React.").unwrap_or(&type_name);
+        FC_FAMILY_TYPE_NAMES.contains(&bare_name)
     }
 
     /// Rename an already-collected component mapping to its real public export name

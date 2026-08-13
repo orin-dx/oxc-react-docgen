@@ -577,11 +577,7 @@ impl<'src> SourceDataCollector<'src> {
     ) -> Option<CollectedObjectField> {
         match member {
             TSSignature::TSPropertySignature(sig) => {
-                let name = match &sig.key {
-                    PropertyKey::StaticIdentifier(id) => id.name.as_str().to_owned(),
-                    PropertyKey::StringLiteral(s) => s.value.as_str().to_owned(),
-                    _ => return None,
-                };
+                let name = sig.key.static_name()?.to_string();
                 let collected_type = sig
                     .type_annotation
                     .as_ref()
@@ -591,11 +587,7 @@ impl<'src> SourceDataCollector<'src> {
                 Some(CollectedObjectField { name, collected_type, required: !sig.optional, description })
             }
             TSSignature::TSMethodSignature(sig) => {
-                let name = match &sig.key {
-                    PropertyKey::StaticIdentifier(id) => id.name.as_str().to_owned(),
-                    PropertyKey::StringLiteral(s) => s.value.as_str().to_owned(),
-                    _ => return None,
-                };
+                let name = sig.key.static_name()?.to_string();
                 let params: Vec<CollectedType> = sig
                     .params
                     .items
@@ -2048,5 +2040,441 @@ interface ButtonProps {
             "every ParseError diagnostic must carry Error severity, got {:?}",
             parse_errors
         );
+    }
+
+    // ── `satisfies`-wrapped component expressions: `unwrap_as_expression`
+    // peels `as X` casts so a forwardRef/HOC call cast to a hand-rolled
+    // wrapper type is still recognized underneath; `satisfies` is the
+    // modern (TS 4.9+) equivalent for the same use case and must be peeled
+    // the same way.
+
+    #[test]
+    fn satisfies_wrapped_forward_ref_is_unwrapped_like_an_as_expression() {
+        let source = r#"
+            interface ButtonProps { label: string; }
+            interface WrapperType { (props: ButtonProps): JSX.Element; }
+            const Button = React.forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => null) satisfies WrapperType;
+        "#;
+        let path = Utf8Path::new("/test/satisfies_forward_ref.tsx");
+        let data = parse_file(path, source);
+
+        let btn = data.component_mappings.iter().find(|m| m.component_name == "Button");
+        assert!(
+            btn.is_some(),
+            "expected Button to be detected through the satisfies wrapper, got {:?}",
+            data.component_mappings
+        );
+        assert_eq!(btn.unwrap().props_type_name.as_str(), "ButtonProps");
+    }
+
+    #[test]
+    fn satisfies_wrapped_hoc_call_is_unwrapped_like_an_as_expression() {
+        let source = r#"
+            interface CardProps { title: string; }
+            interface WrapperType { (props: CardProps): JSX.Element; }
+            const Card = memo(function Card(props: CardProps) { return null; }) satisfies WrapperType;
+        "#;
+        let path = Utf8Path::new("/test/satisfies_hoc.tsx");
+        let data = parse_file(path, source);
+
+        let card = data.component_mappings.iter().find(|m| m.component_name == "Card");
+        assert!(
+            card.is_some(),
+            "expected Card to be detected through the satisfies wrapper, got {:?}",
+            data.component_mappings
+        );
+        assert_eq!(card.unwrap().props_type_name.as_str(), "CardProps");
+    }
+
+    // ── Numeric-key parity: `collect_property_signature` (top-level
+    // interfaces) already extracts numeric-literal keys via
+    // `PropertyKey::static_name()` (see `computed_symbol_and_numeric_interface_keys`
+    // above), but the sibling `ts_signature_to_object_field` (inline object
+    // type literals, e.g. a nested field's own `{ ... }` type) hand-rolled a
+    // StaticIdentifier/StringLiteral-only match that silently drops numeric
+    // keys instead — sibling-path parity gap.
+
+    #[test]
+    fn numeric_key_in_an_inline_object_type_literal_is_not_silently_dropped() {
+        let source = r#"
+            interface Props {
+                meta: { 0: string; normal: number };
+            }
+            export function Widget(props: Props) { return null; }
+        "#;
+        let path = Utf8Path::new("/test/inline_numeric_key.tsx");
+        let data = parse_file(path, source);
+
+        let iface = data.interfaces.values().find(|i| i.name == "Props").expect("expected Props interface");
+        let meta = iface.props.iter().find(|p| p.name == "meta").expect("expected 'meta' prop");
+        match &meta.collected_type {
+            CollectedType::Object(fields) => {
+                let names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
+                assert_eq!(names, vec!["0", "normal"], "expected the numeric key to survive, got {names:?}");
+            }
+            other => panic!("expected an inline Object type, got {other:?}"),
+        }
+    }
+
+    // ── A no-initializer FC-family declaration whose props type argument is
+    // an exotic shape `extract_type_name_from_type` doesn't match (unlike
+    // `unrelated_no_init_type_annotation_is_silently_omitted` above, which is
+    // a genuinely unrelated type and must stay silent) must surface a
+    // SkippedCandidate diagnostic instead of vanishing with no trace — the
+    // same contract the `init.is_some()` sibling path already has.
+
+    #[test]
+    fn no_init_fc_family_with_an_exotic_type_argument_is_flagged_not_silently_dropped() {
+        let source = r#"
+            type Keys = 'a' | 'b';
+            declare const Button: React.FC<{ [K in Keys]: string }>;
+        "#;
+        let path = Utf8Path::new("/test/no_init_exotic_fc.tsx");
+        let data = parse_file(path, source);
+
+        assert!(
+            !data.component_mappings.iter().any(|m| m.component_name == "Button"),
+            "an exotic type argument should not resolve, got {:?}",
+            data.component_mappings
+        );
+        let skips: Vec<&Diagnostic> =
+            data.diagnostics.iter().filter(|d| d.code == DiagnosticCode::SkippedCandidate).collect();
+        assert_eq!(skips.len(), 1, "expected exactly one SkippedCandidate diagnostic, got {:?}", data.diagnostics);
+        assert!(
+            skips[0].message.contains("Button") && skips[0].message.contains("FC-family"),
+            "expected the diagnostic to name Button and the FC-family shape, got {:?}",
+            skips[0].message
+        );
+    }
+
+    #[test]
+    fn no_init_forward_ref_exotic_decl_success_does_not_also_emit_a_skip_diagnostic() {
+        // Regression guard for the fix above: the new guard must not fire when
+        // Pattern 5's own detector (try_forward_ref_exotic_decl) already
+        // succeeded — only when every no-init detector failed.
+        let source = r#"
+            interface ButtonProps { label: string; }
+            declare const Button: React.ForwardRefExoticComponent<ButtonProps & React.RefAttributes<HTMLButtonElement>>;
+        "#;
+        let path = Utf8Path::new("/test/no_init_exotic_decl_success.tsx");
+        let data = parse_file(path, source);
+
+        assert!(data.component_mappings.iter().any(|m| m.component_name == "Button"));
+        assert!(data.diagnostics.is_empty(), "expected no diagnostics on the success path, got {:?}", data.diagnostics);
+    }
+
+    // ── Anonymous default-exported function components: `export default
+    // function(props: Props) {}` (no identifier — Next.js page-file idiom).
+    // `visit_function`'s Pattern 4 requires `func.id`, so these were
+    // previously silently skipped entirely. Named after the PascalCased file
+    // stem since there's no identifier to name the component after.
+
+    #[test]
+    fn anonymous_default_export_function_component_named_after_the_file_stem() {
+        let source = r#"
+            interface ButtonGroupProps { children: unknown; }
+            export default function(props: ButtonGroupProps) { return null; }
+        "#;
+        let path = Utf8Path::new("/test/button-group.tsx");
+        let data = parse_file(path, source);
+
+        let mapping = data.component_mappings.iter().find(|m| m.component_name == "ButtonGroup");
+        assert!(
+            mapping.is_some(),
+            "expected a component named 'ButtonGroup' from the file stem, got {:?}",
+            data.component_mappings.iter().map(|m| &m.component_name).collect::<Vec<_>>()
+        );
+        assert_eq!(mapping.unwrap().props_type_name.as_str(), "ButtonGroupProps");
+    }
+
+    #[test]
+    fn anonymous_default_export_with_untyped_first_param_is_flagged() {
+        let source = r#"
+            export default function(props) { return null; }
+        "#;
+        let path = Utf8Path::new("/test/card.tsx");
+        let data = parse_file(path, source);
+
+        assert!(!data.component_mappings.iter().any(|m| m.component_name == "Card"));
+        let skips: Vec<&Diagnostic> =
+            data.diagnostics.iter().filter(|d| d.code == DiagnosticCode::SkippedCandidate).collect();
+        assert_eq!(skips.len(), 1, "expected exactly one SkippedCandidate diagnostic, got {:?}", data.diagnostics);
+        assert!(
+            skips[0].message.contains("Card") && skips[0].message.contains("untyped first param"),
+            "expected the diagnostic to name Card and the untyped param, got {:?}",
+            skips[0].message
+        );
+    }
+
+    #[test]
+    fn anonymous_default_export_with_no_params_is_silently_omitted() {
+        // Mirrors the existing named-function sibling's contract: Pattern 4
+        // has no `else` branch at all when a function declares zero params,
+        // so a prop-less named component is silently skipped with no
+        // diagnostic today. The anonymous case must have the same contract.
+        let source = r#"
+            export default function() { return null; }
+        "#;
+        let path = Utf8Path::new("/test/empty-page.tsx");
+        let data = parse_file(path, source);
+
+        assert!(data.component_mappings.is_empty(), "got {:?}", data.component_mappings);
+        assert!(data.diagnostics.is_empty(), "expected no diagnostics, got {:?}", data.diagnostics);
+    }
+
+    #[test]
+    fn named_default_export_function_component_is_unaffected_by_the_anonymous_handler() {
+        let source = r#"
+            interface ButtonProps { label: string; }
+            export default function Button(props: ButtonProps) { return null; }
+        "#;
+        let path = Utf8Path::new("/test/named-default.tsx");
+        let data = parse_file(path, source);
+
+        let names: Vec<&str> = data.component_mappings.iter().map(|m| m.component_name.as_str()).collect();
+        assert_eq!(names, vec!["Button"], "expected only the named component, got {names:?}");
+    }
+
+    // ── Class components: `class Button extends React.Component<Props> {}`
+    // (or bare `Component`/`PureComponent`/`React.PureComponent`) were never
+    // detected as components at all — no handler existed for this shape.
+
+    #[test]
+    fn class_declaration_extending_react_component_is_detected() {
+        let source = r#"
+            interface ButtonProps { label: string; }
+            class Button extends React.Component<ButtonProps> {
+                render() { return null; }
+            }
+        "#;
+        let path = Utf8Path::new("/test/class_button.tsx");
+        let data = parse_file(path, source);
+
+        let btn = data.component_mappings.iter().find(|m| m.component_name == "Button");
+        assert!(btn.is_some(), "expected Button class component to be detected, got {:?}", data.component_mappings);
+        assert_eq!(btn.unwrap().props_type_name.as_str(), "ButtonProps");
+    }
+
+    #[test]
+    fn class_declaration_extending_bare_pure_component_is_detected() {
+        let source = r#"
+            import { PureComponent } from "react";
+            interface CardProps { title: string; }
+            class Card extends PureComponent<CardProps> {
+                render() { return null; }
+            }
+        "#;
+        let path = Utf8Path::new("/test/class_card.tsx");
+        let data = parse_file(path, source);
+
+        let card = data.component_mappings.iter().find(|m| m.component_name == "Card");
+        assert!(card.is_some(), "expected Card class component to be detected, got {:?}", data.component_mappings);
+        assert_eq!(card.unwrap().props_type_name.as_str(), "CardProps");
+    }
+
+    #[test]
+    fn class_declaration_extending_component_with_no_type_args_is_silently_omitted() {
+        // Mirrors visit_function's Pattern 4 zero-params contract: an untyped
+        // legacy class component has no props type to attach to at all —
+        // that's a genuinely-not-describable candidate, not a malformed one.
+        let source = r#"
+            class Button extends React.Component {
+                render() { return null; }
+            }
+        "#;
+        let path = Utf8Path::new("/test/class_untyped.tsx");
+        let data = parse_file(path, source);
+
+        assert!(!data.component_mappings.iter().any(|m| m.component_name == "Button"));
+        assert!(data.diagnostics.is_empty(), "expected no diagnostics, got {:?}", data.diagnostics);
+    }
+
+    #[test]
+    fn class_declaration_with_an_exotic_props_type_argument_is_flagged() {
+        let source = r#"
+            type Keys = 'a' | 'b';
+            class Button extends React.Component<{ [K in Keys]: string }> {
+                render() { return null; }
+            }
+        "#;
+        let path = Utf8Path::new("/test/class_exotic.tsx");
+        let data = parse_file(path, source);
+
+        assert!(!data.component_mappings.iter().any(|m| m.component_name == "Button"));
+        let skips: Vec<&Diagnostic> =
+            data.diagnostics.iter().filter(|d| d.code == DiagnosticCode::SkippedCandidate).collect();
+        assert_eq!(skips.len(), 1, "expected exactly one SkippedCandidate diagnostic, got {:?}", data.diagnostics);
+        assert!(
+            skips[0].message.contains("Button") && skips[0].message.contains("class component"),
+            "expected the diagnostic to name Button and 'class component', got {:?}",
+            skips[0].message
+        );
+    }
+
+    #[test]
+    fn class_declaration_extending_an_unrelated_base_is_silently_omitted() {
+        let source = r#"
+            interface ButtonProps { label: string; }
+            class Button extends SomeOtherBase<ButtonProps> {
+                render() { return null; }
+            }
+        "#;
+        let path = Utf8Path::new("/test/class_unrelated_base.tsx");
+        let data = parse_file(path, source);
+
+        assert!(!data.component_mappings.iter().any(|m| m.component_name == "Button"));
+        assert!(data.diagnostics.is_empty(), "expected no diagnostics, got {:?}", data.diagnostics);
+    }
+
+    // ── Class-expression components: `const Button = class extends
+    // React.Component<Props> {}` fell through every detector silently.
+    // Reuses the class-declaration detection logic above.
+
+    #[test]
+    fn anonymous_class_expression_assigned_to_a_pascal_case_binding_is_detected() {
+        let source = r#"
+            interface ButtonProps { label: string; }
+            const Button = class extends React.Component<ButtonProps> {
+                render() { return null; }
+            };
+        "#;
+        let path = Utf8Path::new("/test/class_expr.tsx");
+        let data = parse_file(path, source);
+
+        let btn = data.component_mappings.iter().find(|m| m.component_name == "Button");
+        assert!(
+            btn.is_some(),
+            "expected Button class-expression component to be detected, got {:?}",
+            data.component_mappings
+        );
+        assert_eq!(btn.unwrap().props_type_name.as_str(), "ButtonProps");
+    }
+
+    #[test]
+    fn self_named_class_expression_is_detected_under_its_own_name_not_the_outer_binding() {
+        let source = r#"
+            interface ButtonProps { label: string; }
+            const X = class Button extends React.Component<ButtonProps> {
+                render() { return null; }
+            };
+        "#;
+        let path = Utf8Path::new("/test/class_expr_self_named.tsx");
+        let data = parse_file(path, source);
+
+        let names: Vec<&str> = data.component_mappings.iter().map(|m| m.component_name.as_str()).collect();
+        assert!(names.contains(&"Button"), "expected 'Button' (the class's own name), got {names:?}");
+        assert!(!names.contains(&"X"), "the outer binding 'X' should not itself become a component, got {names:?}");
+    }
+
+    // ── Object.assign(Parent, { Sub: ... }) inline-only sub-components: a
+    // sub-component that exists ONLY inside the object-literal argument (never
+    // independently exported/bound) was silently dropped — a real
+    // non-negotiable #6 violation, unlike the already-independently-exported
+    // case investigated and deliberately left alone in rdt-coverage.md.
+
+    #[test]
+    fn object_assign_inline_function_sub_component_is_detected() {
+        let source = r#"
+            interface ButtonProps { label: string; }
+            interface IconProps { name: string; }
+            function Button(props: ButtonProps) { return null; }
+            Object.assign(Button, {
+                Icon: function ButtonIcon(props: IconProps) { return null; },
+            });
+        "#;
+        let path = Utf8Path::new("/test/object_assign_fn.tsx");
+        let data = parse_file(path, source);
+
+        let icon = data.component_mappings.iter().find(|m| m.component_name == "Icon");
+        assert!(
+            icon.is_some(),
+            "expected an inline-only sub-component named 'Icon', got {:?}",
+            data.component_mappings.iter().map(|m| &m.component_name).collect::<Vec<_>>()
+        );
+        assert_eq!(icon.unwrap().props_type_name.as_str(), "IconProps");
+        assert!(data.component_mappings.iter().any(|m| m.component_name == "Button"));
+    }
+
+    #[test]
+    fn object_assign_inline_arrow_sub_component_is_detected() {
+        let source = r#"
+            interface ButtonProps { label: string; }
+            interface LabelProps { text: string; }
+            function Button(props: ButtonProps) { return null; }
+            Object.assign(Button, {
+                Label: (props: LabelProps) => null,
+            });
+        "#;
+        let path = Utf8Path::new("/test/object_assign_arrow.tsx");
+        let data = parse_file(path, source);
+
+        let label = data.component_mappings.iter().find(|m| m.component_name == "Label");
+        assert!(
+            label.is_some(),
+            "expected an inline-only sub-component named 'Label', got {:?}",
+            data.component_mappings
+        );
+        assert_eq!(label.unwrap().props_type_name.as_str(), "LabelProps");
+    }
+
+    #[test]
+    fn object_assign_identifier_reference_sub_component_is_not_double_detected() {
+        // The already-independently-exported case (a bare identifier
+        // reference, not an inline function) — deliberately out of scope per
+        // rdt-coverage.md's "compound components" investigation. IconImpl is
+        // already detected under its own name via Pattern 4; Object.assign
+        // must not additionally synthesize a second mapping for it.
+        let source = r#"
+            interface ButtonProps { label: string; }
+            interface IconProps { name: string; }
+            function Button(props: ButtonProps) { return null; }
+            function IconImpl(props: IconProps) { return null; }
+            Object.assign(Button, { Icon: IconImpl });
+        "#;
+        let path = Utf8Path::new("/test/object_assign_identifier.tsx");
+        let data = parse_file(path, source);
+
+        let names: Vec<&str> = data.component_mappings.iter().map(|m| m.component_name.as_str()).collect();
+        assert!(names.contains(&"IconImpl"), "expected IconImpl under its own name, got {names:?}");
+        assert!(
+            !names.contains(&"Icon"),
+            "must not synthesize a second mapping for an identifier reference, got {names:?}"
+        );
+    }
+
+    #[test]
+    fn object_assign_sub_component_with_untyped_first_param_is_flagged() {
+        let source = r#"
+            interface ButtonProps { label: string; }
+            function Button(props: ButtonProps) { return null; }
+            Object.assign(Button, {
+                Icon: function ButtonIcon(props) { return null; },
+            });
+        "#;
+        let path = Utf8Path::new("/test/object_assign_untyped.tsx");
+        let data = parse_file(path, source);
+
+        assert!(!data.component_mappings.iter().any(|m| m.component_name == "Icon"));
+        let skips: Vec<&Diagnostic> =
+            data.diagnostics.iter().filter(|d| d.code == DiagnosticCode::SkippedCandidate).collect();
+        assert_eq!(skips.len(), 1, "expected exactly one SkippedCandidate diagnostic, got {:?}", data.diagnostics);
+        assert!(
+            skips[0].message.contains("Icon") && skips[0].message.contains("untyped first param"),
+            "expected the diagnostic to name Icon and the untyped param, got {:?}",
+            skips[0].message
+        );
+    }
+
+    #[test]
+    fn unrelated_object_assign_call_is_not_treated_as_a_component_pattern() {
+        let source = r#"
+            const config = {};
+            Object.assign(config, { extra: 1 });
+        "#;
+        let path = Utf8Path::new("/test/object_assign_unrelated.tsx");
+        let data = parse_file(path, source);
+
+        assert!(data.component_mappings.is_empty(), "got {:?}", data.component_mappings);
+        assert!(data.diagnostics.is_empty(), "expected no diagnostics, got {:?}", data.diagnostics);
     }
 }

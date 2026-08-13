@@ -239,6 +239,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                         .try_fc_annotation(declarator, &name)
                         .or_else(|| self.try_forward_ref(declarator, &name))
                         .or_else(|| self.try_hoc_wrapped(declarator, &name))
+                        .or_else(|| self.try_class_expression_wrapped(declarator, &name))
                     {
                         self.data.component_mappings.push(mapping);
                         continue;
@@ -269,6 +270,18 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                 if let Some(name) = self.extract_pascal_name(declarator) {
                     if let Some(mapping) = self.try_forward_ref_exotic_decl(declarator, &name) {
                         self.data.component_mappings.push(mapping);
+                    } else if self.type_annotation_is_fc_family(declarator) {
+                        // try_fc_annotation already ran unconditionally above and found
+                        // nothing — the annotation is FC-shaped but its props type
+                        // argument is an exotic TSType this extractor doesn't match.
+                        self.record_skip(
+                            DiagnosticCode::SkippedCandidate,
+                            format!(
+                                "'{name}' is a PascalCase declaration with an FC-family type annotation whose \
+                                 props type argument isn't a recognizable type"
+                            ),
+                            declarator.span,
+                        );
                     }
                 }
             }
@@ -324,9 +337,61 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
         walk::walk_function(self, func, flags);
     }
 
+    fn visit_class(&mut self, class: &Class<'a>) {
+        // `class Button extends React.Component<Props> { ... }` — shared entry
+        // point for both a ClassDeclaration and a self-named ClassExpression;
+        // an anonymous ClassExpression (no `class.id`) is instead picked up by
+        // `try_class_expression_wrapped` in `visit_variable_declaration`'s
+        // detector chain, from the outer binding's name.
+        if self.is_tsx {
+            if let Some(id) = &class.id {
+                let name = id.name.as_str();
+                if is_pascal_case(name) {
+                    if let Some(family) = self.super_class_is_component_family(class) {
+                        if let Some(mapping) = self.try_class_component(class, name) {
+                            self.data.component_mappings.push(mapping);
+                        } else if class.super_type_arguments.is_some() {
+                            // Extends Component/PureComponent WITH type args, but the
+                            // props argument itself is an exotic shape
+                            // extract_type_name_from_type doesn't match. No type args
+                            // at all is left silent — mirrors visit_function's Pattern 4
+                            // zero-params contract (a genuinely untyped candidate, not a
+                            // malformed one).
+                            self.record_skip(
+                                DiagnosticCode::SkippedCandidate,
+                                format!(
+                                    "'{name}' is a class component extending {family} whose props type \
+                                     argument isn't a recognizable props type reference"
+                                ),
+                                class.span,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        walk::walk_class(self, class);
+    }
+
+    fn visit_export_default_declaration(&mut self, node: &ExportDefaultDeclaration<'a>) {
+        // `export default function(props: Props) {}` — anonymous, no `func.id`,
+        // so Pattern 4 above (which requires an identifier) never fires for it.
+        if self.is_tsx {
+            if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &node.declaration {
+                if func.id.is_none() {
+                    self.try_anonymous_default_export_component(func);
+                }
+            }
+        }
+        walk::walk_export_default_declaration(self, node);
+    }
+
     fn visit_expression_statement(&mut self, node: &ExpressionStatement<'a>) {
         self.try_scan_display_name(node);
         self.try_scan_default_props(node);
+        if self.is_tsx {
+            self.try_scan_object_assign_sub_components(node);
+        }
         walk::walk_expression_statement(self, node);
     }
 }

@@ -1,6 +1,7 @@
 //! DTS cache — persists parsed `SourceData` across runs to avoid re-parsing unchanged .d.ts files.
 //!
-//! Cache validity is based on file size + mtime (nanosecond resolution).
+//! Cache validity is based on a content hash of the file's actual bytes, not
+//! mtime/size (see `CacheKey`'s doc comment for why that was replaced).
 //! Schema version bumps automatically invalidate the entire cache.
 //!
 //! The cache never panics — load failures degrade gracefully to an empty
@@ -10,7 +11,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use std::time::SystemTime;
+use std::hash::Hasher;
 
 use crate::types::{Diagnostic, DiagnosticCode, DiagnosticSeverity, SourceData};
 
@@ -22,36 +23,60 @@ use crate::types::{Diagnostic, DiagnosticCode, DiagnosticSeverity, SourceData};
 /// addition (e.g. another `FxHashMap<String, Vec<X>>`) wouldn't even fail
 /// loudly; it would decode as plausible-looking but wrong data. `const_arrays`
 /// (added mid-struct, not appended) is exactly this case — this bump covers it.
-const CACHE_SCHEMA_VERSION: u32 = 2;
+/// Also bumped for the mtime+size -> content-hash key change (P0-2 fix):
+/// `SerializableCacheKey`'s own shape changed, so pre-existing on-disk cache
+/// files must be discarded rather than misread under the new field layout.
+const CACHE_SCHEMA_VERSION: u32 = 3;
 
 // ─── Internal key type ────────────────────────────────────────────────────────
 
+/// Keyed by a hash of the file's actual byte content, not `(size, mtime)`.
+///
+/// The prior mtime+size scheme had a documented staleness gap (P0-2): on
+/// filesystems/environments with coarse mtime resolution (network FS,
+/// container overlay FS, or simply two edits landing in the same clock
+/// tick), an edit completing within the same tick and producing a
+/// same-length file was indistinguishable from the original — a stale
+/// `SourceData` was served with no signal anything was wrong. A content hash
+/// closes this gap exactly: two different byte sequences essentially never
+/// hash to the same 64-bit `FxHasher` value (birthday-bound collision risk
+/// is negligible at this cache's `MAX_CACHE_ENTRIES` scale), and identical
+/// bytes always hash identically regardless of mtime/clock granularity.
+/// This trades away the old stat-only check's near-zero I/O cost — computing
+/// the hash requires the file's content, not just its metadata — but every
+/// call site already reads the full file on a miss to parse it anyway; `get`
+/// and `insert` both take that same content as a parameter instead of
+/// re-deriving a (now-unreliable) proxy for it, so no call site pays for an
+/// extra read this fix didn't already need.
 #[derive(Hash, Eq, PartialEq, Clone)]
 struct CacheKey {
     path: Utf8PathBuf,
-    size: u64,
-    mtime_ns: u128,
+    content_hash: u64,
 }
 
-// ─── Serializable surrogate (rmp-serde doesn't support u128) ─────────────────
+fn hash_content(content: &str) -> u64 {
+    let mut hasher = rustc_hash::FxHasher::default();
+    hasher.write(content.as_bytes());
+    hasher.finish()
+}
+
+// ─── Serializable surrogate ───────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize)]
 struct SerializableCacheKey {
     path: String,
-    size: u64,
-    /// Truncated to u64 nanoseconds — sufficient for several decades.
-    mtime_ns: u64,
+    content_hash: u64,
 }
 
 impl From<&CacheKey> for SerializableCacheKey {
     fn from(k: &CacheKey) -> Self {
-        Self { path: k.path.to_string(), size: k.size, mtime_ns: k.mtime_ns as u64 }
+        Self { path: k.path.to_string(), content_hash: k.content_hash }
     }
 }
 
 impl From<SerializableCacheKey> for CacheKey {
     fn from(k: SerializableCacheKey) -> Self {
-        Self { path: Utf8PathBuf::from(k.path), size: k.size, mtime_ns: k.mtime_ns as u128 }
+        Self { path: Utf8PathBuf::from(k.path), content_hash: k.content_hash }
     }
 }
 
@@ -62,8 +87,8 @@ const MAX_CACHE_ENTRIES: usize = 5000;
 
 /// Thread-safe DTS parse-result cache.
 ///
-/// Keyed by `(path, size, mtime_ns)` — if the file hasn't changed, the cached
-/// `SourceData` is returned directly without re-parsing.
+/// Keyed by `(path, content_hash)` — if the file's content hasn't changed,
+/// the cached `SourceData` is returned directly without re-parsing.
 pub struct DtsCache {
     store: DashMap<CacheKey, SourceData>,
     cache_dir: Utf8PathBuf,
@@ -111,19 +136,20 @@ impl DtsCache {
         Some(map)
     }
 
-    /// Look up cached `SourceData` for `path`.
+    /// Look up cached `SourceData` for `path`, given its current content.
     ///
-    /// Returns `None` if the file is not cached or its mtime/size has changed.
-    pub fn get(&self, path: &Utf8Path) -> Option<SourceData> {
-        let key = self.key_for(path)?;
+    /// Returns `None` if the file is not cached or its content hash has
+    /// changed. `content` is a parameter rather than read internally because
+    /// every call site already reads the file to parse it on a miss — taking
+    /// content here means neither a hit nor a miss ever reads the file twice.
+    pub fn get(&self, path: &Utf8Path, content: &str) -> Option<SourceData> {
+        let key = self.key_for(path, content);
         self.store.get(&key).map(|v| v.clone())
     }
 
-    /// Insert `data` into the cache, keyed by `path`'s current mtime + size.
-    ///
-    /// Silently does nothing if the file metadata cannot be read.
-    pub fn insert(&self, path: &Utf8Path, data: SourceData) {
-        let Some(key) = self.key_for(path) else { return };
+    /// Insert `data` into the cache, keyed by `path` + a hash of `content`.
+    pub fn insert(&self, path: &Utf8Path, content: &str, data: SourceData) {
+        let key = self.key_for(path, content);
         // Evict extra entries if cache size exceeds MAX_CACHE_ENTRIES
         if self.store.len() >= MAX_CACHE_ENTRIES {
             let keys_to_evict: Vec<CacheKey> = self.store.iter().take(100).map(|r| r.key().clone()).collect();
@@ -191,27 +217,10 @@ impl DtsCache {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    /// Builds the cache key from the file's current size + mtime.
-    ///
-    /// Known limitation: staleness detection is mtime+size only, no content
-    /// hash. On filesystems with coarse mtime resolution (e.g. some
-    /// configurations report only 1-second granularity), an edit that lands
-    /// in the same tick as a prior write *and* happens to produce a
-    /// same-length file will be served a stale cache hit — the key looks
-    /// unchanged even though the content differs. A content hash would close
-    /// this gap but trades away the cheap stat-only check this cache relies
-    /// on for its speed; see `docs/root-cause-analysis.md` — this is a
-    /// deliberate, scoped-for-later tradeoff, not an oversight.
-    fn key_for(&self, path: &Utf8Path) -> Option<CacheKey> {
-        let meta = std::fs::metadata(path.as_std_path()).ok()?;
-        let mtime_ns = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-
-        Some(CacheKey { path: path.to_owned(), size: meta.len(), mtime_ns })
+    /// Builds the cache key from the file's path and a hash of its content —
+    /// see `CacheKey`'s doc comment for why this replaced mtime+size.
+    fn key_for(&self, path: &Utf8Path, content: &str) -> CacheKey {
+        CacheKey { path: path.to_owned(), content_hash: hash_content(content) }
     }
 }
 
@@ -248,7 +257,7 @@ mod tests {
         let cache = DtsCache::load_from_disk(Some(&cache_dir));
 
         let file_path = make_temp_file(&tmp, "foo.d.ts", b"export {}");
-        assert!(cache.get(Utf8Path::new(file_path.as_str())).is_none());
+        assert!(cache.get(Utf8Path::new(file_path.as_str()), "export {}").is_none());
     }
 
     #[test]
@@ -257,11 +266,12 @@ mod tests {
         let cache_dir = tmp.join("cache");
         let cache = DtsCache::load_from_disk(Some(&cache_dir));
 
-        let file_path = make_temp_file(&tmp, "bar.d.ts", b"export type Foo = string;");
+        let content = "export type Foo = string;";
+        let file_path = make_temp_file(&tmp, "bar.d.ts", content.as_bytes());
         let data = SourceData::default();
 
-        cache.insert(&file_path, data.clone());
-        let retrieved = cache.get(&file_path);
+        cache.insert(&file_path, content, data.clone());
+        let retrieved = cache.get(&file_path, content);
         assert!(retrieved.is_some());
     }
 
@@ -270,11 +280,12 @@ mod tests {
         let tmp = temp_dir("reload");
         let cache_dir = tmp.join("cache");
 
-        let file_path = make_temp_file(&tmp, "baz.d.ts", b"export type X = number;");
+        let content = "export type X = number;";
+        let file_path = make_temp_file(&tmp, "baz.d.ts", content.as_bytes());
 
         {
             let cache = DtsCache::load_from_disk(Some(&cache_dir));
-            cache.insert(&file_path, SourceData::default());
+            cache.insert(&file_path, content, SourceData::default());
             cache.save_to_disk();
         }
 
@@ -287,7 +298,7 @@ mod tests {
 
         // Reload and verify entry is present.
         let cache2 = DtsCache::load_from_disk(Some(&cache_dir));
-        assert!(cache2.get(&file_path).is_some());
+        assert!(cache2.get(&file_path, content).is_some());
     }
 
     #[test]
@@ -314,14 +325,46 @@ mod tests {
         let cache_dir = tmp.join("cache");
         let cache = DtsCache::load_from_disk(Some(&cache_dir));
 
-        let file_path = make_temp_file(&tmp, "changing.d.ts", b"v1");
-        cache.insert(&file_path, SourceData::default());
+        let file_path = make_temp_file(&tmp, "changing.d.ts", b"v1 with more content here");
+        cache.insert(&file_path, "v1 with more content here", SourceData::default());
 
-        // Overwrite file with different content — size changes.
-        std::fs::write(file_path.as_std_path(), b"v2 with more content here").unwrap();
+        // Overwrite with DIFFERENT content of the SAME LENGTH — under the old
+        // mtime+size key this was indistinguishable from the original on a
+        // filesystem with coarse mtime resolution (P0-2, the exact bug this
+        // cache was rewritten to fix). The content hash catches it regardless.
+        let new_content = "v2 with more content here";
+        assert_eq!(
+            new_content.len(),
+            "v1 with more content here".len(),
+            "test fixture must be same-length to prove this"
+        );
+        std::fs::write(file_path.as_std_path(), new_content).unwrap();
 
-        // The key has changed (different size), so cache miss.
-        assert!(cache.get(&file_path).is_none());
+        assert!(
+            cache.get(&file_path, new_content).is_none(),
+            "a same-length content change must miss the cache — this is P0-2's exact regression"
+        );
+    }
+
+    #[test]
+    fn test_identical_content_still_hits_even_with_a_different_mtime() {
+        // The other half of the same fix: content hashing must not become
+        // MORE conservative than the old scheme for the common case — an
+        // untouched-content rewrite (e.g. a build tool that touches mtime
+        // without changing bytes) should still hit.
+        let tmp = temp_dir("identical");
+        let cache_dir = tmp.join("cache");
+        let cache = DtsCache::load_from_disk(Some(&cache_dir));
+
+        let content = "export type Stable = string;";
+        let file_path = make_temp_file(&tmp, "stable.d.ts", content.as_bytes());
+        cache.insert(&file_path, content, SourceData::default());
+
+        // Rewrite with byte-identical content — mtime changes, bytes don't.
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::fs::write(file_path.as_std_path(), content).unwrap();
+
+        assert!(cache.get(&file_path, content).is_some(), "identical content must still hit regardless of mtime");
     }
 
     #[test]
@@ -388,7 +431,7 @@ mod tests {
         assert!(!cache_dir.join("manifest.json").exists());
 
         let file_path = make_temp_file(&tmp, "dirty.d.ts", b"export type D = boolean;");
-        cache.insert(&file_path, SourceData::default());
+        cache.insert(&file_path, "export type D = boolean;", SourceData::default());
         assert!(cache.dirty.load(std::sync::atomic::Ordering::Relaxed));
 
         cache.save_to_disk();
@@ -403,12 +446,12 @@ mod tests {
         let cache = DtsCache::load_from_disk(Some(&cache_dir));
 
         for i in 0..(MAX_CACHE_ENTRIES + 10) {
-            let key = CacheKey { path: Utf8PathBuf::from(format!("file_{i}.d.ts")), size: 10, mtime_ns: 100 };
+            let key = CacheKey { path: Utf8PathBuf::from(format!("file_{i}.d.ts")), content_hash: i as u64 };
             cache.store.insert(key, SourceData::default());
         }
 
         let file_path = make_temp_file(&tmp, "overflow.d.ts", b"export type O = string;");
-        cache.insert(&file_path, SourceData::default());
+        cache.insert(&file_path, "export type O = string;", SourceData::default());
         assert!(cache.store.len() <= MAX_CACHE_ENTRIES);
     }
 }

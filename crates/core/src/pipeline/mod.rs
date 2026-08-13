@@ -297,19 +297,23 @@ pub(crate) fn extract_with_global(
                 }
 
                 let is_dts = path.as_str().ends_with(".d.ts");
-                if is_dts {
-                    if let Some(cached) = cache_ref.get(path) {
-                        cache_hits.fetch_add(1, Ordering::Relaxed);
-                        return (path.clone(), cached, None);
-                    }
-                }
                 let (source, io_diag) = match std::fs::read_to_string(path) {
                     Ok(s) => (s, None),
                     Err(e) => (String::new(), Some(Diagnostic::io_read_error(path, &e))),
                 };
+                // The cache key is a content hash (see cache.rs's CacheKey doc
+                // comment for why, vs. mtime+size), so the file must already be
+                // read before a cache lookup can happen — this is still exactly
+                // one read either way (hit or miss), never two.
+                if is_dts {
+                    if let Some(cached) = cache_ref.get(path, &source) {
+                        cache_hits.fetch_add(1, Ordering::Relaxed);
+                        return (path.clone(), cached, io_diag);
+                    }
+                }
                 let data = crate::extractor::parse_file(path, &source);
                 if is_dts {
-                    cache_ref.insert(path, data.clone());
+                    cache_ref.insert(path, &source, data.clone());
                 }
                 (path.clone(), data, io_diag)
             })
@@ -520,12 +524,12 @@ fn merge_cached_dts_file(
     global: &mut GlobalSourceData,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let mut data = match cache.get(path) {
+    let source = std::fs::read_to_string(path).unwrap_or_default();
+    let mut data = match cache.get(path, &source) {
         Some(cached) => cached,
         None => {
-            let source = std::fs::read_to_string(path).unwrap_or_default();
             let data = crate::extractor::parse_file(path, &source);
-            cache.insert(path, data.clone());
+            cache.insert(path, &source, data.clone());
             data
         }
     };

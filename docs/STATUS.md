@@ -1,12 +1,12 @@
 # Status
 
-**Updated:** 2026-07-27
+**Updated:** 2026-08-13
 
 Core extraction, resolver, CLI, NAPI binding, and Vite plugin all work and are fully tested. Config file loading, cross-package `.d.ts` resolution, watch mode, plugin architecture, TOON token-optimized output format, JSON schema export, LSP server scaffold, and bounded atomic DTS caching are all fully implemented and verified.
 
 ## Numbers
 
-- 211 Rust tests (24 cli + 179 core unit + 8 snapshot + 4 napi binding), 18 vitest — all green
+- 377 Rust tests (59 cli + 293 core unit + 8 snapshot + 1 core compile-fail + 16 napi binding), 18 vitest — all green
 - `cargo clippy --workspace --all-targets -D warnings` clean with `#![forbid(unsafe_code)]` enforced
 - 20 real-world fixture libraries validated against `react-docgen-typescript` (shadcn, Radix, MUI, Chakra, Mantine, React Aria, antd, ariakit, ark-ui, base-ui, blueprint, day-picker, fluentui, headlessui, panda, react-final-form, react-resizable-panels, storybook-emotion, tanstack-table, zendesk-garden — see `rdt-coverage.md`)
 

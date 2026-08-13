@@ -196,4 +196,27 @@ mod tests {
         let mut reader = std::io::Cursor::new(Vec::new());
         assert_eq!(read_content_length(&mut reader), Err(()));
     }
+
+    // ── SPEC-CLI-001c AC-005b: a connection that closes after one or more
+    // complete header lines but BEFORE the blank-line terminator is reached
+    // is currently treated identically to a clean EOF (Err(())), not as a
+    // malformed header block (Ok(None)) — the blank line never arrives, so
+    // read_line's next call returns 0 bytes while still inside the header
+    // loop, same as AC-005's true-EOF case.
+
+    #[test]
+    fn test_connection_closed_mid_header_before_blank_line_is_treated_as_eof() {
+        let mut reader = std::io::Cursor::new(b"Content-Length: 10\r\n".to_vec());
+        assert_eq!(read_content_length(&mut reader), Err(()));
+    }
+
+    // ── SPEC-CLI-001c AC-005d: non-UTF8 bytes in the header block map to the
+    // same Err(()) EOF-like outcome, since read_line's io::Error is folded
+    // into unwrap_or(0) — indistinguishable from a clean disconnect.
+
+    #[test]
+    fn test_non_utf8_header_bytes_are_treated_as_eof() {
+        let mut reader = std::io::Cursor::new(b"Content-Length: 10\xFF\r\n\r\n".to_vec());
+        assert_eq!(read_content_length(&mut reader), Err(()));
+    }
 }

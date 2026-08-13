@@ -828,21 +828,27 @@ mod tests {
 
     #[test]
     fn from_json_value_recognized_strings_map_to_unit_variants() {
-        let cases: &[(&str, &str)] =
-            &[("str", "str"), ("num", "num"), ("bool", "bool"), ("bigint", "bigint"), ("symbol", "symbol")];
-        for (tag, expected_debug_prefix) in cases {
+        // All 11 tags AC-004D2 enumerates — a prior version of this test only
+        // covered 5, and the loop structure made it LOOK exhaustive while
+        // silently skipping "null"/"undef"/"any"/"never"/"unknown"/"void".
+        let cases: &[(&str, &str)] = &[
+            ("str", "String"),
+            ("num", "Number"),
+            ("bool", "Boolean"),
+            ("null", "Null"),
+            ("undef", "Undefined"),
+            ("any", "Any"),
+            ("never", "Never"),
+            ("unknown", "Unknown"),
+            ("void", "Void"),
+            ("bigint", "BigInt"),
+            ("symbol", "Symbol"),
+        ];
+        for (tag, expected) in cases {
             let v = serde_json::json!(tag);
             let result = CollectedType::from_json_value(&v).expect("should not error");
             let debug = format!("{result:?}");
-            let expected = match *expected_debug_prefix {
-                "str" => "String",
-                "num" => "Number",
-                "bool" => "Boolean",
-                "bigint" => "BigInt",
-                "symbol" => "Symbol",
-                other => unreachable!("{other}"),
-            };
-            assert_eq!(debug, expected, "tag was {tag}");
+            assert_eq!(debug, *expected, "tag was {tag}");
         }
     }
 

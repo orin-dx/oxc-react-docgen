@@ -673,16 +673,45 @@ mod tests {
         )
         .expect("rewrite Other.tsx");
         let other_update = session.update_file(&other_path);
+        let other = other_update.updated_components.iter().find(|c| c.display_name == "Other");
         assert!(
-            other_update.updated_components.iter().any(|c| c.display_name == "Other"),
+            other.is_some(),
             "session should still serve unrelated files normally after a contained panic, got {:?}",
             other_update.updated_components
+        );
+        // Content, not presence: "Other" existed before the rewrite too, so checking
+        // only its name survives is invariant under the exact rcu stale-global bug
+        // this session guards against (the panic-containment path resolving against
+        // pre-edit content would still produce an "Other" component — just the old
+        // one, missing "y"). Checking the new prop proves this call resolved against
+        // the just-rewritten content, not a stale snapshot from before the panic.
+        assert!(
+            other.unwrap().props.contains_key("y"),
+            "expected the rewritten 'y' prop to be present, proving this update resolved against the new \
+             content rather than a stale pre-rewrite snapshot, got props {:?}",
+            other.unwrap().props.keys().collect::<Vec<_>>()
         );
     }
 
     // ── SPEC-PIPELINE-001 AC-017: update_file() with a non-canonical path
     // (e.g. a symlinked directory segment reported unresolved) still finds
     // the canonical entry via reverse_deps.
+    //
+    // A prior version of this test only asserted that the CHANGED file's own
+    // component reappeared after the update — but `ReverseDeps::affected()`
+    // seeds its BFS with `changed` itself (mod.rs's `affected()` pushes
+    // `changed` onto the queue before ever consulting the reverse-dep map),
+    // so the changed file is *always* present in the affected set regardless
+    // of whether it was canonicalized correctly. That assertion passed even
+    // with `canonicalize_best_effort` deleted entirely, because `merge()`
+    // also stores the new data under whatever path `changed` happens to be —
+    // canonical or not — so the changed file's own mapping and the (trivial,
+    // self-seeded) affected set always matched. `canonicalize_best_effort`
+    // only matters for a file that TRANSITIVELY IMPORTS the changed file:
+    // `reverse_deps.inner` is keyed by the canonical paths `discover_files`
+    // reported at `initialize()` time, so looking it up with a non-canonical
+    // key finds nothing. This version adds a second file that imports from
+    // the symlinked one, so the assertion can actually fail without the fix.
 
     #[test]
     fn update_file_with_a_non_canonical_path_still_finds_the_canonical_entry() {
@@ -690,8 +719,26 @@ mod tests {
         let real_dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").join("real");
         std::fs::create_dir_all(real_dir.as_std_path()).expect("create real dir");
         let file_path = real_dir.join("Button.tsx");
-        std::fs::write(file_path.as_std_path(), "export function Button(props: { label: string }) { return null; }\n")
-            .expect("write Button.tsx");
+        std::fs::write(
+            file_path.as_std_path(),
+            "export interface ButtonProps { label: string; }\n\
+             export function Button(props: ButtonProps) { return null; }\n",
+        )
+        .expect("write Button.tsx");
+
+        // A second file whose component's props come from Button.tsx via a
+        // relative import — this is the file that must be re-resolved as a
+        // TRANSITIVE dependent of the (non-canonically-referenced) change,
+        // which only happens if `canonicalize_best_effort` translates the
+        // symlinked path back to the canonical one before the reverse-dep
+        // lookup.
+        let consumer_path = real_dir.join("Consumer.tsx");
+        std::fs::write(
+            consumer_path.as_std_path(),
+            "import { ButtonProps } from './Button';\n\
+             export function Consumer(props: ButtonProps) { return null; }\n",
+        )
+        .expect("write Consumer.tsx");
 
         let link_dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").join("link");
         #[cfg(unix)]
@@ -706,13 +753,204 @@ mod tests {
         let session = WatchSession::new(options);
         let _ = session.initialize();
 
-        // Reference the file via its non-canonical (symlinked) path.
+        // Reference the changed file via its non-canonical (symlinked) path.
         let non_canonical_path = link_dir.join("Button.tsx");
         let update = session.update_file(&non_canonical_path);
 
         assert!(
             update.updated_components.iter().any(|c| c.display_name == "Button"),
             "a non-canonical path should still resolve to the canonical entry, got {:?}",
+            update.updated_components
+        );
+        assert!(
+            update.updated_components.iter().any(|c| c.display_name == "Consumer"),
+            "Consumer.tsx transitively imports from the non-canonically-referenced file and must also be \
+             re-resolved — this fails without canonicalize_best_effort, since reverse_deps is keyed by the \
+             canonical path discover_files reported at initialize() time, got {:?}",
+            update.updated_components
+        );
+    }
+
+    // ── SPEC-PIPELINE-001 AC-020: snapshot()/update_file() on a session whose
+    // initialize() was never called must not panic.
+
+    #[test]
+    fn snapshot_and_update_file_on_an_uninitialized_session_do_not_panic() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").to_owned();
+        let file_path = dir.join("Widget.tsx");
+        // onClick's type requires resolving React's own ambient HTMLAttributes-family
+        // types — only wired up by initialize()'s ambient_global_files computation,
+        // never called here — proving the cross-file/ambient-resolution degrade half
+        // of AC-020, not just "doesn't panic".
+        std::fs::write(
+            file_path.as_std_path(),
+            "export function Widget(props: { onClick: React.MouseEventHandler<HTMLButtonElement> }) { return null; }\n",
+        )
+        .expect("write Widget.tsx");
+
+        let options = PipelineOptions { src_dirs: vec![dir], ..Default::default() };
+        let session = WatchSession::new(options);
+        // initialize() deliberately never called.
+
+        let snap = session.snapshot();
+        assert!(snap.components.is_empty(), "expected zero components, got {:?}", snap.components);
+        assert!(snap.enums.is_empty());
+        assert!(snap.diagnostics.is_empty());
+
+        let update = session.update_file(&file_path);
+        let widget = update.updated_components.iter().find(|c| c.display_name == "Widget");
+        assert!(
+            widget.is_some(),
+            "expected the just-parsed file's own component present, got {:?}",
+            update.updated_components
+        );
+    }
+
+    // ── SPEC-PIPELINE-001 AC-015: update_file() after an editor's atomic
+    // replace (write to temp, rename over the original) reflects the new
+    // content — the session must not misinterpret it as a deletion.
+
+    #[test]
+    fn update_file_after_an_atomic_replace_reflects_the_new_content_not_a_deletion() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").to_owned();
+        let file_path = dir.join("Widget.tsx");
+        std::fs::write(file_path.as_std_path(), "export function Widget(props: { a: string }) { return null; }\n")
+            .expect("write Widget.tsx");
+
+        let options = PipelineOptions { src_dirs: vec![dir.clone()], ..Default::default() };
+        let session = WatchSession::new(options);
+        let _ = session.initialize();
+
+        // Atomic replace: write the new content to a same-directory temp file,
+        // then rename it over the original path — the pattern editors (and
+        // write_atomic itself) use, distinct from an in-place truncate+write.
+        let tmp_file = dir.join(".Widget.tsx.tmp");
+        std::fs::write(tmp_file.as_std_path(), "export function Widget(props: { b: string }) { return null; }\n")
+            .expect("write temp file");
+        std::fs::rename(tmp_file.as_std_path(), file_path.as_std_path()).expect("atomic rename over original");
+
+        let update = session.update_file(&file_path);
+        let widget = update.updated_components.iter().find(|c| c.display_name == "Widget");
+        assert!(
+            widget.is_some(),
+            "expected Widget still present after the atomic replace, got {:?}",
+            update.updated_components
+        );
+        assert!(
+            widget.unwrap().props.contains_key("b"),
+            "expected the replaced content's 'b' prop, not the pre-replace 'a' — a rename-based edit must not \
+             be misread as a deletion, got props {:?}",
+            widget.unwrap().props.keys().collect::<Vec<_>>()
+        );
+
+        let snap = session.snapshot();
+        let widget_snap = snap.components.get("Widget").expect("expected Widget in snapshot after replace");
+        assert!(widget_snap.props.contains_key("b"), "snapshot should also reflect the replaced content");
+    }
+
+    // ── SPEC-PIPELINE-001 AC-019: deleting a file surfaces an IoError for
+    // that file, its own stale components linger until a new session (a
+    // documented gap), and a dependent's re-resolution no longer resolves
+    // against the deleted file's declaration.
+
+    #[test]
+    fn deleting_a_file_surfaces_io_error_and_a_dependent_stops_resolving_against_it() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").to_owned();
+        let f_path = dir.join("Base.tsx");
+        std::fs::write(
+            f_path.as_std_path(),
+            "export interface BaseProps { x: string; }\nexport function Base(props: BaseProps) { return null; }\n",
+        )
+        .expect("write Base.tsx");
+        let g_path = dir.join("Consumer.tsx");
+        std::fs::write(
+            g_path.as_std_path(),
+            "import { BaseProps } from './Base';\nexport function Consumer(props: BaseProps) { return null; }\n",
+        )
+        .expect("write Consumer.tsx");
+
+        let options = PipelineOptions { src_dirs: vec![dir], ..Default::default() };
+        let session = WatchSession::new(options);
+        let _ = session.initialize();
+
+        // Sanity: Consumer resolves BaseProps' 'x' field before the deletion.
+        let snap_before = session.snapshot();
+        let consumer_before = snap_before.components.get("Consumer").expect("expected Consumer before deletion");
+        assert!(
+            consumer_before.props.contains_key("x"),
+            "sanity check: Consumer should resolve 'x' via Base before deletion"
+        );
+
+        std::fs::remove_file(f_path.as_std_path()).expect("delete Base.tsx");
+        let f_update = session.update_file(&f_path);
+        assert!(
+            f_update.diagnostics.iter().any(|d| d.code == crate::types::DiagnosticCode::IoError),
+            "expected an IoError diagnostic for the deleted file, got {:?}",
+            f_update.diagnostics
+        );
+
+        // Base's own stale component lingers in the snapshot — documented gap,
+        // not pruned until a new WatchSession is constructed.
+        let snap_after_delete = session.snapshot();
+        assert!(
+            snap_after_delete.components.contains_key("Base"),
+            "Base's stale component should still be present (the documented staleness gap), got {:?}",
+            snap_after_delete.components.keys().collect::<Vec<_>>()
+        );
+
+        // Consumer's re-resolution must no longer resolve as if Base still existed:
+        // either a diagnostic naming the unresolvable reference, or an opaque/absent 'x' prop.
+        let g_update = session.update_file(&g_path);
+        let consumer_after = g_update
+            .updated_components
+            .iter()
+            .find(|c| c.display_name == "Consumer")
+            .expect("expected Consumer re-resolved");
+        let x_still_resolved =
+            matches!(consumer_after.props.get("x").map(|p| &p.prop_type), Some(crate::types::PropType::String));
+        assert!(
+            !x_still_resolved,
+            "Consumer's 'x' prop must not still resolve to String as if Base's declaration still existed, got {:?}",
+            consumer_after.props.get("x")
+        );
+    }
+
+    // ── SPEC-PIPELINE-001 AC-024: update_file() on a file whose on-disk
+    // content is not valid UTF-8 (distinct from AC-005's non-UTF8 *path*)
+    // surfaces an IoError and does not re-resolve that file's own component.
+
+    #[test]
+    fn update_file_with_non_utf8_content_surfaces_io_error_and_skips_that_files_own_component() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").to_owned();
+        let file_path = dir.join("Bad.tsx");
+        std::fs::write(file_path.as_std_path(), "export function Bad(props: { x: string }) { return null; }\n")
+            .expect("write Bad.tsx");
+
+        let options = PipelineOptions { src_dirs: vec![dir], ..Default::default() };
+        let session = WatchSession::new(options);
+        let _ = session.initialize();
+
+        // Overwrite with invalid UTF-8 bytes directly (std::fs::write accepts any
+        // AsRef<[u8]>, unlike a &str write, which couldn't express this at all).
+        std::fs::write(file_path.as_std_path(), [0x42, 0xFF, 0xFE, 0x00, 0xFF]).expect("write invalid utf8 bytes");
+
+        let update = session.update_file(&file_path);
+        assert!(
+            update
+                .diagnostics
+                .iter()
+                .any(|d| d.code == crate::types::DiagnosticCode::IoError && d.message.contains("Bad.tsx")),
+            "expected an IoError diagnostic naming Bad.tsx, got {:?}",
+            update.diagnostics
+        );
+        assert!(
+            !update.updated_components.iter().any(|c| c.file_path == file_path),
+            "the changed file's own component must not be re-resolved successfully after an unreadable-content \
+             error, got {:?}",
             update.updated_components
         );
     }

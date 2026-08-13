@@ -2262,7 +2262,17 @@ mod tests {
             "Expected MultiParamFunction opaque, got {:?}",
             result
         );
-        assert!(!state.diagnostics.is_empty(), "expected a diagnostic for a multi-param function type, got none");
+        // Exact contract: AC-3 specifies the message contains the byte-for-byte
+        // `(<p1>, <p2>, ...) => <returnType>` format!() output, not just "some
+        // diagnostic exists" — a non-empty check would pass on any unrelated
+        // diagnostic, including a spurious one from a different code path.
+        let diag = state.diagnostics.iter().find(|d| d.message.contains("(string, number) => void"));
+        assert!(
+            diag.is_some(),
+            "expected a diagnostic whose message contains '(string, number) => void', got {:?}",
+            state.diagnostics
+        );
+        assert_eq!(diag.unwrap().severity, DiagnosticSeverity::Info);
     }
 
     #[test]
@@ -2558,11 +2568,133 @@ mod tests {
 
         // Own prop still resolves fine — the cycle is only in the extends chain.
         assert!(entry.props.contains_key("id"));
+        // Exact contract, not a loose substring: AC-2 specifies Info severity,
+        // DiagnosticCode::MaxDepthExceeded, and the exact phrase "Circular type
+        // reference detected" — a case-insensitive .contains("circular") would
+        // also match unrelated diagnostics (e.g. help text on a future rewording).
+        let cycle_diag = diagnostics.iter().find(|d| d.message.contains("Circular type reference detected"));
         assert!(
-            diagnostics.iter().any(|d| d.message.to_lowercase().contains("circular")),
-            "Expected a diagnostic about the circular extends reference, got {:?}",
+            cycle_diag.is_some(),
+            "expected a diagnostic containing 'Circular type reference detected', got {:?}",
             diagnostics
         );
+        assert_eq!(cycle_diag.unwrap().severity, DiagnosticSeverity::Info);
+        assert_eq!(cycle_diag.unwrap().code, DiagnosticCode::MaxDepthExceeded);
+        // give_up's other observable effect: the cycle target ends up in composes.
+        assert!(
+            entry.composes.contains(&"LoopProps".to_string()),
+            "expected the give_up path's composes entry to survive into the resolved component, got {:?}",
+            entry.composes
+        );
+    }
+
+    // ── Ordinary diamond inheritance must not be misreported as a cycle.
+    // `interface C extends A, B` where both A and B extend `Base` is a normal,
+    // non-cyclic pattern — but chain.rs's extends loop used to share one
+    // `visited` set across sibling branches (A's branch, B's branch), so
+    // whichever branch resolved second found `Base` already marked visited by
+    // the first and reported a false "Circular type reference detected".
+    // Found via an adversarial drift-check probe, not from any spec criterion.
+
+    #[test]
+    fn diamond_inheritance_does_not_falsely_report_a_cycle() {
+        let file_path = Utf8PathBuf::from("/test/diamond.tsx");
+        let key = |name: &str| format!("{}:{}", file_path, name);
+
+        let mut global = GlobalSourceData::default();
+        global.interfaces.insert(
+            key("Base"),
+            CollectedInterface {
+                scoped_key: key("Base"),
+                name: "Base".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "shared".into(),
+                    collected_type: CollectedType::String,
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        for (name, prop) in [("A", "a"), ("B", "b")] {
+            global.interfaces.insert(
+                key(name),
+                CollectedInterface {
+                    scoped_key: key(name),
+                    name: name.into(),
+                    file_path: file_path.clone(),
+                    props: vec![RawProp {
+                        name: prop.into(),
+                        collected_type: CollectedType::String,
+                        required: false,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    }],
+                    extends: vec![ExtendsRef::SameFile { name: "Base".into(), type_args: vec![] }],
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                },
+            );
+        }
+        global.interfaces.insert(
+            key("C"),
+            CollectedInterface {
+                scoped_key: key("C"),
+                name: "C".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "c".into(),
+                    collected_type: CollectedType::String,
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![
+                    ExtendsRef::SameFile { name: "A".into(), type_args: vec![] },
+                    ExtendsRef::SameFile { name: "B".into(), type_args: vec![] },
+                ],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Diamond".into(),
+            props_type_name: "C".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, diagnostics) = resolve_component(&mapping, &ctx);
+
+        assert!(
+            !diagnostics.iter().any(|d| d.message.contains("Circular type reference detected")),
+            "diamond inheritance (both A and B independently extending Base) must not report a false cycle, got {:?}",
+            diagnostics
+        );
+        for name in ["shared", "a", "b", "c"] {
+            assert!(
+                entry.props.contains_key(name),
+                "expected prop '{name}' present, got {:?}",
+                entry.props.keys().collect::<Vec<_>>()
+            );
+        }
     }
 
     // ── SPEC-RESOLVER-001 AC-2b: a chain of DISTINCT (non-repeating) interfaces
@@ -2611,7 +2743,7 @@ mod tests {
             param_defaults: FxHashMap::default(),
         };
 
-        let (_entry, diagnostics) = resolve_component(&mapping, &ctx);
+        let (entry, diagnostics) = resolve_component(&mapping, &ctx);
 
         assert!(
             diagnostics.iter().any(|d| {
@@ -2622,6 +2754,15 @@ mod tests {
             "expected a Warning-severity MaxDepthExceeded diagnostic containing \
              'Max resolution depth exceeded', got {:?}",
             diagnostics
+        );
+        // give_up's other observable effect — never checked before: the level
+        // where the guard tripped ends up in composes, propagated up through
+        // every merge_parent call along the extends chain back to Level0.
+        assert!(
+            entry.composes.iter().any(|c| c.starts_with("Level")),
+            "expected the give_up path's composes entry (the level where MAX_DEPTH was exceeded) to survive \
+             into the resolved component, got {:?}",
+            entry.composes
         );
     }
 
@@ -2657,10 +2798,21 @@ mod tests {
 
         let (_entry, diagnostics) = resolve_component(&mapping, &ctx);
 
+        // Exact contract: AC-4 specifies two exact substrings, in order, plus
+        // Warning severity and DiagnosticCode::OpaqueType — a two-word fragment
+        // match like .contains("literal union") is satisfied by a much shorter,
+        // weaker message than what the criterion actually requires.
+        let diag = diagnostics.iter().find(|d| {
+            let first = d.message.find("is a literal union and can't be used as a component's props base");
+            let second = d.message.find("expected an interface, intersection, union, or inline object type");
+            matches!((first, second), (Some(f), Some(s)) if f < s)
+        });
         assert!(
-            diagnostics.iter().any(|d| d.message.contains("literal union")),
-            "Expected a diagnostic about the literal union props base, got {:?}",
+            diag.is_some(),
+            "expected a diagnostic containing both required substrings in order, got {:?}",
             diagnostics
         );
+        assert_eq!(diag.unwrap().severity, DiagnosticSeverity::Warning);
+        assert_eq!(diag.unwrap().code, DiagnosticCode::OpaqueType);
     }
 }

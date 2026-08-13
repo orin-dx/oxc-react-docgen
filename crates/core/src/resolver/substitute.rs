@@ -332,12 +332,17 @@ mod tests {
 
         let subst = build_substitution(&params, &args, Utf8Path::new("src/foo.ts"), &mut diagnostics);
 
-        assert_eq!(subst.len(), 1, "only T should have been substituted");
+        // "contains no entry for any unfilled parameter" is the criterion's exact
+        // claim — asserting only len()==1 would equally pass a map keyed {"U": ..}
+        // with T silently dropped instead. Assert both directly.
+        assert!(subst.contains_key("T"), "T should have been substituted");
+        assert!(!subst.contains_key("U"), "U must not appear in the substitution map — it was never supplied");
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Warning);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::GenericArgumentMismatch);
         assert!(
-            diagnostics[0].message.contains('U'),
-            "message should name the unfilled param: {}",
+            diagnostics[0].message.contains("'U'"),
+            "message should name the unfilled param by its quoted name: {}",
             diagnostics[0].message
         );
     }

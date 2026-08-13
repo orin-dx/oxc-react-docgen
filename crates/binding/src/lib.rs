@@ -65,11 +65,23 @@ const CLOSE_SESSION_PANIC_TEST_SENTINEL: u32 = u32::MAX - 3;
 #[cfg(test)]
 const EXTRACT_FILE_INCREMENTAL_PANIC_TEST_SENTINEL: &str = "__EXTRACT_FILE_INCREMENTAL_PANIC_TEST__";
 
+/// Pure bit-packing seam for `next_session_id()`, so SPEC-BINDING-001 AC4's
+/// uniqueness claim (no duplicate for N <= 65,536 calls in one process) is
+/// testable directly against synthetic counter values — `next_session_id()`
+/// itself reads a real, process-global `AtomicU64` shared across every test
+/// in this binary (including other tests' own `next_session_id()`/
+/// `create_session()` calls), so driving 65,536 real calls through it would
+/// risk wrapping mid-test on however much prior pollution happened to land
+/// before this test ran, under parallel test execution.
+fn compute_session_id(pid: u64, counter: u64) -> u32 {
+    // Avoids session-ID collisions across concurrent Vite dev server instances.
+    (((pid & 0xFFFF) << 16) | (counter & 0xFFFF)) as u32
+}
+
 fn next_session_id() -> u32 {
     let pid = std::process::id() as u64;
     let counter = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
-    // Avoids session-ID collisions across concurrent Vite dev server instances.
-    (((pid & 0xFFFF) << 16) | (counter & 0xFFFF)) as u32
+    compute_session_id(pid, counter)
 }
 
 // ─── JsExtractOptions ─────────────────────────────────────────────────────────
@@ -468,6 +480,21 @@ mod tests {
         }
     }
 
+    // ── SPEC-BINDING-001 AC4: the bit-packing formula itself guarantees no
+    // duplicate for N <= 65,536 calls within one process — tested against the
+    // full claimed bound via the pure seam, not the shared global counter
+    // (see compute_session_id's doc comment for why).
+
+    #[test]
+    fn compute_session_id_never_duplicates_across_the_full_65536_counter_range() {
+        let pid = 42u64;
+        let mut seen = std::collections::HashSet::with_capacity(65_536);
+        for counter in 0..65_536u64 {
+            let id = compute_session_id(pid, counter);
+            assert!(seen.insert(id), "compute_session_id produced a duplicate at counter={counter}: {id}");
+        }
+    }
+
     // ── SPEC-BINDING-001 AC9: an unrecognized session_id auto-vivifies
     // instead of failing; a second call with the same ID reuses the entry
     // rather than constructing another.
@@ -479,15 +506,20 @@ mod tests {
 
         let first = initialize_session(session_id, base_options()).await;
         assert!(first.is_ok(), "expected Ok for an unrecognized session_id, got {first:?}");
-        assert!(SESSIONS.get(&session_id).is_some(), "expected the session to now be registered");
+        let first_session = SESSIONS.get(&session_id).expect("expected the session to now be registered").clone();
 
-        // Reuse: a second call with the same ID must not error, and SESSIONS
-        // must still have exactly one entry for it (not silently replaced —
-        // DashMap::insert on the same key would look identical either way,
-        // so the real proof is simply that this call succeeds against the
-        // now-initialized session rather than re-erroring on construction).
+        // Reuse, not silent reconstruction: a bare "second call succeeds" proves
+        // nothing — a freshly-constructed replacement WatchSession under the same
+        // key would look identical from the outside. Arc::ptr_eq proves the SAME
+        // underlying WatchSession object survived the second call rather than
+        // being silently replaced.
         let second = initialize_session(session_id, base_options()).await;
         assert!(second.is_ok(), "expected Ok on reuse, got {second:?}");
+        let second_session = SESSIONS.get(&session_id).expect("expected the session still registered");
+        assert!(
+            Arc::ptr_eq(&first_session, &second_session),
+            "expected the second call to reuse the SAME WatchSession, not construct a new one under the same key"
+        );
     }
 
     #[tokio::test]
@@ -497,10 +529,15 @@ mod tests {
 
         let first = extract_file_incremental("Widget.tsx".to_string(), session_id, base_options()).await;
         assert!(first.is_ok(), "expected Ok for an unrecognized session_id, got {first:?}");
-        assert!(SESSIONS.get(&session_id).is_some(), "expected the session to now be registered");
+        let first_session = SESSIONS.get(&session_id).expect("expected the session to now be registered").clone();
 
         let second = extract_file_incremental("Widget.tsx".to_string(), session_id, base_options()).await;
         assert!(second.is_ok(), "expected Ok on reuse, got {second:?}");
+        let second_session = SESSIONS.get(&session_id).expect("expected the session still registered");
+        assert!(
+            Arc::ptr_eq(&first_session, &second_session),
+            "expected the second call to reuse the SAME WatchSession, not construct a new one under the same key"
+        );
     }
 
     // ── SPEC-BINDING-001 AC11: close_session on an unrecognized or

@@ -206,10 +206,20 @@ mod tests {
             PropType::Opaque(detail) if matches!(detail.reason(), OpaqueReason::TemplateLiteral { .. }) => {}
             other => panic!("expected capped expansion to degrade to Opaque(TemplateLiteral), got {other:?}"),
         }
+        // Exact contract: AC-6 specifies Info severity, DiagnosticCode::TemplateLiteralOpaque,
+        // AND a message containing "could not be statically expanded" — checking the
+        // code alone wouldn't catch a wrong severity or a reworded/missing message.
+        let diag = state.diagnostics.iter().find(|d| d.code == DiagnosticCode::TemplateLiteralOpaque);
         assert!(
-            state.diagnostics.iter().any(|d| d.code == DiagnosticCode::TemplateLiteralOpaque),
+            diag.is_some(),
             "expected a TemplateLiteralOpaque diagnostic to be recorded, got {:?}",
             state.diagnostics
+        );
+        assert_eq!(diag.unwrap().severity, DiagnosticSeverity::Info);
+        assert!(
+            diag.unwrap().message.contains("could not be statically expanded"),
+            "expected the message to contain 'could not be statically expanded', got {:?}",
+            diag.unwrap().message
         );
     }
 }

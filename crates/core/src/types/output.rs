@@ -912,10 +912,15 @@ mod opaque_detail_tests {
             code: DiagnosticCode::OpaqueType,
         };
 
-        let pt = OpaqueDetail::give_up(&mut state, "SomeType", OpaqueReason::DepthExceeded, diagnostic);
+        let pt = OpaqueDetail::give_up(&mut state, "SomeType", OpaqueReason::DepthExceeded, diagnostic.clone());
 
         assert_eq!(state.diagnostics.len(), 1);
-        assert_eq!(state.diagnostics[0].message, "gave up");
+        // Full equality, not just .message: the criterion's own stated test
+        // contract is "the pushed diagnostic equals what was passed in" —
+        // Diagnostic derives PartialEq+Clone, so this costs nothing extra and
+        // catches give_up silently mutating severity/code/file/line/column/help
+        // before pushing, which a single-field check couldn't.
+        assert_eq!(state.diagnostics[0], diagnostic);
         let PropType::Opaque(detail) = &pt else { panic!("expected PropType::Opaque, got {:?}", pt) };
         assert_eq!(detail.raw(), "SomeType");
         assert_eq!(detail.reason(), &OpaqueReason::DepthExceeded);
@@ -944,6 +949,67 @@ mod number_literal_roundtrip_tests {
             PropType::NumberLiteral(n) => assert!(n.is_nan(), "expected NaN to survive the round-trip, got {n}"),
             other => panic!("expected NumberLiteral, got {other:?}"),
         }
+    }
+
+    // ── SPEC-TYPES-001 AC-004: a NaN payload reachable NESTED inside Union,
+    // Intersection, Array, Tuple, Object (via ObjectField.prop_type), or
+    // Named's args must also survive the round-trip as NaN — AC-006 only
+    // proves the top-level case; this covers every position the criterion
+    // explicitly enumerates in one fixture rather than leaving them unasserted.
+
+    #[test]
+    fn nan_number_literal_survives_the_round_trip_when_nested() {
+        let original = PropType::Union(vec![
+            PropType::Intersection(vec![PropType::NumberLiteral(f64::NAN), PropType::String]),
+            PropType::Array(Box::new(PropType::NumberLiteral(f64::NAN))),
+            PropType::Tuple(vec![PropType::NumberLiteral(f64::NAN), PropType::String]),
+            PropType::Object(vec![ObjectField {
+                name: "n".into(),
+                prop_type: PropType::NumberLiteral(f64::NAN),
+                required: true,
+                description: String::new(),
+            }]),
+            PropType::Named { name: "Foo".into(), args: vec![PropType::NumberLiteral(f64::NAN)] },
+        ]);
+
+        let json = serde_json::to_value(&original).expect("serialize");
+        let restored: PropType = serde_json::from_value(json).expect("deserialize");
+
+        let PropType::Union(members) = &restored else { panic!("expected Union, got {restored:?}") };
+
+        let PropType::Intersection(items) = &members[0] else { panic!("expected Intersection, got {:?}", members[0]) };
+        assert!(
+            matches!(items[0], PropType::NumberLiteral(n) if n.is_nan()),
+            "NaN nested in Intersection did not survive, got {:?}",
+            items[0]
+        );
+
+        let PropType::Array(inner) = &members[1] else { panic!("expected Array, got {:?}", members[1]) };
+        assert!(
+            matches!(**inner, PropType::NumberLiteral(n) if n.is_nan()),
+            "NaN nested in Array did not survive, got {inner:?}"
+        );
+
+        let PropType::Tuple(items) = &members[2] else { panic!("expected Tuple, got {:?}", members[2]) };
+        assert!(
+            matches!(items[0], PropType::NumberLiteral(n) if n.is_nan()),
+            "NaN nested in Tuple did not survive, got {:?}",
+            items[0]
+        );
+
+        let PropType::Object(fields) = &members[3] else { panic!("expected Object, got {:?}", members[3]) };
+        assert!(
+            matches!(fields[0].prop_type, PropType::NumberLiteral(n) if n.is_nan()),
+            "NaN nested in Object's ObjectField.prop_type did not survive, got {:?}",
+            fields[0].prop_type
+        );
+
+        let PropType::Named { args, .. } = &members[4] else { panic!("expected Named, got {:?}", members[4]) };
+        assert!(
+            matches!(args[0], PropType::NumberLiteral(n) if n.is_nan()),
+            "NaN nested in Named's args did not survive, got {:?}",
+            args[0]
+        );
     }
 
     #[test]

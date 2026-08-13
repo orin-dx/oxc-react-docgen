@@ -190,6 +190,141 @@ mod tests {
         assert_eq!(code, 2);
     }
 
+    // ── SPEC-CLI-001b AC-002/AC-003/AC-004: extract --out's actual call site,
+    // not just write_atomic in isolation — these previously had zero coverage;
+    // a regression reverting extract.rs's --out handling to a bare
+    // std::fs::write would have passed every existing test in the suite.
+
+    #[test]
+    fn extract_out_writes_valid_output_with_no_leftover_temp_file() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = tempfile::TempDir::new_in(manifest_dir).unwrap();
+        std::fs::write(
+            tmp.path().join("Widget.tsx"),
+            "export function Widget(props: { label: string }) { return null; }\n",
+        )
+        .unwrap();
+
+        let out_path = tmp.path().join("out.json");
+        let mut args = args_for(tmp.path().to_str().unwrap(), false);
+        args.out = Some(out_path.to_str().unwrap().to_owned());
+
+        let code = cmd_extract(args, true, None).expect("cmd_extract should succeed");
+        assert_eq!(code, 0);
+
+        let contents = std::fs::read_to_string(&out_path).expect("expected the --out file to exist");
+        let parsed: serde_json::Value = serde_json::from_str(&contents).expect("--out file should be valid JSON");
+        assert!(
+            parsed["components"]["Widget"].is_object(),
+            "expected the Widget component in the --out file, got {contents}"
+        );
+
+        let tmp_file = tmp.path().join(".out.json.tmp");
+        assert!(!tmp_file.exists(), "no leftover temp file should remain after a successful --out write");
+    }
+
+    // The test above alone can't distinguish write_atomic from a naive
+    // std::fs::write — both produce identical end states for a plain path
+    // (verified: reverting extract.rs's --out arm to bare std::fs::write
+    // still passed it). A symlinked --out target can distinguish them: a
+    // rename-based write REPLACES the symlink itself with a real file at
+    // PATH, while a naive write FOLLOWS the symlink and corrupts whatever
+    // it points to instead — the one observable difference a black-box
+    // test can exploit without instrumenting the write mid-flight.
+
+    #[cfg(unix)]
+    #[test]
+    fn extract_out_through_a_symlink_replaces_the_link_not_its_target() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = tempfile::TempDir::new_in(manifest_dir).unwrap();
+        std::fs::write(
+            tmp.path().join("Widget.tsx"),
+            "export function Widget(props: { label: string }) { return null; }\n",
+        )
+        .unwrap();
+
+        let real_target = tmp.path().join("real-target.json");
+        std::fs::write(&real_target, "SENTINEL: pre-existing unrelated content").unwrap();
+        let out_path = tmp.path().join("out.json");
+        std::os::unix::fs::symlink(&real_target, &out_path).unwrap();
+
+        let mut args = args_for(tmp.path().to_str().unwrap(), false);
+        args.out = Some(out_path.to_str().unwrap().to_owned());
+        let code = cmd_extract(args, true, None).expect("cmd_extract should succeed");
+        assert_eq!(code, 0);
+
+        assert!(
+            !std::fs::symlink_metadata(&out_path).unwrap().file_type().is_symlink(),
+            "expected the rename-based write to replace the symlink at PATH with a real file, but it's still a symlink"
+        );
+        let target_contents = std::fs::read_to_string(&real_target).unwrap();
+        assert_eq!(
+            target_contents, "SENTINEL: pre-existing unrelated content",
+            "the symlink's original target must be untouched — a write following the symlink instead of \
+             replacing it would have corrupted this unrelated file"
+        );
+        let out_contents = std::fs::read_to_string(&out_path).unwrap();
+        assert!(out_contents.contains("\"Widget\""), "expected the new content at PATH itself, got {out_contents}");
+    }
+
+    #[test]
+    fn extract_out_with_a_missing_parent_directory_surfaces_the_write_error() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = tempfile::TempDir::new_in(manifest_dir).unwrap();
+        std::fs::write(
+            tmp.path().join("Widget.tsx"),
+            "export function Widget(props: { label: string }) { return null; }\n",
+        )
+        .unwrap();
+
+        let out_path = tmp.path().join("no-such-dir").join("out.json");
+        let mut args = args_for(tmp.path().to_str().unwrap(), false);
+        args.out = Some(out_path.to_str().unwrap().to_owned());
+
+        let err = cmd_extract(args, true, None).expect_err("expected an Err when --out's parent dir is missing");
+        // miette's pretty-printer word-wraps long paths mid-string (inserting a
+        // "\n  │ " continuation), so a long temp-dir path can't be matched as one
+        // contiguous substring — check the load-bearing pieces separately instead.
+        let message = format!("{err:?}");
+        assert!(message.contains("Writing to"), "expected the error to say 'Writing to', got {message}");
+        assert!(message.contains("no-such-dir"), "expected the error to name the target path, got {message}");
+        assert!(
+            message.contains("No such file or directory"),
+            "expected the underlying io::Error's message, got {message}"
+        );
+        assert!(!out_path.exists(), "PATH must not be created when the write fails");
+    }
+
+    #[test]
+    fn extract_out_failing_at_the_rename_step_cleans_up_the_temp_file() {
+        let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = tempfile::TempDir::new_in(manifest_dir).unwrap();
+        std::fs::write(
+            tmp.path().join("Widget.tsx"),
+            "export function Widget(props: { label: string }) { return null; }\n",
+        )
+        .unwrap();
+
+        // PATH already exists as a directory — write-to-temp succeeds (the
+        // parent exists), but renaming a regular file onto an existing
+        // directory fails, exercising the rename-step failure path
+        // specifically (distinct from AC-003's missing-parent-dir case).
+        let out_path = tmp.path().join("out.json");
+        std::fs::create_dir_all(&out_path).unwrap();
+
+        let mut args = args_for(tmp.path().to_str().unwrap(), false);
+        args.out = Some(out_path.to_str().unwrap().to_owned());
+
+        let err = cmd_extract(args, true, None).expect_err("expected an Err when the rename step fails");
+        let message = format!("{err:?}");
+        assert!(message.contains("Writing to"), "expected the error to say 'Writing to', got {message}");
+        assert!(message.contains("out.json"), "expected the error to name the target path, got {message}");
+        assert!(message.contains("Is a directory"), "expected the underlying io::Error's message, got {message}");
+
+        let tmp_file = tmp.path().join(".out.json.tmp");
+        assert!(!tmp_file.exists(), "the temp file must be cleaned up after a failed rename, found {tmp_file:?}");
+    }
+
     // ── rdt_output_includes_composes ──────────────────────────────────────────
     //
     // `ComponentEntry.composes` (react-docgen's own "props come from this type,

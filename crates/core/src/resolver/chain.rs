@@ -214,9 +214,26 @@ pub(super) fn resolve_interface_chain(
     }
 
     // ── Resolve extends first — parent props come before own props ────────────
+    // Each extends entry gets its own cloned `visited` set (same pattern as
+    // alias.rs's Omit<T, keyof U> branch and its union-discriminant probe):
+    // ordinary diamond inheritance (`interface C extends A, B` where both A and
+    // B extend `Base`) would otherwise share one `visited` set across sibling
+    // branches, so resolving A's branch marks `Base` visited and B's branch
+    // then finds it "already visited" and reports a false "Circular type
+    // reference detected" — Base is reached twice because it's genuinely
+    // shared by two independent parents, not because of an actual cycle.
+    // Cloning per-branch preserves real cycle detection *within* each branch
+    // (a parent's own extends chain looping back on itself) while letting
+    // sibling branches independently reach the same shared ancestor.
     for extends_ref in &iface.extends {
+        let mut branch_state = ResolveState {
+            visited: state.visited.clone(),
+            diagnostics: vec![],
+            in_scope_type_params: state.in_scope_type_params.clone(),
+        };
         let (parent_chain, maybe_layer) =
-            resolve_extends_ref(extends_ref, &iface.file_path, mapping, ctx, state, depth + 1);
+            resolve_extends_ref(extends_ref, &iface.file_path, mapping, ctx, &mut branch_state, depth + 1);
+        state.diagnostics.extend(branch_state.diagnostics);
         if let Some(layer) = maybe_layer {
             chain.inheritance.push(layer);
         }

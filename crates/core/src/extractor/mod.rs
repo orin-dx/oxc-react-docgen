@@ -1143,6 +1143,19 @@ interface ButtonProps {
             "Button (renamed via displayName) not found; mappings: {:?}",
             data.component_mappings.iter().map(|m| &m.component_name).collect::<Vec<_>>()
         );
+        // Content, not presence: AC-027 requires the renamed entry to still carry
+        // the pre-rename props type name — checking only that "Button" exists
+        // wouldn't catch a rename that dropped or corrupted props_type_name.
+        assert_eq!(
+            btn.unwrap().props_type_name.as_str(),
+            "BtnProps",
+            "renamed entry must still carry the pre-rename props type name"
+        );
+        assert!(
+            !data.component_mappings.iter().any(|m| m.component_name == "Btn"),
+            "the pre-rename key 'Btn' must no longer be present, got {:?}",
+            data.component_mappings.iter().map(|m| &m.component_name).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -1241,6 +1254,18 @@ interface ButtonProps {
             "the internal implementation name should not also appear as a separate public component, got {:?}",
             names
         );
+        // Content, not presence: AC-021 requires BOTH aliases to carry the base
+        // component's props type name — checking only that the names survive
+        // wouldn't catch an aliasing bug that produced the right keys with the
+        // wrong (or missing) props_type_name.
+        let legacy = data.component_mappings.iter().find(|m| m.component_name == "LegacyButton").unwrap();
+        let button = data.component_mappings.iter().find(|m| m.component_name == "Button").unwrap();
+        assert_eq!(
+            legacy.props_type_name.as_str(),
+            "ButtonProps",
+            "LegacyButton must carry the base's props type name"
+        );
+        assert_eq!(button.props_type_name.as_str(), "ButtonProps", "Button must carry the base's props type name");
     }
 
     #[test]
@@ -1590,6 +1615,57 @@ interface ButtonProps {
         assert_eq!(diag.file.as_deref(), Some("/test/skip.tsx"));
     }
 
+    // ── SPEC-EXTRACTOR-001 AC-009: a type alias built from Omit/Pick/Partial/
+    // Required/Readonly with malformed type arguments is skipped, end to end
+    // through real parsing — the test above only proves record_skip() itself
+    // works in isolation, never actually parsing a malformed generic alias.
+
+    #[test]
+    fn malformed_omit_type_alias_is_skipped_end_to_end() {
+        let source = r#"
+            interface FullProps { a: string; b: number; }
+            type BadOmit = Omit<FullProps>;
+        "#;
+        let path = Utf8Path::new("/test/malformed_omit.ts");
+        let data = parse_file(path, source);
+
+        let scoped_key = format!("{}:BadOmit", path);
+        assert!(
+            !data.type_aliases.contains_key(&scoped_key),
+            "malformed Omit<> (fewer than 2 type args) must not be collected, got keys {:?}",
+            data.type_aliases.keys().collect::<Vec<_>>()
+        );
+        assert!(!data.component_mappings.iter().any(|m| m.component_name == "BadOmit"));
+        let diag = data
+            .diagnostics
+            .iter()
+            .find(|d| d.code == DiagnosticCode::SkippedCandidate && d.message.contains("BadOmit"));
+        assert!(diag.is_some(), "expected a SkippedCandidate diagnostic naming BadOmit, got {:?}", data.diagnostics);
+        assert_eq!(diag.unwrap().severity, DiagnosticSeverity::Info);
+    }
+
+    #[test]
+    fn omit_with_unresolvable_base_type_is_skipped_end_to_end() {
+        let source = r#"
+            type BadOmit2 = Omit<"not a type reference", 'a' | 'b'>;
+        "#;
+        let path = Utf8Path::new("/test/malformed_omit2.ts");
+        let data = parse_file(path, source);
+
+        let scoped_key = format!("{}:BadOmit2", path);
+        assert!(
+            !data.type_aliases.contains_key(&scoped_key),
+            "Omit<> whose base isn't a resolvable type reference must not be collected, got keys {:?}",
+            data.type_aliases.keys().collect::<Vec<_>>()
+        );
+        let diag = data
+            .diagnostics
+            .iter()
+            .find(|d| d.code == DiagnosticCode::SkippedCandidate && d.message.contains("BadOmit2"));
+        assert!(diag.is_some(), "expected a SkippedCandidate diagnostic naming BadOmit2, got {:?}", data.diagnostics);
+        assert_eq!(diag.unwrap().severity, DiagnosticSeverity::Info);
+    }
+
     #[test]
     fn pascal_case_binding_with_no_matching_detector_records_skipped_candidate() {
         // `const Button = something()` — PascalCase binding, .tsx file, but the
@@ -1801,8 +1877,8 @@ interface ButtonProps {
             data.component_mappings
         );
         assert!(
-            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::SkippedCandidate),
-            "expected a SkippedCandidate diagnostic, got {:?}",
+            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::SkippedCandidate && d.message.contains("Wrap")),
+            "expected a SkippedCandidate diagnostic identifying 'Wrap' by name, got {:?}",
             data.diagnostics
         );
     }
@@ -1894,10 +1970,13 @@ interface ButtonProps {
         let path = Utf8Path::new("/test/recoverable.tsx");
         let data = parse_file(path, source);
 
+        let parse_errors: Vec<&Diagnostic> =
+            data.diagnostics.iter().filter(|d| d.code == DiagnosticCode::ParseError).collect();
+        assert!(!parse_errors.is_empty(), "expected a ParseError diagnostic, got {:?}", data.diagnostics);
         assert!(
-            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::ParseError),
-            "expected a ParseError diagnostic, got {:?}",
-            data.diagnostics
+            parse_errors.iter().all(|d| d.severity == DiagnosticSeverity::Error),
+            "every ParseError diagnostic must carry Error severity, got {:?}",
+            parse_errors
         );
         assert!(
             data.component_mappings.iter().any(|m| m.component_name == "Ok"),
@@ -1909,6 +1988,10 @@ interface ButtonProps {
     // ── SPEC-EXTRACTOR-001 AC-024/AC-025: inline union/intersection/object
     // props types synthesize an anonymous alias; the FC-family no-init
     // pattern's own first type argument routes through the same mechanism.
+    // Covers all 5 shapes AC-024 names: (a) function-declaration param,
+    // (b) FC-family first type arg, (c) inline arrow inside a call wrap,
+    // (d) nested-forwardRef's 2nd type arg inside a call wrap, (e)
+    // forwardRef's own 2nd type arg.
 
     #[test]
     fn inline_union_intersection_object_props_synthesize_anonymous_aliases() {
@@ -1916,11 +1999,14 @@ interface ButtonProps {
             function Card(props: { title: string }) { return null; }
             function Boxy(props: A | B) { return null; }
             declare const Widget: React.FC<{ label: string }>;
+            const Wrapped = withStyles((props: { title: string }) => null);
+            const Nested = memo(forwardRef<HTMLDivElement, { title: string }>((props, ref) => null));
+            const Direct = React.forwardRef<HTMLDivElement, { title: string }>((props, ref) => null);
         "#;
         let path = Utf8Path::new("/test/anon.tsx");
         let data = parse_file(path, source);
 
-        for name in ["Card", "Boxy", "Widget"] {
+        for name in ["Card", "Boxy", "Widget", "Wrapped", "Nested", "Direct"] {
             let mapping = data.component_mappings.iter().find(|m| m.component_name == name);
             assert!(mapping.is_some(), "expected a mapping for {name}, got {:?}", data.component_mappings);
             let props_type_name = &mapping.unwrap().props_type_name;
@@ -1954,10 +2040,13 @@ interface ButtonProps {
         assert!(data.enums.is_empty());
         assert!(data.imports.is_empty());
         assert!(data.exports.is_empty());
+        let parse_errors: Vec<&Diagnostic> =
+            data.diagnostics.iter().filter(|d| d.code == DiagnosticCode::ParseError).collect();
+        assert!(!parse_errors.is_empty(), "expected a ParseError diagnostic, got {:?}", data.diagnostics);
         assert!(
-            data.diagnostics.iter().any(|d| d.code == DiagnosticCode::ParseError),
-            "expected a ParseError diagnostic, got {:?}",
-            data.diagnostics
+            parse_errors.iter().all(|d| d.severity == DiagnosticSeverity::Error),
+            "every ParseError diagnostic must carry Error severity, got {:?}",
+            parse_errors
         );
     }
 }

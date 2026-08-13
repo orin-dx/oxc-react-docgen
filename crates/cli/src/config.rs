@@ -357,6 +357,41 @@ export default {
         assert_eq!(opts.src_dirs, vec![camino::Utf8PathBuf::from("src/components")]);
     }
 
+    // ── SPEC-CLI-001d AC-001: a --config path containing quote/backslash
+    // characters or the literal `');process.exit(1);('` sequence must not be
+    // interpretable as JavaScript syntax — the path is passed via the
+    // __DOCGEN_CONFIG_PATH env var, never concatenated into the script string
+    // handed to node. This is the one security-relevant criterion in the
+    // whole spec-drift review that had zero test coverage; the mechanism was
+    // previously verified by source inspection only.
+
+    #[test]
+    fn config_path_containing_quotes_and_an_exit_payload_is_not_interpreted_as_javascript() {
+        let validate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/validate");
+        let tmp = tempfile::TempDir::new_in(&validate_dir).unwrap();
+        // Combines a single quote, a double quote, and the exact "break out of
+        // a string literal and call process.exit(1)" payload AC-001 names —
+        // if try_load_config ever regressed to string-concatenating this path
+        // into the script source, node would execute process.exit(1) before
+        // ever importing the real config, and this test would see the wrong
+        // exit path (an Err, or Ok with the wrong content) instead of a clean
+        // Ok(Some(..)) reflecting the config file's real content.
+        let dangerous_name = "evil'\"');process.exit(1);('dir";
+        let dangerous_dir = tmp.path().join(dangerous_name);
+        std::fs::create_dir_all(&dangerous_dir).expect("create directory with a dangerous name");
+        let config_path = dangerous_dir.join("docgen.config.ts");
+        std::fs::write(&config_path, "export default { srcDirs: [\"src/components\"] };\n").unwrap();
+
+        let opts = try_load_config(&config_path)
+            .expect("a dangerous path must not be interpreted as JavaScript — no injected exit, no eval failure")
+            .expect("expected Some(PipelineOptions), proving the real config content was evaluated");
+        assert_eq!(
+            opts.src_dirs,
+            vec![camino::Utf8PathBuf::from("src/components")],
+            "expected the actual config content, not something an injected statement could have produced"
+        );
+    }
+
     #[test]
     fn try_load_config_surfaces_the_real_syntax_error_not_just_an_exit_status() {
         // Adversarial review finding: node/tsx's stderr was sent to

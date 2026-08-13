@@ -1942,10 +1942,37 @@ Button.defaultProps = { size: 'md' };
 
         let button_keys: Vec<&String> = output.components.keys().filter(|k| k.starts_with("Button")).collect();
         assert_eq!(button_keys.len(), 2, "expected exactly 2 entries (bare + disambiguated), got {button_keys:?}");
+
+        // Content, not presence: the bare-name entry (1st occurrence) must carry
+        // props {a}, and the disambiguated entry must carry props from the LATER
+        // (3rd) occurrence — {c} — not the 2nd's {b}, per AC-010's "iterated
+        // later during Resolve/Collect" rule. Checking only the key count/names
+        // would pass even if the 2nd occurrence's props won instead of the 3rd's.
+        let bare = output.components.get("Button").expect("expected a bare-name entry");
+        assert_eq!(
+            bare.props.keys().collect::<Vec<_>>(),
+            vec!["a"],
+            "bare-name entry should keep the 1st occurrence's props, got {:?}",
+            bare.props.keys().collect::<Vec<_>>()
+        );
+
+        let disambiguated_key =
+            button_keys.iter().find(|k| k.as_str() != "Button").expect("expected a disambiguated key");
+        let disambiguated = output.components.get(*disambiguated_key).unwrap();
+        assert_eq!(
+            disambiguated.props.keys().collect::<Vec<_>>(),
+            vec!["c"],
+            "disambiguated entry should carry the 3rd occurrence's props (the later of the two colliding \
+             declarations), not the 2nd's, got {:?}",
+            disambiguated.props.keys().collect::<Vec<_>>()
+        );
+
+        let collision_diag = output.diagnostics.iter().find(|d| d.code == DiagnosticCode::ComponentKeyCollision);
+        assert!(collision_diag.is_some(), "expected a ComponentKeyCollision diagnostic, got {:?}", output.diagnostics);
         assert!(
-            output.diagnostics.iter().any(|d| d.code == DiagnosticCode::ComponentKeyCollision),
-            "expected a ComponentKeyCollision diagnostic, got {:?}",
-            output.diagnostics
+            collision_diag.unwrap().message.contains("Button.tsx"),
+            "collision diagnostic must name the colliding file path, got {:?}",
+            collision_diag.unwrap().message
         );
     }
 

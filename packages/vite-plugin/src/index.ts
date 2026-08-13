@@ -16,6 +16,10 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
   let sessionId: number
   let root: string
   let command: 'build' | 'serve' | undefined
+  // `vite build --watch`: Rollup's buildEnd hook fires once per rebuild, not
+  // once when the watch process actually shuts down — closeWatcher is the
+  // correct once-per-process hook for that. See buildEnd's own comment below.
+  let isWatchBuild = false
   let resolvedSrcDirs: string[] = []
   let currentOutput: ExtractionOutput = {
     components: {},
@@ -35,6 +39,13 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
   }
   // Holds the in-flight init promise so hotUpdate can await it before first incremental call.
   let initPromise: Promise<void> | null = null
+  // Per-file monotonic sequence guard: two overlapping hotUpdate calls for
+  // the same file (e.g. a rapid double-save) can have their async NAPI
+  // calls resolve out of order. Without this, an older call finishing last
+  // would silently overwrite currentOutput/the HMR payload with stale data
+  // even though a newer call already applied fresher results.
+  let hotUpdateSeq = 0
+  const latestSeqByFile = new Map<string, number>()
 
   function napiOptions() {
     return {
@@ -69,8 +80,26 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
 
     configResolved(config: ResolvedConfig) {
       ;({ root, command } = config)
-      resolvedSrcDirs = options.srcDirs.map((d) => (d.startsWith('/') ? d : `${root}/${d}`))
-      sessionId = napi.createSession(napiOptions())
+      isWatchBuild = command === 'build' && Boolean(config.build?.watch)
+      // A trailing slash (relative `'src/'`, or an already-absolute dir
+      // ending in `/`) must be stripped here — isSrcFile's `startsWith(`${dir}/`)`
+      // check would otherwise require a double slash no real file path has,
+      // silently excluding every file under that srcDir from HMR.
+      resolvedSrcDirs = options.srcDirs.map((d) => {
+        const abs = d.startsWith('/') ? d : `${root}/${d}`
+        return abs.endsWith('/') ? abs.slice(0, -1) : abs
+      })
+      // sessionId is foundational to every other hook, so a failure here
+      // can't be swallowed the way coldExtract's failures are — log for
+      // discoverability, then rethrow so Vite's own config-resolution fails
+      // loudly instead of every later hook failing confusingly against an
+      // undefined sessionId.
+      try {
+        sessionId = napi.createSession(napiOptions())
+      } catch (error) {
+        console.error('[oxc-react-docgen] createSession failed:', error)
+        throw error
+      }
     },
 
     // Build-only counterpart to coldExtract() in configureServer; see that comment.
@@ -125,7 +154,18 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
 
       if (initPromise) await initPromise
 
+      const seq = ++hotUpdateSeq
+      latestSeqByFile.set(opts.file, seq)
+
       const json = await napi.extractFileIncremental(opts.file, sessionId, napiOptions())
+
+      // A newer hotUpdate call for this same file has already taken over —
+      // its own result (in flight or already applied) is authoritative, so
+      // applying this now-stale one would be a straight regression. Drop it
+      // silently rather than race it, for both the success and the
+      // malformed-JSON fallback path below.
+      if (latestSeqByFile.get(opts.file) !== seq) return
+
       let update: IncrementalUpdate
       try {
         update = JSON.parse(json) as IncrementalUpdate
@@ -159,6 +199,18 @@ export function oxcReactDocgen(options: OxcDocgenOptions): Plugin {
     },
 
     buildEnd() {
+      // In `vite build --watch`, this fires once per rebuild (Rollup's own
+      // build-hook contract), not once at process shutdown. Closing here
+      // would make every rebuild after the first auto-vivify a brand new
+      // session on its next buildStart (the Rust binding creates one for
+      // any unrecognized/closed session id) — silently losing all
+      // incremental-cache benefit on every rebuild. closeWatcher below is
+      // the correct once-per-process hook for the watch-build case.
+      if (isWatchBuild) return
+      napi.closeSession(sessionId)
+    },
+
+    closeWatcher() {
       napi.closeSession(sessionId)
     },
   }

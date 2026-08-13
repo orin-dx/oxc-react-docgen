@@ -6,7 +6,7 @@ Core extraction, resolver, CLI, NAPI binding, and Vite plugin all work and are f
 
 ## Numbers
 
-- 545 Rust tests (77 cli + 443 core unit + 8 snapshot + 1 core compile-fail + 16 napi binding), 18 vitest — all green
+- 545 Rust tests (77 cli + 443 core unit + 8 snapshot + 1 core compile-fail + 16 napi binding), 36 vitest (33 unit, mocked NAPI + 3 integration against the real native binding — `packages/vite-plugin/tests/integration/`, gated on a locally-built `.node` binary, auto-skips otherwise) — all green
 - `cargo clippy --workspace --all-targets -D warnings` clean with `#![forbid(unsafe_code)]` enforced
 - 20 real-world fixture libraries validated against `react-docgen-typescript` (shadcn, Radix, MUI, Chakra, Mantine, React Aria, antd, ariakit, ark-ui, base-ui, blueprint, day-picker, fluentui, headlessui, panda, react-final-form, react-resizable-panels, storybook-emotion, tanstack-table, zendesk-garden — see `rdt-coverage.md`)
 

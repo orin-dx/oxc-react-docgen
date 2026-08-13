@@ -13,7 +13,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "peerDependencies": {
     "vite": "^7.0.0 || ^8.0.0"

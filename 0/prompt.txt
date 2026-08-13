@@ -1,0 +1,13 @@
+All done?
+
+---
+
+Have we implemented everything we originally set out to do???
+
+---
+
+Let’s tackle what is done and look for quality fixes and improvements. Perf gains, bugs and gaps
+
+---
+
+What else should we tackle?

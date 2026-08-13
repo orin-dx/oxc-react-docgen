@@ -82,13 +82,14 @@ pub(super) fn build_substitution<'a>(
 /// instead — it skips this string round-trip entirely.
 pub(super) fn apply_generic_args(
     alias: CollectedTypeAlias,
-    scoped_key: &str,
+    declared_at: (&Utf8Path, &str),
     type_args: &[String],
     consuming_file: &Utf8Path,
     ctx: &ResolutionContext,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> CollectedTypeAlias {
-    let Some(params) = ctx.global.type_alias_params.get(scoped_key) else {
+    let (declared_file, declared_name) = declared_at;
+    let Some(params) = ctx.named_types.lookup_type_alias_params(declared_file, declared_name) else {
         return alias;
     };
     if params.is_empty() || type_args.is_empty() {
@@ -119,13 +120,12 @@ pub(super) fn generic_alias_with_structured_args(
     }
     let (canonical_file, canonical_name) = resolve_to_canonical(name, consuming_file, ctx, diagnostics)
         .unwrap_or_else(|| (consuming_file.to_owned(), name.to_owned()));
-    let scoped_key = format!("{}:{}", canonical_file, canonical_name);
 
-    let params = ctx.global.type_alias_params.get(&scoped_key)?;
+    let params = ctx.named_types.lookup_type_alias_params(&canonical_file, &canonical_name)?;
     if params.is_empty() {
         return None;
     }
-    let alias = ctx.global.type_aliases.get(&scoped_key)?;
+    let alias = ctx.named_types.lookup_type_alias_exact(&canonical_file, &canonical_name)?;
     // `args` were written wherever `name` (the reference being resolved) appears,
     // i.e. `consuming_file` — not `canonical_file` (where the generic alias itself
     // is declared).

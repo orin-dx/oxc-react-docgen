@@ -124,7 +124,7 @@ pub(super) fn resolve_props_chain(
         Some(super::precedence::SourceOrKnownMatch::TypeAlias { matched_key, alias }) => {
             let alias = super::substitute::apply_generic_args(
                 alias,
-                &matched_key,
+                (&canonical_file, &matched_key),
                 type_args,
                 consuming_file,
                 ctx,
@@ -209,7 +209,7 @@ pub(super) fn resolve_interface_chain(
     // A generic interface's own declared type parameters (`interface Foo<TData>`)
     // are expected, unexpandable placeholders wherever referenced in its body —
     // not unresolvable types. Register them so `resolve_named` doesn't warn.
-    if let Some(params) = ctx.global.interface_type_params.get(&iface.scoped_key) {
+    if let Some(params) = ctx.named_types.lookup_interface_type_params_for(iface) {
         state.in_scope_type_params.extend(params.iter().cloned());
     }
 

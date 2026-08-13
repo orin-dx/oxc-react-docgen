@@ -68,6 +68,16 @@ pub struct WatchSession {
     ambient_global_files: std::sync::OnceLock<Vec<Utf8PathBuf>>,
     /// Guards initialize() so concurrent callers don't race to build caches.
     initialized: Mutex<bool>,
+    /// Fast `(file, name)` interface/type-alias index — mirrors `self.global`'s
+    /// incremental per-file patching (`remove_file` + merge on each edit)
+    /// rather than being rebuilt from the whole project on every
+    /// `update_file` call. `Mutex<Arc<_>>` (not `ArcSwap`, unlike `global`):
+    /// `update_file` mutates it in place via `Arc::make_mut` when nothing else
+    /// still holds a reference (the common case — no full clone needed), and
+    /// falls back to cloning only if a concurrent call is still using the
+    /// previous snapshot. `ArcSwap::rcu` can't express "mutate in place when
+    /// possible" — its closure always produces a brand new value.
+    named_types: Mutex<Arc<crate::named_type_index::NamedTypeIndex>>,
 }
 
 impl WatchSession {
@@ -82,6 +92,7 @@ impl WatchSession {
             diagnostics: DashMap::new(),
             ambient_global_files: std::sync::OnceLock::new(),
             initialized: Mutex::new(false),
+            named_types: Mutex::new(Arc::new(crate::named_type_index::NamedTypeIndex::default())),
         }
     }
 
@@ -110,6 +121,8 @@ impl WatchSession {
 
         let _ = self.ambient_global_files.set(crate::resolver::compute_ambient_global_files(&self.options));
         self.reverse_deps.store(Arc::new(ReverseDeps::build(&global)));
+        *self.named_types.lock().unwrap_or_else(|p| p.into_inner()) =
+            Arc::new(crate::named_type_index::NamedTypeIndex::build(&global));
         self.global.store(global);
 
         // Seed component cache from the cold output.
@@ -188,6 +201,21 @@ impl WatchSession {
         });
         let new_global = self.global.load_full();
 
+        // Keep the named-type index in sync with `global`'s own unconditional
+        // per-file patch above (same remove-then-merge shape, same lack of a
+        // read-failure gate — this index derives from `global`, not from
+        // `component_cache`'s separately-decided AC-019 persistence policy).
+        // `Arc::make_mut` mutates in place when this call holds the only
+        // reference (the common case), and clones only if a concurrent
+        // `update_file` call is still using the previous snapshot.
+        let named_types = {
+            let mut guard = self.named_types.lock().unwrap_or_else(|p| p.into_inner());
+            let index = Arc::make_mut(&mut guard);
+            index.remove_file(changed);
+            index.merge_file(&new_data);
+            guard.clone()
+        };
+
         // 3. Find all transitively affected files via the reverse dep graph.
         let affected = self.reverse_deps.load().affected(changed);
 
@@ -204,6 +232,7 @@ impl WatchSession {
             new_global.clone(),
             &self.options,
             ambient_global_files,
+            named_types,
         );
         // Wrapped in `contain_panic` for the same reason as the one-shot `extract()`
         // path (pipeline/mod.rs) — one component's resolution panicking must degrade

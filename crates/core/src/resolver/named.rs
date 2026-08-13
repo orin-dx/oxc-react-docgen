@@ -90,7 +90,7 @@ fn resolve_named_uncycled(
             // A generic alias's own declared type parameters (`type Foo<TData> = ...`)
             // are expected, unexpandable placeholders wherever referenced in its body —
             // not unresolvable types. Register them so step 7 below doesn't warn.
-            if let Some(params) = ctx.global.type_alias_params.get(&matched_key) {
+            if let Some(params) = ctx.named_types.lookup_type_alias_params(&canonical_file, &matched_key) {
                 state.in_scope_type_params.extend(params.iter().cloned());
             }
             return resolve_type_alias_type(&alias, ctx, state, depth);

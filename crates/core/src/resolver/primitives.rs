@@ -139,7 +139,7 @@ pub(super) fn resolve_indexed_access(
                 .unwrap_or_else(|| (consuming_file.to_owned(), obj_type_name.to_string()));
         if let Some(iface) = lookup_interface_including_ambient(ctx, canonical_file.as_str(), &canonical_name) {
             if let Some(field) = iface.props.iter().find(|f| f.name == key_str) {
-                let field_type = match ctx.global.interface_type_params.get(&iface.scoped_key) {
+                let field_type = match ctx.named_types.lookup_interface_type_params_for(iface) {
                     Some(params) if !params.is_empty() && !obj_args.is_empty() => {
                         let subst = build_substitution(params, obj_args, consuming_file, &mut state.diagnostics);
                         substitute_type(&field.collected_type, &subst)
@@ -197,7 +197,7 @@ fn find_field_in_ancestors<'g>(
     }
     for extends_ref in &iface.extends {
         let parent = match extends_ref {
-            ExtendsRef::SameFile { name, .. } => lookup_interface(&ctx.global, iface.file_path.as_str(), name.as_str()),
+            ExtendsRef::SameFile { name, .. } => lookup_interface(ctx, iface.file_path.as_str(), name.as_str()),
             ExtendsRef::Imported { .. } | ExtendsRef::Builtin { .. } => None,
         };
         let Some(parent) = parent else { continue };

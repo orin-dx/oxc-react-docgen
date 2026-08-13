@@ -82,7 +82,7 @@ fn follow_reexports(
     #[cfg(test)]
     FOLLOW_REEXPORTS_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    if depth >= MAX_REEXPORT_DEPTH || is_declared_at(&ctx.global, &file, &name) {
+    if depth >= MAX_REEXPORT_DEPTH || ctx.named_types.is_declared_at(&file, &name) {
         return (file, name);
     }
     // Real barrels commonly share descendants (several sub-barrels wildcarding
@@ -106,7 +106,7 @@ fn follow_reexports(
                     continue;
                 };
                 let resolved = follow_reexports(candidate_file, name.clone(), ctx, diagnostics, visited, depth + 1);
-                if is_declared_at(&ctx.global, &resolved.0, &resolved.1) {
+                if ctx.named_types.is_declared_at(&resolved.0, &resolved.1) {
                     return resolved;
                 }
             }
@@ -116,46 +116,29 @@ fn follow_reexports(
     }
 }
 
-/// Whether `name` is actually declared at `file` — mirrors the bare/`React.`-
-/// qualified key fallback `lookup_interface`/`lookup_type_alias` use, so a
-/// barrel-chain hop is considered "found" by the same rule those lookups do.
-fn is_declared_at(global: &GlobalSourceData, file: &Utf8Path, name: &str) -> bool {
-    global.interfaces.contains_key(&format!("{file}:{name}"))
-        || global.interfaces.contains_key(&format!("{file}:React.{name}"))
-        || global.type_aliases.contains_key(&format!("{file}:{name}"))
-        || global.type_aliases.contains_key(&format!("{file}:React.{name}"))
-}
-
 /// Look up an interface by canonical `(file, name)`, falling back to a
 /// `React.`-namespace-qualified key. `@types/react` declares everything
 /// inside `declare namespace React { ... }`, so real declarations are keyed
 /// "React.HTMLAttributes" even though nothing imports them that way — a plain
 /// `import type { HTMLAttributes } from "react"` binds the bare name.
 pub(super) fn lookup_interface<'g>(
-    global: &'g GlobalSourceData,
+    ctx: &'g ResolutionContext,
     canonical_file: &str,
     canonical_name: &str,
 ) -> Option<&'g CollectedInterface> {
-    global
-        .interfaces
-        .get(&format!("{canonical_file}:{canonical_name}"))
-        .or_else(|| global.interfaces.get(&format!("{canonical_file}:React.{canonical_name}")))
+    ctx.named_types.lookup_interface(Utf8Path::new(canonical_file), canonical_name)
 }
 
-/// Same as `lookup_interface`, for type aliases. Returns the key that actually
-/// matched (bare or `React.`-qualified) alongside the value, since callers
-/// also need it to look up `type_alias_params` under the same key.
+/// Same as `lookup_interface`, for type aliases. Returns the name that
+/// actually matched (bare or `React.`-qualified) alongside the value, since
+/// callers also need it to look up `type_alias_params` under the same
+/// `(file, name)`.
 pub(super) fn lookup_type_alias<'g>(
-    global: &'g GlobalSourceData,
+    ctx: &'g ResolutionContext,
     canonical_file: &str,
     canonical_name: &str,
-) -> Option<(String, &'g CollectedTypeAlias)> {
-    let bare_key = format!("{canonical_file}:{canonical_name}");
-    if let Some(alias) = global.type_aliases.get(&bare_key) {
-        return Some((bare_key, alias));
-    }
-    let qualified_key = format!("{canonical_file}:React.{canonical_name}");
-    global.type_aliases.get(&qualified_key).map(|alias| (qualified_key, alias))
+) -> Option<(CompactString, &'g CollectedTypeAlias)> {
+    ctx.named_types.lookup_type_alias(Utf8Path::new(canonical_file), canonical_name)
 }
 
 /// Same as `lookup_interface`, but also falls back to TypeScript's own ambient
@@ -168,11 +151,11 @@ pub(super) fn lookup_interface_including_ambient<'g>(
     canonical_file: &str,
     canonical_name: &str,
 ) -> Option<&'g CollectedInterface> {
-    lookup_interface(&ctx.global, canonical_file, canonical_name).or_else(|| {
-        ctx.ambient_global_files
-            .iter()
-            .find_map(|lib_file| ctx.global.interfaces.get(&format!("{lib_file}:{canonical_name}")))
-    })
+    ctx.named_types.lookup_interface_including_ambient(
+        Utf8Path::new(canonical_file),
+        canonical_name,
+        &ctx.ambient_global_files,
+    )
 }
 
 /// Look up a name directly on TypeScript's own ambient lib files
@@ -185,16 +168,10 @@ pub(super) fn lookup_interface_including_ambient<'g>(
 /// so checking this first would intercept those already-handled names and
 /// degrade them to Opaque instead of leaving them to the existing shortcuts.
 pub(super) fn lookup_ambient_global<'g>(ctx: &'g ResolutionContext, name: &str) -> Option<AmbientGlobalLookup<'g>> {
-    for lib_file in &ctx.ambient_global_files {
-        let key = format!("{lib_file}:{name}");
-        if ctx.global.interfaces.contains_key(&key) {
-            return Some(AmbientGlobalLookup::Interface);
-        }
-        if let Some(alias) = ctx.global.type_aliases.get(&key) {
-            return Some(AmbientGlobalLookup::TypeAlias(alias));
-        }
+    match ctx.named_types.lookup_ambient(&ctx.ambient_global_files, name)? {
+        crate::named_type_index::AmbientMatch::Interface => Some(AmbientGlobalLookup::Interface),
+        crate::named_type_index::AmbientMatch::TypeAlias(alias) => Some(AmbientGlobalLookup::TypeAlias(alias)),
     }
-    None
 }
 
 pub(super) enum AmbientGlobalLookup<'g> {

@@ -115,9 +115,11 @@ fn real_html_attrs_chain(
     // qualified form first since that's the real, common case, falling back to the
     // bare form for resilience.
     let bare_name = name.strip_prefix("React.").unwrap_or(name);
-    let qualified_key = format!("{react_file}:React.{bare_name}");
-    let bare_key = format!("{react_file}:{bare_name}");
-    let iface = ctx.global.interfaces.get(&qualified_key).or_else(|| ctx.global.interfaces.get(&bare_key))?;
     let react_file_path = Utf8Path::new(react_file);
+    let qualified_name = format!("React.{bare_name}");
+    let iface = ctx
+        .named_types
+        .lookup_interface_exact(react_file_path, &qualified_name)
+        .or_else(|| ctx.named_types.lookup_interface_exact(react_file_path, bare_name))?;
     Some(resolve_interface_chain(iface, &[], react_file_path, mapping, ctx, state, depth + 1))
 }

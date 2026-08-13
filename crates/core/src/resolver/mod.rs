@@ -119,6 +119,11 @@ pub(super) fn is_ts_utility_type(name: &str) -> bool {
 pub struct ResolutionContext {
     pub global: Arc<GlobalSourceData>,
     pub import_map: Arc<ImportResolutionMap>,
+    /// Fast `(file, name)` index over `global.interfaces`/`type_aliases` and
+    /// their declared generic type parameters — see `named_type_index.rs`'s
+    /// module doc for why this exists alongside (not instead of) those flat
+    /// maps.
+    pub(crate) named_types: Arc<crate::named_type_index::NamedTypeIndex>,
     pub oxc_resolver: Arc<Resolver>,
     pub extra_builtins: FxHashSet<CompactString>,
     /// Bare name → full scoped key ("file:name") index over `global.enums`,
@@ -145,24 +150,37 @@ pub struct ResolutionContext {
 
 impl ResolutionContext {
     pub fn new(global: Arc<GlobalSourceData>, options: &PipelineOptions) -> Self {
-        Self::build(global, options, compute_ambient_global_files(options))
+        let named_types = Arc::new(crate::named_type_index::NamedTypeIndex::build(&global));
+        Self::build(global, options, compute_ambient_global_files(options), named_types)
     }
 
     /// Same as `new`, but for a caller that already knows the answer to
-    /// `compute_ambient_global_files` and wants to skip its filesystem walk —
-    /// `options.src_dirs` (the only input that walk depends on) never changes
-    /// within a `WatchSession`'s lifetime, so re-walking it on every single
-    /// `update_file` call (i.e. every file save) is pure waste. See
-    /// `WatchSession::update_file`.
+    /// `compute_ambient_global_files` (skips its filesystem walk — see
+    /// `WatchSession::update_file`) and already maintains its own
+    /// incrementally-patched `NamedTypeIndex` rather than wanting one freshly
+    /// rebuilt from the whole (possibly large) merged `global` on every call.
+    /// A full rebuild here is proportionate for `new`'s one-shot, resolve-
+    /// every-component-in-the-project caller, which amortizes it across many
+    /// lookups — but `WatchSession::update_file` runs once per file save and
+    /// typically re-resolves only the handful of components a single edit
+    /// actually affects, so paying a whole-project index rebuild on every
+    /// keystroke-adjacent save measurably regressed watch-mode latency (see
+    /// `NamedTypeIndex::remove_file`'s doc comment).
     pub fn new_with_cached_ambient_global_files(
         global: Arc<GlobalSourceData>,
         options: &PipelineOptions,
         ambient_global_files: Vec<Utf8PathBuf>,
+        named_types: Arc<crate::named_type_index::NamedTypeIndex>,
     ) -> Self {
-        Self::build(global, options, ambient_global_files)
+        Self::build(global, options, ambient_global_files, named_types)
     }
 
-    fn build(global: Arc<GlobalSourceData>, options: &PipelineOptions, ambient_global_files: Vec<Utf8PathBuf>) -> Self {
+    fn build(
+        global: Arc<GlobalSourceData>,
+        options: &PipelineOptions,
+        ambient_global_files: Vec<Utf8PathBuf>,
+        named_types: Arc<crate::named_type_index::NamedTypeIndex>,
+    ) -> Self {
         let alias: Vec<(String, Vec<AliasValue>)> = react::read_tsconfig_paths(options.tsconfig_path.as_deref());
 
         let resolve_options = ResolveOptions {
@@ -189,6 +207,7 @@ impl ResolutionContext {
 
         Self {
             import_map: Arc::new(ImportResolutionMap::build(&global)),
+            named_types,
             global,
             oxc_resolver: Arc::new(Resolver::new(resolve_options)),
             extra_builtins: options.extra_builtins.clone(),

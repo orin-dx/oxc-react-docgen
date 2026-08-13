@@ -46,15 +46,15 @@ pub(super) fn resolve_source_defined_or_known<'g>(
     let (canonical_file, canonical_name) = resolve_to_canonical(name, consuming_file, ctx, &mut state.diagnostics)
         .unwrap_or_else(|| (consuming_file.to_owned(), name.to_owned()));
 
-    if let Some((matched_key, alias)) = lookup_type_alias(&ctx.global, canonical_file.as_str(), &canonical_name) {
+    if let Some((matched_key, alias)) = lookup_type_alias(ctx, canonical_file.as_str(), &canonical_name) {
         return (
             canonical_file,
             canonical_name,
-            Some(SourceOrKnownMatch::TypeAlias { matched_key, alias: alias.clone() }),
+            Some(SourceOrKnownMatch::TypeAlias { matched_key: matched_key.to_string(), alias: alias.clone() }),
         );
     }
 
-    if let Some(iface) = lookup_interface(&ctx.global, canonical_file.as_str(), &canonical_name) {
+    if let Some(iface) = lookup_interface(ctx, canonical_file.as_str(), &canonical_name) {
         return (canonical_file, canonical_name, Some(SourceOrKnownMatch::Interface(iface)));
     }
 

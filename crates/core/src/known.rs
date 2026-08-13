@@ -140,8 +140,7 @@ pub fn resolve_known(
         "PropsWithRef" => props_with_ref(args),
 
         // ComponentPropsWithoutRef<'button'> or ComponentPropsWithoutRef<typeof X>
-        "ComponentPropsWithoutRef" | "ComponentProps" => component_props(args, false),
-        "ComponentPropsWithRef" => component_props(args, true),
+        "ComponentPropsWithoutRef" | "ComponentProps" | "ComponentPropsWithRef" => component_props(args),
 
         // ElementRef<typeof X> → opaque Ref
         "ElementRef" => Some(KnownPatternResult::Type(PropType::Ref { element: None })),
@@ -273,7 +272,7 @@ fn html_attrs_from_first_arg(args: &[PropType]) -> Option<KnownPatternResult> {
     }
 }
 
-fn component_props(args: &[PropType], _include_ref: bool) -> Option<KnownPatternResult> {
+fn component_props(args: &[PropType]) -> Option<KnownPatternResult> {
     match args.first() {
         Some(PropType::StringLiteral(element)) => {
             // ComponentPropsWithoutRef<'button'>

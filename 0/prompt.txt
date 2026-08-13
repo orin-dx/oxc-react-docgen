@@ -1,0 +1,33 @@
+Read docs/superpowers/session-handoff-2026-08-12.md for full context on the prior session's SDD initiative — it covers what was built (semantic-model layer, 7 gated spec@1 documents, drift-validated fixes) and 7 real bugs found and fixed. All of that work is committed: df68cf1, b009ed5, 7357431, 76b97cd, 23dcea3. Working tree is clean.
+
+The prior session added a large batch of new tests and bug fixes but never ran them through canon-drift-checker or canon-exit-gate the way the original 7 specs were vetted. Run canon-drift-checker against each of the 7 specs in .claude/specs/ again, specifically scrutinizing whether the newly-added tests (see the "Real bugs found and fixed" and "Test/quality state" sections of the handoff doc) actually assert what their spec criteria require, not just that they pass.
+
+Report findings before fixing anything — I want to review what it finds before you touch code.
+
+---
+
+what's the status on the drift checks
+
+---
+
+You are losing track of the work somehow, check on it because it ran overnight so we should have had results. WTF
+
+---
+
+Don't wait for the rest, run those checks yourself anyway
+
+---
+
+Also do BINDING, EXTRACTOR, and SERIALIZATION with the same rigor
+
+---
+
+Start with the AC-017 severe finding first
+
+---
+
+We should definitely refresh it
+
+---
+
+What’s next?

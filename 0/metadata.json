@@ -1,0 +1,141 @@
+{
+  "cli_version": "0.10.1-nightly.202608121908.a47cf0c70",
+  "checkpoint_id": "01KZX68B4AZQ59PYSXSZR34SGD",
+  "session_id": "c2e627b7-dced-422f-8477-6a94b0b84862",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-13T09:11:39.99274Z",
+  "branch": "main",
+  "checkpoints_count": 31,
+  "save_step_count": 6,
+  "files_touched": [
+    "crates/binding/src/lib.rs",
+    "crates/cli/src/commands/extract.rs",
+    "crates/cli/src/commands/lsp.rs",
+    "crates/cli/src/config.rs",
+    "crates/cli/tests/lsp_process.rs",
+    "crates/core/src/extractor/mod.rs",
+    "crates/core/src/pipeline/mod.rs",
+    "crates/core/src/pipeline/watch.rs",
+    "crates/core/src/resolver/chain.rs",
+    "crates/core/src/resolver/mod.rs",
+    "crates/core/src/resolver/substitute.rs",
+    "crates/core/src/resolver/template.rs",
+    "crates/core/src/types/collected.rs",
+    "crates/core/src/types/output.rs",
+    "docs/STATUS.md",
+    "docs/edge-cases.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "31ad12ed3b35",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 742,
+    "cache_creation_tokens": 1685503,
+    "cache_read_tokens": 142946576,
+    "output_tokens": 262564,
+    "api_call_count": 371
+  },
+  "session_metrics": {
+    "turn_count": 31
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-13T09:11:39.819118Z",
+    "agent_lines": 991,
+    "agent_removed": 52,
+    "human_added": 0,
+    "human_modified": 3,
+    "human_removed": 0,
+    "total_committed": 994,
+    "total_lines_changed": 1047,
+    "agent_percentage": 99.61795606494746,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 149,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        ".gemini/settings.json": 141
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 149,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        ".gemini/settings.json": 141
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 149,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        ".gemini/settings.json": 141
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 150,
+      "user_lines_removed": 1,
+      "agent_lines_added": 992,
+      "agent_lines_removed": 50,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        ".claude/specs/SPEC-TYPES-001.json": 1,
+        ".gemini/settings.json": 141
+      },
+      "user_removed_per_file": {
+        ".claude/specs/SPEC-TYPES-001.json": 1
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 150,
+      "user_lines_removed": 1,
+      "agent_lines_added": 994,
+      "agent_lines_removed": 52,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        ".claude/specs/SPEC-TYPES-001.json": 1,
+        ".gemini/settings.json": 141
+      },
+      "user_removed_per_file": {
+        ".claude/specs/SPEC-TYPES-001.json": 1
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 150,
+      "user_lines_removed": 1,
+      "agent_lines_added": 994,
+      "agent_lines_removed": 52,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        ".claude/specs/SPEC-TYPES-001.json": 1,
+        ".gemini/settings.json": 141
+      },
+      "user_removed_per_file": {
+        ".claude/specs/SPEC-TYPES-001.json": 1
+      }
+    }
+  ]
+}

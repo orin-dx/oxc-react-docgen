@@ -139,9 +139,16 @@ pub fn cmd_lsp() -> Result<()> {
 fn send_response<W: Write>(out: &mut W, response: &serde_json::Value) {
     if let Ok(json) = serde_json::to_string(response) {
         let header = format!("Content-Length: {}\r\n\r\n", json.len());
-        let _ = out.write_all(header.as_bytes());
-        let _ = out.write_all(json.as_bytes());
-        let _ = out.flush();
+        if let Err(e) =
+            out.write_all(header.as_bytes()).and_then(|()| out.write_all(json.as_bytes())).and_then(|()| out.flush())
+        {
+            // A broken client pipe otherwise leaves this response silently
+            // undelivered with zero trace anywhere — stderr is the safe
+            // channel here for the same reason `check_content_length` already
+            // uses it: stdout is reserved exclusively for Content-Length-framed
+            // messages.
+            tracing::error!("Failed to write LSP response frame: {e}");
+        }
     }
 }
 
@@ -218,5 +225,71 @@ mod tests {
     fn test_non_utf8_header_bytes_are_treated_as_eof() {
         let mut reader = std::io::Cursor::new(b"Content-Length: 10\xFF\r\n\r\n".to_vec());
         assert_eq!(read_content_length(&mut reader), Err(()));
+    }
+
+    // ── A broken client pipe (or any writer failure) during send_response
+    // must not vanish silently — see the fix's doc comment. A failing writer
+    // proves send_response doesn't panic; a capturing tracing subscriber
+    // proves the failure actually reaches the log, not just "doesn't crash."
+
+    struct FailingWriter;
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "simulated broken pipe"))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "simulated broken pipe"))
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturedLogs(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl Write for CapturedLogs {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap_or_else(|p| p.into_inner()).extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn send_response_write_failure_does_not_panic_and_is_logged() {
+        let captured = CapturedLogs::default();
+        let captured_for_writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(move || captured_for_writer.clone())
+            .with_ansi(false)
+            .without_time()
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            let mut writer = FailingWriter;
+            send_response(&mut writer, &serde_json::json!({"jsonrpc": "2.0", "id": 1, "result": null}));
+        });
+
+        let logged = String::from_utf8(captured.0.lock().unwrap_or_else(|p| p.into_inner()).clone()).unwrap();
+        assert!(
+            logged.contains("Failed to write LSP response frame"),
+            "expected the write failure to be logged, got {logged:?}"
+        );
+        assert!(
+            logged.contains("simulated broken pipe"),
+            "expected the underlying io::Error to be included, got {logged:?}"
+        );
+    }
+
+    #[test]
+    fn send_response_succeeds_normally_with_a_working_writer() {
+        // Regression guard: the fix must not change the success path's
+        // behavior — a working writer still receives the full framed response.
+        let mut buf: Vec<u8> = Vec::new();
+        send_response(&mut buf, &serde_json::json!({"jsonrpc": "2.0", "id": 1, "result": null}));
+        let written = String::from_utf8(buf).unwrap();
+        assert!(written.starts_with("Content-Length:"), "expected a framed response, got {written:?}");
+        assert!(written.contains("\"result\":null"), "expected the real response body, got {written:?}");
     }
 }

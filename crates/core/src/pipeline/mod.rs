@@ -388,11 +388,14 @@ pub(crate) fn extract_with_global(
     let global = Arc::new(global);
 
     // Phase 4: Resolve all components in parallel.
-    let mappings: Vec<ComponentMapping> = global
+    // Borrowed, not cloned: `resolve_component` already takes `&ComponentMapping`,
+    // and the parallel `.par_iter()` below only ever produces borrows anyway —
+    // cloning here just to immediately re-borrow deep-cloned every mapping's
+    // Strings/Vecs/param_defaults map for no reason, once per component.
+    let mappings: Vec<&ComponentMapping> = global
         .component_mappings
         .iter()
         .filter(|m| !should_skip(&m.component_name, &options.exclude_prefixes))
-        .cloned()
         .collect();
 
     // The whole closure body is wrapped in `contain_panic` so one component's
@@ -402,6 +405,7 @@ pub(crate) fn extract_with_global(
     let ctx = Arc::new(ResolutionContext::new(global.clone(), options));
     let results: Vec<(ComponentEntry, Vec<Diagnostic>)> = mappings
         .par_iter()
+        .copied()
         .map(|mapping| {
             let label = format!("resolve:{}", mapping.component_name);
             crate::panic_guard::contain_panic(&label, || {
@@ -457,14 +461,20 @@ pub(crate) fn extract_with_global(
 
         let mut entry = entry;
         diagnostics.extend(options.plugins.run_on_component_resolved(&mut entry));
-        if let Some(previous) = components.insert(key.clone(), entry.clone()) {
+        // Capture the cheap Utf8PathBuf clone before `entry` moves into
+        // `insert` — the alternative (`entry.clone()`) deep-clones the whole
+        // resolved ComponentEntry (props map, inheritance chain, tags, ...)
+        // on every component just to keep `file_path` readable for a
+        // diagnostic that only fires on the rare collision case.
+        let new_file_path = entry.file_path.clone();
+        if let Some(previous) = components.insert(key.clone(), entry) {
             diagnostics.push(Diagnostic {
                 severity: DiagnosticSeverity::Warning,
                 message: format!(
                     "Duplicate component key '{key}' — colliding file paths: previously '{}', now '{}'",
-                    previous.file_path, entry.file_path
+                    previous.file_path, new_file_path
                 ),
-                file: Some(entry.file_path.to_string()),
+                file: Some(new_file_path.to_string()),
                 line: None,
                 column: None,
                 help: Some(

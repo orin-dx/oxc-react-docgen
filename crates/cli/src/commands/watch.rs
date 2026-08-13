@@ -81,7 +81,19 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
                         std::process::exit(exit_code_kb.load(std::sync::atomic::Ordering::Relaxed));
                     }
                     KeyCode::Char('r') => {
-                        let _ = session_clone.initialize();
+                        // `initialize()` is idempotent past the first call — it
+                        // just returns the current snapshot without
+                        // re-extracting (see its own doc comment) — so this
+                        // doesn't force a real re-extraction today, but its
+                        // result was previously discarded outright, meaning
+                        // `exit_code_kb` never reflected it either. Mirrors
+                        // the same store the main watchexec event loop does
+                        // on every automatic file-change (see
+                        // `exit_code_inner.store` below) so a manual 'r' has
+                        // the same exit-code-tracking contract as an
+                        // automatic reload, not a weaker one.
+                        let output = session_clone.initialize();
+                        exit_code_kb.store(watch_exit_code(&output), std::sync::atomic::Ordering::Relaxed);
                     }
                     _ => {}
                 }

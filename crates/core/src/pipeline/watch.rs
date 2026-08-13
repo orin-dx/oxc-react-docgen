@@ -192,8 +192,12 @@ impl WatchSession {
         let affected = self.reverse_deps.load().affected(changed);
 
         // 4. Re-resolve affected components.
-        let affected_mappings: Vec<ComponentMapping> =
-            new_global.component_mappings.iter().filter(|m| affected.contains(&m.file_path)).cloned().collect();
+        // Borrowed, not cloned — same reasoning as the one-shot `extract()`
+        // path's identical fix (pipeline/mod.rs): `resolve_component` already
+        // takes `&ComponentMapping`, and `.par_iter()` below only ever
+        // produces borrows anyway.
+        let affected_mappings: Vec<&ComponentMapping> =
+            new_global.component_mappings.iter().filter(|m| affected.contains(&m.file_path)).collect();
 
         let ambient_global_files = self.ambient_global_files.get().cloned().unwrap_or_default();
         let ctx = ResolutionContext::new_with_cached_ambient_global_files(
@@ -207,6 +211,7 @@ impl WatchSession {
         // losing every other affected component's re-resolution for this file change.
         let results: Vec<(ComponentEntry, Vec<Diagnostic>)> = affected_mappings
             .par_iter()
+            .copied()
             .map(|m| {
                 let label = format!("resolve:{}", m.component_name);
                 crate::panic_guard::contain_panic(&label, || {

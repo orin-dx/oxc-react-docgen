@@ -1859,6 +1859,151 @@ Button.defaultProps = { size: 'md' };
         assert!(!files.iter().any(|f| f.as_str().contains("node_modules")), "should skip node_modules by default");
     }
 
+    // ── SPEC-PIPELINE-001 AC-001: .gitignore/.git/info/exclude/.ignore work-
+    // tree matrix. Previously zero coverage — the most intricate criterion in
+    // the whole spec-drift review (see its own revision_note: 7 gate rounds,
+    // verified line-by-line against the `ignore` crate's real source). The
+    // only custom logic discover.rs has here is one line —
+    // `git_ignore(!dir_is_in_node_modules)` — everything else is the `ignore`
+    // crate's own default behavior for `.git/info/exclude` and `.ignore`
+    // files, which these tests exercise via real `.git`/`.gitignore`/`.ignore`
+    // fixtures rather than trusting the crate's docs alone.
+
+    #[test]
+    fn gitignore_excludes_a_matching_file_inside_a_real_git_work_tree() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".git")).unwrap();
+        write_file(&tmp, ".gitignore", "Ignored.tsx\n");
+        write_file(&tmp, "Button.tsx", "export const Button = () => null;");
+        write_file(&tmp, "Ignored.tsx", "export const Skip = () => null;");
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let (files, _diagnostics) = discover_files(&[dir], &[]);
+
+        let names: Vec<&str> = files.iter().map(|f| f.file_name().unwrap()).collect();
+        assert!(names.contains(&"Button.tsx"));
+        assert!(!names.contains(&"Ignored.tsx"), ".gitignore should exclude the matching file in a real git work tree");
+    }
+
+    #[test]
+    fn gitignore_has_no_effect_when_the_src_dir_string_contains_node_modules() {
+        let tmp = TempDir::new().unwrap();
+        let lib_dir = tmp.path().join("node_modules").join("some-lib");
+        fs::create_dir_all(&lib_dir).unwrap();
+        fs::create_dir_all(lib_dir.join(".git")).unwrap();
+        fs::write(lib_dir.join(".gitignore"), "Ignored.tsx\n").unwrap();
+        fs::write(lib_dir.join("Button.tsx"), "export const Button = () => null;").unwrap();
+        fs::write(lib_dir.join("Ignored.tsx"), "export const Skip = () => null;").unwrap();
+
+        let dir = Utf8PathBuf::from_path_buf(lib_dir).unwrap();
+        let (files, _diagnostics) = discover_files(&[dir], &[]);
+
+        let names: Vec<&str> = files.iter().map(|f| f.file_name().unwrap()).collect();
+        assert!(names.contains(&"Button.tsx"));
+        assert!(
+            names.contains(&"Ignored.tsx"),
+            ".gitignore must have NO effect when the src_dir's own configured path string contains \
+             'node_modules', even with a real .git directory present, got {names:?}"
+        );
+    }
+
+    #[test]
+    fn ignore_file_excludes_a_matching_file_with_no_exception() {
+        // Unlike .gitignore, .ignore excludes unconditionally — test it inside
+        // a node_modules-string src_dir specifically, where .gitignore above
+        // was proven inert, to prove .ignore really is a separate, unaffected
+        // mechanism (not just "also disabled by the same flag").
+        let tmp = TempDir::new().unwrap();
+        let lib_dir = tmp.path().join("node_modules").join("some-lib");
+        fs::create_dir_all(&lib_dir).unwrap();
+        fs::write(lib_dir.join(".ignore"), "Ignored.tsx\n").unwrap();
+        fs::write(lib_dir.join("Button.tsx"), "export const Button = () => null;").unwrap();
+        fs::write(lib_dir.join("Ignored.tsx"), "export const Skip = () => null;").unwrap();
+
+        let dir = Utf8PathBuf::from_path_buf(lib_dir).unwrap();
+        let (files, _diagnostics) = discover_files(&[dir], &[]);
+
+        let names: Vec<&str> = files.iter().map(|f| f.file_name().unwrap()).collect();
+        assert!(names.contains(&"Button.tsx"));
+        assert!(!names.contains(&"Ignored.tsx"), ".ignore should exclude matching files with no exception");
+    }
+
+    #[test]
+    fn gitignore_has_no_effect_outside_any_git_work_tree_but_ignore_still_does() {
+        let tmp = TempDir::new().unwrap();
+        // Deliberately NO .git directory anywhere in this tree.
+        write_file(&tmp, ".gitignore", "GitignoredButIncluded.tsx\n");
+        write_file(&tmp, ".ignore", "TrulyIgnored.tsx\n");
+        write_file(&tmp, "Button.tsx", "export const Button = () => null;");
+        write_file(&tmp, "GitignoredButIncluded.tsx", "export const A = () => null;");
+        write_file(&tmp, "TrulyIgnored.tsx", "export const B = () => null;");
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let (files, _diagnostics) = discover_files(&[dir], &[]);
+
+        let names: Vec<&str> = files.iter().map(|f| f.file_name().unwrap()).collect();
+        assert!(names.contains(&"Button.tsx"));
+        assert!(
+            names.contains(&"GitignoredButIncluded.tsx"),
+            ".gitignore has no effect outside a git work tree, got {names:?}"
+        );
+        assert!(!names.contains(&"TrulyIgnored.tsx"), ".ignore still excludes matching files outside a git work tree");
+    }
+
+    #[test]
+    fn a_src_dir_physically_under_node_modules_but_not_named_that_way_is_not_exempt() {
+        // Negative pair: src_dir is physically located inside a node_modules
+        // directory on disk, but reached via a symlink whose own literal
+        // string does NOT contain "node_modules" — dir_is_in_node_modules is
+        // a string check on the CONFIGURED src_dir, not the real filesystem
+        // location, so ordinary .gitignore rules (ancestor-.git-gated) must
+        // still apply here, unlike the exempted case above.
+        let tmp = TempDir::new().unwrap();
+        let real_dir = tmp.path().join("vendor").join("node_modules").join("mylib").join("src");
+        fs::create_dir_all(&real_dir).unwrap();
+        fs::create_dir_all(real_dir.join(".git")).unwrap();
+        fs::write(real_dir.join(".gitignore"), "Ignored.tsx\n").unwrap();
+        fs::write(real_dir.join("Button.tsx"), "export const Button = () => null;").unwrap();
+        fs::write(real_dir.join("Ignored.tsx"), "export const Skip = () => null;").unwrap();
+
+        let link = tmp.path().join("link-without-that-substring");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real_dir, &link).unwrap();
+        #[cfg(not(unix))]
+        return; // No portable symlink API on this platform — skip rather than fail.
+
+        let dir = Utf8PathBuf::from_path_buf(link).unwrap();
+        assert!(
+            !dir.as_str().contains("node_modules"),
+            "test fixture invalid: the configured src_dir string must not contain 'node_modules'"
+        );
+        let (files, _diagnostics) = discover_files(&[dir], &[]);
+
+        let names: Vec<&str> = files.iter().map(|f| f.file_name().unwrap()).collect();
+        assert!(names.contains(&"Button.tsx"));
+        assert!(
+            !names.contains(&"Ignored.tsx"),
+            ".gitignore must still apply — the src_dir's configured string doesn't contain 'node_modules', \
+             even though it's physically located inside a node_modules directory on disk, got {names:?}"
+        );
+
+        // Separately, and independent of gitignore: this fixture also proves the
+        // pre-canonicalization substring-matching claim. Button.tsx's WALK-
+        // EMITTED path (via the symlink, "link-without-that-substring") never
+        // contains "node_modules", so the built-in node_modules-substring
+        // exclusion never fires for it — but its FINAL, canonicalized file_path
+        // (resolved after the exclusion check runs) does contain "node_modules",
+        // since the symlink's real target is physically under one. If discover.rs
+        // canonicalized before checking, this file would have been wrongly
+        // excluded by the same built-in rule that skips real node_modules trees.
+        let button = files.iter().find(|f| f.file_name() == Some("Button.tsx")).unwrap();
+        assert!(
+            button.as_str().contains("node_modules"),
+            "test fixture invalid: the resolved file_path should resolve through the real on-disk \
+             node_modules directory, got {button}"
+        );
+    }
+
     // ── SPEC-PIPELINE-001 AC-001: exclude_prefixes filters components after
     // resolution, silently and by design.
 

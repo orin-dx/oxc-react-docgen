@@ -235,11 +235,61 @@ impl WatchSession {
             })
             .collect();
 
+        // A failed read (deletion, permission error, non-UTF8 content) must
+        // NOT evict this file's cache entries — SPEC-PIPELINE-001's AC-019
+        // deliberately specifies that a deleted file's previously-resolved
+        // component stays in component_cache/snapshot() until a new
+        // WatchSession is constructed, a documented (not accidental)
+        // staleness gap distinct from the rename case below. Only a
+        // successful re-read, which can genuinely produce a different set of
+        // component names for this file, should evict what it no longer owns.
+        let file_read_failed = io_diagnostic.is_some();
+
         let mut updated_components = Vec::new();
         let mut diagnostics: Vec<Diagnostic> = io_diagnostic.into_iter().collect();
 
+        // Evict every existing component_cache entry that belonged to this
+        // file — by whatever key it was stored under, bare or disambiguated —
+        // before inserting its freshly-resolved entries. A bare `insert(
+        // entry.display_name, ...)` here left two kinds of stale entries
+        // behind forever: a renamed component's old-name key never got
+        // removed, and a disambiguated key from initialize()'s cold Phase 5
+        // pass was never touched by an update that only ever wrote the bare
+        // key. Both traced to the same root cause — no eviction step existed
+        // at all. This resolves the file's keys as a batch first so a
+        // same-file rename doesn't race against its own insert below.
+        if !file_read_failed {
+            let stale_keys: Vec<String> = self
+                .component_cache
+                .iter()
+                .filter(|r| r.value().file_path == changed)
+                .map(|r| r.key().clone())
+                .collect();
+            for key in stale_keys {
+                self.component_cache.remove(&key);
+            }
+        }
+
         for (entry, diags) in results {
-            self.component_cache.insert(entry.display_name.clone(), entry.clone());
+            // Disambiguate against whatever's left in the cache after this
+            // file's own stale keys were just evicted above — mirrors Phase
+            // 5's bare-then-disambiguated rule (extract()'s one-shot path),
+            // checked incrementally instead of via a session-wide counter.
+            // Deliberately narrower than Phase 5 in one respect: if a rename
+            // elsewhere frees up a bare key another file's component was
+            // disambiguated against earlier, that other entry stays under
+            // its disambiguated key until its own file is next touched —
+            // still correctly retrievable, just not repacked to the
+            // now-available bare key. Re-optimizing every other cached
+            // entry's key on every single-file edit would defeat the point
+            // of incremental updates; only this file's own stale keys are
+            // this method's responsibility.
+            let key = if self.component_cache.iter().any(|r| r.value().display_name == entry.display_name) {
+                format!("{} ({})", entry.display_name, entry.file_path)
+            } else {
+                entry.display_name.clone()
+            };
+            self.component_cache.insert(key, entry.clone());
             updated_components.push(entry);
             diagnostics.extend(diags);
         }
@@ -952,6 +1002,110 @@ mod tests {
             "the changed file's own component must not be re-resolved successfully after an unreadable-content \
              error, got {:?}",
             update.updated_components
+        );
+    }
+
+    // ── component_cache staleness, manifestation 1: a component renamed
+    // between edits (same file) left its OLD name's key behind forever,
+    // since the old code only ever inserted under the new display_name,
+    // never removing whatever key the file previously held.
+
+    #[test]
+    fn renaming_a_component_between_edits_evicts_its_old_cache_key() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").to_owned();
+        let file_path = dir.join("Widget.tsx");
+        std::fs::write(file_path.as_std_path(), "export function Card(props: { label: string }) { return null; }\n")
+            .expect("write Widget.tsx");
+
+        let options = PipelineOptions { src_dirs: vec![dir], ..Default::default() };
+        let session = WatchSession::new(options);
+        let _ = session.initialize();
+        assert!(
+            session.component_cache.get("Card").is_some(),
+            "sanity check: Card should be cached after initialize()"
+        );
+
+        // Rename Card -> Panel within the same file.
+        std::fs::write(file_path.as_std_path(), "export function Panel(props: { label: string }) { return null; }\n")
+            .expect("rewrite Widget.tsx");
+        let _ = session.update_file(&file_path);
+
+        assert!(
+            session.component_cache.get("Panel").is_some(),
+            "expected the renamed component to be cached under its new name"
+        );
+        assert!(
+            session.component_cache.get("Card").is_none(),
+            "expected the old name's cache key to be evicted after the rename, but it's still present"
+        );
+    }
+
+    // ── component_cache staleness, manifestation 2 (the more severe one): a
+    // component that was disambiguated at cold initialize() time (because
+    // another file already held its bare display_name) gets its content
+    // silently corrupted on the next edit — the old code always wrote to the
+    // BARE key regardless of which key the component actually held, so an
+    // edited B.tsx's fresh content landed in A.tsx's bare-keyed cache entry,
+    // while B's own disambiguated key kept A's — no, B's own — STALE
+    // pre-edit content forever.
+
+    #[test]
+    fn editing_a_disambiguated_component_updates_its_own_key_not_the_bare_one() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = camino::Utf8Path::from_path(tmp.path()).expect("utf8 path").to_owned();
+        let a_path = dir.join("A.tsx");
+        let b_path = dir.join("B.tsx");
+        // Both files declare a component named "Button" — A sorts first
+        // lexically, so Phase 5 gives A the bare key and B the disambiguated one.
+        std::fs::write(a_path.as_std_path(), "export function Button(props: { a: string }) { return null; }\n")
+            .expect("write A.tsx");
+        std::fs::write(b_path.as_std_path(), "export function Button(props: { b: string }) { return null; }\n")
+            .expect("write B.tsx");
+        // Canonicalize before comparing — on macOS the tempdir's own path
+        // (/var/...) differs from its canonical form (/private/var/...),
+        // same class of thing canonicalize_best_effort exists to handle, and
+        // discover_files canonicalizes every path it reports at cold-extract
+        // time, so the CACHED file_path is always the canonical form.
+        let a_path = a_path.canonicalize_utf8().expect("canonicalize A.tsx");
+        let b_path = b_path.canonicalize_utf8().expect("canonicalize B.tsx");
+
+        let options = PipelineOptions { src_dirs: vec![dir], ..Default::default() };
+        let session = WatchSession::new(options);
+        let _ = session.initialize();
+
+        let bare = session.component_cache.get("Button").expect("expected a bare 'Button' entry after initialize()");
+        assert_eq!(bare.file_path, a_path, "expected A.tsx to hold the bare key (sorts first)");
+        drop(bare);
+        let disambiguated_key = format!("Button ({b_path})");
+        assert!(
+            session.component_cache.get(&disambiguated_key).is_some(),
+            "expected B.tsx's Button to be disambiguated, got keys {:?}",
+            session.component_cache.iter().map(|r| r.key().clone()).collect::<Vec<_>>()
+        );
+
+        // Edit B.tsx only — A.tsx is untouched.
+        std::fs::write(
+            b_path.as_std_path(),
+            "export function Button(props: { b: string; c: string }) { return null; }\n",
+        )
+        .expect("rewrite B.tsx");
+        let _ = session.update_file(&b_path);
+
+        // A's bare entry must be untouched by B's edit.
+        let bare_after = session.component_cache.get("Button").expect("expected the bare 'Button' entry to survive");
+        assert_eq!(bare_after.file_path, a_path, "A's bare entry must not be overwritten by B's edit");
+        assert!(bare_after.props.contains_key("a"), "A's own props must be unaffected by B's edit");
+
+        // B's disambiguated entry must reflect the NEW content, not linger stale.
+        let b_after = session
+            .component_cache
+            .get(&disambiguated_key)
+            .expect("expected B's disambiguated entry to still exist under the same key");
+        assert!(
+            b_after.props.contains_key("c"),
+            "expected B's disambiguated entry to reflect the edit, got props {:?}",
+            b_after.props.keys().collect::<Vec<_>>()
         );
     }
 }

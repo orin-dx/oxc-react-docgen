@@ -50,6 +50,7 @@ pub(super) fn resolve_type_alias_chain(
                 // that later, legitimate resolution come back empty.
                 let mut branch_state = ResolveState {
                     visited: state.visited.clone(),
+                    named_in_progress: state.named_in_progress.clone(),
                     diagnostics: vec![],
                     in_scope_type_params: state.in_scope_type_params.clone(),
                 };
@@ -289,6 +290,7 @@ pub(super) fn resolve_union_alias(
             if let CollectedType::Named { name, .. } = m {
                 let mut branch_state = ResolveState {
                     visited: state.visited.clone(),
+                    named_in_progress: state.named_in_progress.clone(),
                     diagnostics: vec![],
                     in_scope_type_params: state.in_scope_type_params.clone(),
                 };

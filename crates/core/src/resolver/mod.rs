@@ -2697,6 +2697,178 @@ mod tests {
         }
     }
 
+    // ── resolve_named had no cycle detection at all, unlike its chain-level
+    // sibling resolve_props_chain — a self-referential type alias reached
+    // directly as a field's TYPE (not via `extends`) recursed 20 frames deep
+    // (MAX_DEPTH) before bailing with a generic depth-exceeded diagnostic,
+    // instead of being caught immediately with a friendly "circular
+    // reference" message the way the chain-level path already was.
+    // docs/edge-cases.md's previously-untracked-gap entry, not a spec
+    // criterion — SPEC-RESOLVER-001 explicitly non_goals this out.
+
+    #[test]
+    fn self_referential_type_alias_used_directly_as_a_field_type_is_caught_immediately() {
+        let file_path = Utf8PathBuf::from("/test/loop.tsx");
+        let key = |name: &str| format!("{}:{}", file_path, name);
+
+        let mut global = GlobalSourceData::default();
+        // type Loop = Loop; — a bare self-reference, the fallback Passthrough
+        // shape the extractor produces for any unrecognized type reference.
+        global.type_aliases.insert(
+            key("Loop"),
+            CollectedTypeAlias::Passthrough {
+                target: CollectedType::Named { name: "Loop".into(), args: vec![] },
+                file_path: file_path.clone(),
+            },
+        );
+        global.interfaces.insert(
+            key("Props"),
+            CollectedInterface {
+                scoped_key: key("Props"),
+                name: "Props".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "x".into(),
+                    collected_type: CollectedType::Named { name: "Loop".into(), args: vec![] },
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Widget".into(),
+            props_type_name: "Props".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, diagnostics) = resolve_component(&mapping, &ctx);
+
+        let cycle_diag = diagnostics.iter().find(|d| d.message.contains("Circular type reference detected"));
+        assert!(
+            cycle_diag.is_some(),
+            "expected an immediate circular-reference diagnostic, not a 20-frame depth exhaustion, got {:?}",
+            diagnostics
+        );
+        assert_eq!(cycle_diag.unwrap().severity, DiagnosticSeverity::Info);
+        // MaxDepthExceeded is deliberately reused as the code (see the doc
+        // comment on ResolveState::named_in_progress and named.rs's own
+        // depth>MAX_DEPTH path, which already uses this same code) — there's
+        // no dedicated circular-reference code at the type level, matching
+        // the chain-level cycle case's own choice of code.
+        assert_eq!(cycle_diag.unwrap().code, DiagnosticCode::MaxDepthExceeded);
+
+        let x = entry.props.get("x").expect("expected prop 'x' to still be present, degraded to Opaque");
+        assert!(matches!(x.prop_type, PropType::Opaque(_)), "expected 'x' to degrade to Opaque, got {:?}", x.prop_type);
+    }
+
+    // ── Guard against the exact false-positive class this fix could
+    // introduce if it reused a permanent (not per-call-stack) visited set:
+    // two UNRELATED, non-cyclic fields that happen to reference the SAME
+    // type must both resolve cleanly, not have the second one falsely
+    // flagged as "already visited".
+
+    #[test]
+    fn two_unrelated_fields_sharing_the_same_type_are_not_falsely_flagged_as_a_cycle() {
+        let file_path = Utf8PathBuf::from("/test/shared.tsx");
+        let key = |name: &str| format!("{}:{}", file_path, name);
+
+        let mut global = GlobalSourceData::default();
+        global.interfaces.insert(
+            key("Shared"),
+            CollectedInterface {
+                scoped_key: key("Shared"),
+                name: "Shared".into(),
+                file_path: file_path.clone(),
+                props: vec![RawProp {
+                    name: "value".into(),
+                    collected_type: CollectedType::String,
+                    required: false,
+                    description: String::new(),
+                    tags: BTreeMap::new(),
+                    span_start: 0,
+                    span_end: 0,
+                }],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+        global.interfaces.insert(
+            key("Props"),
+            CollectedInterface {
+                scoped_key: key("Props"),
+                name: "Props".into(),
+                file_path: file_path.clone(),
+                props: vec![
+                    RawProp {
+                        name: "a".into(),
+                        collected_type: CollectedType::Named { name: "Shared".into(), args: vec![] },
+                        required: false,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                    RawProp {
+                        name: "b".into(),
+                        collected_type: CollectedType::Named { name: "Shared".into(), args: vec![] },
+                        required: false,
+                        description: String::new(),
+                        tags: BTreeMap::new(),
+                        span_start: 0,
+                        span_end: 0,
+                    },
+                ],
+                extends: vec![],
+                description: String::new(),
+                tags: BTreeMap::new(),
+            },
+        );
+
+        let ctx = ResolutionContext::new(Arc::new(global), &PipelineOptions::default());
+        let mapping = ComponentMapping {
+            component_name: "Widget".into(),
+            props_type_name: "Props".into(),
+            props_type_args: vec![],
+            file_path: file_path.clone(),
+            description: String::new(),
+            tags: BTreeMap::new(),
+            span_start: 0,
+            span_end: 0,
+            param_defaults: FxHashMap::default(),
+        };
+
+        let (entry, diagnostics) = resolve_component(&mapping, &ctx);
+
+        assert!(
+            !diagnostics.iter().any(|d| d.message.contains("Circular")),
+            "two unrelated fields sharing a type must not be flagged as circular, got {:?}",
+            diagnostics
+        );
+        for field in ["a", "b"] {
+            let prop = entry.props.get(field).unwrap_or_else(|| panic!("expected prop '{field}' present"));
+            assert!(
+                matches!(&prop.prop_type, PropType::Named { name, .. } if name == "Shared"),
+                "expected '{field}' to resolve to PropType::Named(\"Shared\"), got {:?}",
+                prop.prop_type
+            );
+        }
+    }
+
     // ── SPEC-RESOLVER-001 AC-2b: a chain of DISTINCT (non-repeating) interfaces
     // exceeding MAX_DEPTH must give up via ResolvedChain::give_up (same
     // construction path as the cycle-detected case above), producing a

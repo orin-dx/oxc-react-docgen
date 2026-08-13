@@ -228,6 +228,7 @@ pub(super) fn resolve_interface_chain(
     for extends_ref in &iface.extends {
         let mut branch_state = ResolveState {
             visited: state.visited.clone(),
+            named_in_progress: state.named_in_progress.clone(),
             diagnostics: vec![],
             in_scope_type_params: state.in_scope_type_params.clone(),
         };

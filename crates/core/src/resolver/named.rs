@@ -13,8 +13,51 @@ use super::import::{lookup_ambient_global, AmbientGlobalLookup};
 use super::react::react_type_to_prop_type;
 use super::{ResolutionContext, MAX_DEPTH};
 
+/// Cycle-detecting entry point — see `ResolveState::named_in_progress`'s doc
+/// comment for why this can't reuse chain.rs's permanent `visited` set or
+/// mimic its clone-per-branch pattern. Delegates the actual resolution to
+/// `resolve_named_uncycled` so every one of that function's many early
+/// returns doesn't need to remember to remove the in-progress key itself.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn resolve_named(
+    name: &CompactString,
+    args: &[CollectedType],
+    consuming_file: &Utf8Path,
+    ctx: &ResolutionContext,
+    state: &mut ResolveState,
+    depth: u8,
+) -> PropType {
+    let visit_key: CompactString = format!(
+        "{}:{}<{}>",
+        consuming_file,
+        name,
+        args.iter().map(|a| a.to_raw_string()).collect::<Vec<_>>().join(",")
+    )
+    .into();
+
+    if !state.named_in_progress.insert(visit_key.clone()) {
+        state.diagnostics.push(Diagnostic {
+            severity: DiagnosticSeverity::Info,
+            message: format!(
+                "Circular type reference detected resolving '{}' in '{}' — stopping here to avoid infinite recursion",
+                name, consuming_file
+            ),
+            file: Some(consuming_file.to_string()),
+            line: None,
+            column: None,
+            help: Some("This type (directly or indirectly) references itself.".into()),
+            code: DiagnosticCode::MaxDepthExceeded,
+        });
+        return OpaqueDetail::new(name.to_string(), OpaqueReason::DepthExceeded);
+    }
+
+    let result = resolve_named_uncycled(name, args, consuming_file, ctx, state, depth);
+    state.named_in_progress.remove(&visit_key);
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_named_uncycled(
     name: &CompactString,
     args: &[CollectedType],
     consuming_file: &Utf8Path,

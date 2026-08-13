@@ -19,6 +19,19 @@ use super::diagnostic::Diagnostic;
 pub(crate) struct ResolveState {
     /// Cycle-detection set: "${file}:${type_name}" keys.
     pub(crate) visited: FxHashSet<CompactString>,
+    /// `resolve_named`'s own cycle-detection set — deliberately separate from
+    /// `visited` above. `visited` is chain.rs's, permanent for the rest of a
+    /// given branch's resolution (with per-sibling-branch cloning to avoid
+    /// diamond-inheritance false positives — see `resolve_interface_chain`).
+    /// `resolve_named` is called repeatedly and independently for every
+    /// unrelated field's type across a whole component, not once per
+    /// interface, so a permanent set would falsely flag two different,
+    /// non-cyclic fields that happen to share a type (`{ a: Shared; b: Shared
+    /// }`) as circular. This set instead tracks only what's currently on the
+    /// live call stack — inserted on entry to `resolve_named`, removed before
+    /// it returns — the textbook DFS "on this path" set, which catches real
+    /// self-reference while never flagging legitimate repeated reuse.
+    pub(crate) named_in_progress: FxHashSet<CompactString>,
     /// Accumulated non-fatal issues.
     pub(crate) diagnostics: Vec<Diagnostic>,
     /// Declared generic type parameter names (`TData`, `T`, `U`, ...) seen so far

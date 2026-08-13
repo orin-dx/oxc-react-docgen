@@ -1,0 +1,152 @@
+All done?
+
+---
+
+Have we implemented everything we originally set out to do???
+
+---
+
+Let’s tackle what is done and look for quality fixes and improvements. Perf gains, bugs and gaps
+
+---
+
+What else should we tackle?
+
+---
+
+What is still valid from earlier? Check and verify so we can address as appropriate
+
+---
+
+I think 2 and 4
+
+---
+
+<task-notification>
+<task-id>a54d09e3b274e18b2</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c2e627b7-dced-422f-8477-6a94b0b84862/tasks/a54d09e3b274e18b2.output</output-file>
+<status>completed</status>
+<summary>Agent "Map packages/vite-plugin structure and test coverage" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Confirmed: 18 tests. Now I have everything needed for the report.
+
+## Architecture Summary
+
+**Package:** `@oxc-react-docgen/vite-plugin` (`/Users/gabe/Projects/oxc-react-codegen/packages/vite-plugin`)
+
+**Files (excluding node_modules/dist):**
+- `src/index.ts` (165 lines) — the entire plugin implementation, single file, no other source modules
+- `tests/unit/plugin.test.ts` (214 lines, 18 tests) — only test file that exists
+- `package.json`, `tsconfig.json`, `vitest.config.ts`, `moon.yml` — build/config plumbing, no logic
+
+There is **no `README.md`** for this package, and **no `tests/integration/` directory** despite one being specified in the archived spec (see gap list below).
+
+### How it hooks into Vite (`src/index.ts:15-165`)
+
+`oxcReactDocgen(options)` returns a single `Plugin` object (not `Plugin[]`) with a closure holding mutable state: `sessionId`, `root`, `command`, `resolvedSrcDirs`, `currentOutput` (the in-memory `ExtractionOutput`, seeded with a zero-value placeholder), and `initPromise`.
+
+Hook sequence and responsibilities:
+- **`configResolved(config)`** (`src/index.ts:70-74`) — captures `root`/`command`, resolves `srcDirs` to absolute paths (`root + '/' + dir` unless already absolute), and calls `napi.createSession(napiOptions())` synchronously to get `sessionId`. No try/catch here.
+- **`buildStart()`** (`src/index.ts:77-84`) — build-mode-only cold extraction. Guards on `command !== 'build'` and returns early otherwise. Calls `coldExtract()` inside try/catch, logs on failure via `console.error`. Added later (commit `62ff336`) specifically because Vite never calls `configureServer` during `vite build`, so without this the virtual module always resolved to the empty placeholder in production builds.
+- **`configureServer(server)`** (`src/index.ts:86-112`) — dev-mode cold extraction. Fires `coldExtract()` fire-and-forget (`.then()/.catch()` chain, deliberately not `await`ed since `configureServer` must return its teardown function synchronously — documented at `src/index.ts:90-93`). On success, sends an `oxc-react-docgen:ready` HMR event via `server.environments.client.hot.send`. Returns a teardown closure that calls `napi.closeSession(sessionId)` — added in commit `49b12c6` to fix a dev-server session leak (comment: "`buildEnd` isn't called in dev mode — this is the only reliable cleanup hook", `src/index.ts:108`).
+- **`hotUpdate(opts)`** (`src/index.ts:114-150`) — per-file-change HMR hook. Reads `(this as any).environment`, bails if absent or `env.name !== 'client'` (skips SSR). Bails if `!isSrcFile(opts.file)`. Awaits `initPromise` if set (so incremental calls queue behind the in-flight cold extraction). Calls `napi.extractFileIncremental(file, sessionId, napiOptions())`, parses the JSON result (with a try/catch fallback that logs and sends an empty update on parse failure), merges `updatedComponents` into `currentOutput.components` by `displayName` key, and sends `oxc-react-docgen:update` over HMR. Explicitly returns `undefined` (not `[]`) so Vite/React Fast Refresh still processes the file — documented at `src/index.ts:148-149`.
+- **`resolveId`/`load`** (`src/index.ts:152-159`) — implements a `virtual:oxc-react-docgen` module (`\0`-prefixed per Vite convention) that serializes `currentOutput` as `export default {...}`.
+- **`buildEnd()`** (`src/index.ts:161-163`) — closes the NAPI session; this is the build-mode cleanup counterpart to `configureServer`'s teardown.
+
+`isSrcFile(file)` (`src/index.ts:63-65`): `(file.endsWith('.tsx') || file.endsWith('.ts')) &amp;&amp; resolvedSrcDirs.some(dir =&gt; file.startsWith(`${dir}/`))`.
+
+### NAPI boundary contract (from `packages/napi/binding.d.ts`, `packages/napi/index.d.ts`, and the Rust-side semantic-model doc at `.claude/semantic-model/napi-binding.md`)
+
+The plugin calls exactly 4 of the 5 NAPI entry points (never `extractAll`, which is the CLI's cold one-shot path):
+- `createSession(options) -&gt; number` — sync
+- `initializeSession(sessionId, options) -&gt; Promise&lt;string&gt;` (JSON of `ExtractionOutput`)
+- `extractFileIncremental(filePath, sessionId, options) -&gt; Promise&lt;string&gt;` (JSON of `IncrementalUpdate`)
+- `closeSession(sessionId) -&gt; void` — sync
+
+Per the Rust-side doc, all five entry points are wrapped in `contain_panic` (ADR 0005) so a Rust panic can never crash the host Node process — it always surfaces as a rejected promise / thrown `napi::Error`. This means the plugin's `napi.*` calls *can* legitimately reject/throw for real reasons (bad `reactVersion`, malformed `extraPathsJson`/`knownTypeOverridesJson`, a genuine internal panic converted to an error) — not just theoretical concerns.
+
+## Existing Tests — Full List (18 tests, `tests/unit/plugin.test.ts`)
+
+All tests mock `@oxc-react-docgen/napi` entirely via `vi.mock` (`plugin.test.ts:4-31`); no native binary is loaded (`vitest.config.ts` uses `pool: 'threads'`, which the plan doc explicitly notes is only safe because of this mocking).
+
+**`resolveId` (2)**
+1. `resolves the virtual module id` — `resolveId('virtual:oxc-react-docgen')` returns `\0virtual:oxc-react-docgen`.
+2. `returns undefined for unrelated ids` — checks `'react'` and `'./Button.tsx'` both return `undefined`.
+
+**`load` (2)**
+3. `returns a JS module for the resolved virtual id` — asserts output starts with `export default {` and that `JSON.parse`d result has a `components` key.
+4. `returns undefined for other ids` — checks `\0other` and the un-resolved `virtual:oxc-react-docgen` id both return `undefined`.
+
+**`configResolved` (1)**
+5. `creates a NAPI session with resolved absolute src dirs` — asserts `napi.createSession` called with `srcDirs: ['/project/src']` given `root: '/project'`, `srcDirs: ['src']`.
+
+**`configureServer` (1)**
+6. `calls initializeSession with the session id and resolved options` — invokes `configureServer` with a mock server exposing `environments.client.hot.send`, waits for the mocked `initializeSession` call via `vi.waitUntil`, and asserts it was called with `(42, { srcDirs: ['/project/src'] })`.
+
+**`hotUpdate` (7)**
+7. `calls extractFileIncremental for tsx files in srcDirs` — client env, `/project/src/Button.tsx` → asserts call args `(file, 42, { srcDirs: [...] })`.
+8. `sends oxc-react-docgen:update over HMR` — asserts `hot.send` called with event name and `objectContaining({ file })`.
+9. `returns undefined so React Fast Refresh still processes the file` — asserts the hook's return value is `undefined`.
+10. `skips SSR and other non-client environments` — `env.name = 'ssr'` → `extractFileIncremental` not called.
+11. `skips files outside srcDirs` — `/project/node_modules/react/index.js` → not called.
+12. `skips non-ts/tsx files inside srcDirs` — `/project/src/styles.css` → not called.
+13. `skips files in a sibling directory that shares the srcDir prefix` — `/project/src-generated/Button.tsx` → not called (regression test for the `isSrcFile` prefix-collision bug fixed in commit `49b12c6`, `startsWith(dir)` → `startsWith(`${dir}/`)`).
+
+**`buildEnd` (1)**
+14. `closes the NAPI session` — asserts `napi.closeSession` called with `42`.
+
+**`buildStart` (2)**
+15. `runs cold extraction when the command is "build"` — sets `command: 'build'`, asserts `initializeSession` called and the virtual module now serializes real data.
+16. `does not run cold extraction when the command is "serve"` — asserts `initializeSession` not called (relies on `configureServer` instead).
+
+**`skipHtmlProps` (2)**
+17. `maps to htmlAttributes: "none" for the NAPI call` — `skipHtmlProps: true` → `createSession` called with `htmlAttributes: 'none'`.
+18. `leaves htmlAttributes unset when skipHtmlProps is not passed` — asserts `htmlAttributes: undefined`.
+
+## Package Configuration / Contract Sources
+
+- **`package.json`** (`packages/vite-plugin/package.json`): `"test": "vitest run"`, `"build": "tsc"`. `peerDependencies.vite: "^7.0.0 || ^8.0.0"`. `dependencies: { "@oxc-react-docgen/napi": "workspace:*" }`. No lint script of its own (lint is presumably driven from workspace root via oxlint, per `git log` commit `7730b76`).
+- **`vitest.config.ts`**: `pool: 'threads'`, `include: ['tests/unit/**/*.test.ts']` — only picks up the unit dir; nothing else configured (no coverage thresholds, no globals).
+- **`moon.yml`**: `build` and `test` tasks with input globs; `test` does **not** declare a dependency on `build` (this was deliberately removed from the original plan — commit `49b12c6` "moon wiring" fix — the archived plan at `docs/archive/2026-06-16-phase-5a-vite-plugin.md:864-865` originally had `deps: ['~:build']` on the test task, which was dropped).
+- **`docs/STATUS.md:5,9`**: asserts "Vite plugin all work and are fully tested" and lists "18 vitest" tests as part of "all green" — this is the closest thing to a current top-level contract statement, and it's a stronger claim ("fully tested") than the actual coverage supports (see gaps below).
+- **Archived spec `docs/archive/10-PLUGIN-SPEC.md`** (marked "Status: Not started", now stale/superseded by the real implementation) is nonetheless useful as the *intended* contract: it explicitly calls for a **Layer 2 integration test tier** at `packages/vite-plugin/tests/integration/`, gated by a `NAPI_BINARY_AVAILABLE` env var, using `pool: 'forks'` "required — native `.node` binary cannot load in worker threads" (`docs/archive/10-PLUGIN-SPEC.md:181-186`). **This tier was never built** — confirmed by the file listing (only `tests/unit/` exists) and by `vitest.config.ts`'s `include` glob only matching `tests/unit/**`.
+- **CI (`.github/workflows/ci.yml:220`)** runs `pnpm --filter @oxc-react-docgen/vite-plugin test` (unit only) and separately (`:244-262`) builds and packs the plugin to verify it's installable — no dev-server or build-mode smoke test against a real Vite instance with the real native binary.
+
+## Prioritized Gaps / Risks (grounded in source, with citations)
+
+**P1 — Dev-server session-leak regression has zero test coverage**
+`configureServer`'s returned teardown function (`src/index.ts:109-111`, `napi.closeSession(sessionId)`) exists specifically because of a real bug fixed in commit `49b12c6` ("session leak"). None of the 18 tests invoke the function that `configureServer` returns — test #6 (`configureServer` describe block, `plugin.test.ts:86-98`) only asserts `initializeSession` was called; it never captures or calls the returned teardown. A regression here (e.g., someone refactors `configureServer` and forgets to return the teardown, or breaks the closure over `sessionId`) would not be caught by the suite.
+
+**P1 — `hotUpdate`'s malformed-JSON fallback path is untested**
+`src/index.ts:130-136`: if `napi.extractFileIncremental` resolves to unparsable JSON, the code catches it, logs via `console.error`, and sends `oxc-react-docgen:update` with `updatedComponents: []` and `diagnostics: []` — a real fallback contract (clients should still receive *an* event rather than an unhandled rejection). No test mocks `extractFileIncremental` to return bad JSON and asserts this fallback fires. Same class of gap for `coldExtract`'s JSON.parse failure (`src/index.ts:54-60`, returns `false` and logs) — no test drives `initializeSession` to resolve with malformed JSON.
+
+**P1 — `initPromise` gating (the queue/replay race-guard) is never actually exercised as a race**
+`src/index.ts:126`, `if (initPromise) await initPromise` — this is the mechanism described in the archived spec (`docs/archive/10-PLUGIN-SPEC.md:168`, "If `configureServer` is called before `initializeSession` resolves ... the `hotUpdate` handler queues updates and replays them") as the fix for a real ordering hazard: a file-change event arriving while cold extraction is still in flight. Every current `hotUpdate` test calls `hotUpdate` directly without ever calling `configureServer` first, so `initPromise` is always `null` in every test (`plugin.test.ts:39-44` `beforeEach` only calls `configResolved`, never `configureServer`) — the `await initPromise` branch's actual blocking behavior (does a `hotUpdate` call really wait for a pending cold extraction rather than racing it?) is not verified anywhere.
+
+**P2 — Uncaught/unguarded `napi.createSession` throw in `configResolved`**
+`src/index.ts:73`, `sessionId = napi.createSession(napiOptions())` is unguarded by try/catch, unlike `buildStart`/`configureServer` which both wrap their NAPI calls. Per the Rust-side contract (`.claude/semantic-model/napi-binding.md`, Invariant 2), `createSession`/the underlying `TryFrom&lt;JsExtractOptions&gt;` conversion can legitimately reject on a bad `reactVersion` value reaching the boundary (e.g. via a `reactVersion` value that bypasses the TS union type through an `as any` cast, or a future option that gains validation). A throw here happens synchronously inside `configResolved`, with no catch/log anywhere in the plugin — behavior on this path (does Vite's config-resolution abort cleanly, what message does the user see) is completely unexercised by any test.
+
+**P2 — Trailing-slash / already-slash-terminated `srcDirs` produces a double-slash prefix that silently excludes all files**
+`src/index.ts:72`, `resolvedSrcDirs = options.srcDirs.map((d) =&gt; (d.startsWith('/') ? d : `${root}/${d}`))`, combined with `isSrcFile`'s `file.startsWith(`${dir}/`)` check (`src/index.ts:64`). If a caller passes `srcDirs: ['src/']` (trailing slash) or an absolute dir already ending in `/`, the resolved dir keeps its trailing slash, and the `isSrcFile` check then tests for a *double* slash (`.../src//`) which no real file path will ever match — every file under that srcDir would be silently skipped by `hotUpdate` with no error or log. This is inferred directly from the string-concatenation logic, not from a runtime observation, but no test exercises a trailing-slash `srcDirs` entry either way, so this either is a real bug or is an untested-but-intentional footgun — either way it's unverified.
+
+**P2 — No integration-tier tests against a real Vite dev server / real NAPI binary**
+Confirmed by direct file listing: only `tests/unit/plugin.test.ts` exists; `tests/integration/` (called for in `docs/archive/10-PLUGIN-SPEC.md:181-186`, gated by `NAPI_BINARY_AVAILABLE`, `pool: 'forks'`) was never implemented. Everything the unit suite verifies is really "the plugin calls the mocked NAPI functions with the right arguments and wires their (mocked) return values to the right Vite hook outputs" — it says nothing about whether the actual generated `.node` binary's real JSON shapes match what the plugin expects, whether a real Vite `HotUpdateOptions`/`ViteDevServer` shape matches the plugin's assumptions (e.g. the `(this as any).environment` cast at `src/index.ts:119`, or `(server as any).environments?.client?.hot?.send` at `src/index.ts:99` — both defensive casts specifically because the real Vite API surface across 6/7/8 patch versions isn't type-checked here), or whether the plugin behaves correctly through a real HMR file-save cycle. `docs/STATUS.md:5`'s "fully tested" claim is not supported by what actually exists on disk.
+
+**P3 — Concurrent/out-of-order `hotUpdate` calls for the same file are not addressed or tested**
+`src/index.ts:138-139`, `for (const comp of update.updatedComponents) { currentOutput.components[comp.displayName] = comp }` — there is no sequencing/versioning guard. If Vite fires `hotUpdate` twice in quick succession for the same file (e.g., an editor auto-save plus a formatter re-save, or a git checkout touching many files), and the two `extractFileIncremental` calls resolve out of order, the *older* result could overwrite the newer one in `currentOutput.components`, and the correspondingly stale `oxc-react-docgen:update` HMR payload would be sent after the fresher one. No stats/timestamp/sequence check exists to detect or prevent this, and no test constructs two overlapping `hotUpdate` calls to check ordering.
+
+**P3 — `.d.ts` files match `isSrcFile`'s `.ts` suffix check with unclear intent**
+`src/index.ts:64`, `file.endsWith('.tsx') || file.endsWith('.ts')` — a changed `foo.d.ts` file also ends in `.ts`, so if it's inside `srcDirs` it will trigger a full `extractFileIncremental` call treating the declaration file as an extraction target. There's no test (or comment) establishing whether this is intended (ambient types affecting prop resolution) or an oversight; either way it's unverified behavior.
+
+**P3 — `buildEnd`/`configureServer`-teardown interplay under `vite build --watch` is unaddressed**
+The comment at `src/index.ts:108` states "`buildEnd` isn't called in dev mode — this is the only reliable cleanup hook," implying the two cleanup paths (`configureServer` teardown for serve, `buildEnd` for build) are mutually exclusive. `vite build --watch` is a build-mode long-running watch process where Vite's own hook-calling semantics around repeated `buildEnd` invocations aren't verified against this plugin's single-session-per-`configResolved` model (`sessionId` is set once in `configResolved`, and `buildEnd` unconditionally calls `closeSession(sessionId)` — a second rebuild in watch mode would call `buildEnd` again against an already-closed or newly-needed session). No test or comment covers this mode.
+
+**P4 — Options forwarding beyond `srcDirs`/`htmlAttributes` is largely unasserted**
+Tests consistently use `expect.objectContaining({ srcDirs: [...] })` (e.g. `plugin.test.ts:80,96,122,187`) or `htmlAttributes` alone; `exclude` and `reactVersion` are declared in `OxcDocgenOptions` and threaded through `napiOptions()` (`src/index.ts:39-46`) but no test ever passes non-default `exclude`/`reactVersion` values and asserts they reach the NAPI call. Low risk (simple pass-through) but literally unverified.</result>
+<usage><subagent_tokens>77157</subagent_tokens><tool_uses>31</tool_uses><duration_ms>198882</duration_ms></usage>
+</task-notification>
+
+---
+
+Can we tackle all of them comprehensively, semantically and across models properly?

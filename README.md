@@ -6,13 +6,18 @@ React component prop extraction powered by [OXC](https://oxc.rs). Parses TypeScr
 
 ## Why
 
-`react-docgen-typescript` spins up a full TypeScript `Program` to extract props. On a mid-size design system this takes seconds — enough to noticeably delay Storybook startup and make HMR feel sluggish. OXC parses each file in parallel with no type-checking pass, so cold extraction on a 15-component fixture set (shadcn, MUI, Chakra, Mantine, React Aria, Radix) takes **32ms**.
+`react-docgen-typescript` spins up a full TypeScript `Program` to extract props. On a mid-size design system that takes seconds — enough to noticeably delay Storybook startup and make HMR feel sluggish.
+
+OXC parses each file in parallel with no type-checking pass:
+
+- **Cold extraction, 21 real component libraries:** 50ms ([full breakdown](docs/benchmarks.md))
+- **Incremental single-file update:** ~2ms — react-docgen-typescript has no equivalent API; every edit re-pays the full cold cost
 
 The CLI can emit an RDT-compatible shape via `--format rdt` (see [MIGRATING.md](MIGRATING.md)). The Vite plugin and NAPI binding currently expose this tool's own canonical format only — not a drop-in RDT replacement at that layer yet.
 
 ## Install
 
-`@oxc-react-docgen/napi`, `@oxc-react-docgen/vite-plugin`, and `@oxc-react-docgen/cli` are not yet published to npm — there are no per-platform prebuilt binaries to install today. Until a release ships:
+> Not yet on npm. No prebuilt per-platform binaries exist yet — build from source:
 
 ```bash
 git clone https://github.com/orin-dx/oxc-react-docgen
@@ -22,7 +27,9 @@ pnpm --filter @oxc-react-docgen/napi run build:napi   # builds the native addon 
 pnpm --filter @oxc-react-docgen/vite-plugin build
 ```
 
-`pnpm run build:napi` (not a bare `cargo build`) matters: it invokes `napi build`, which places the compiled addon exactly where `packages/napi/index.js`'s generated loader expects it. This works as a monorepo-local dependency today; there are no published per-platform packages for it to fall back to yet. See [MIGRATING.md](MIGRATING.md) if you're moving off `react-docgen-typescript` and want to know exactly what's compatible today.
+Use `pnpm run build:napi`, not a bare `cargo build` — it invokes `napi build`, which places the compiled addon exactly where `packages/napi/index.js`'s loader expects it.
+
+Migrating off `react-docgen-typescript`? See [MIGRATING.md](MIGRATING.md) for what's compatible today.
 
 ## Vite plugin
 
@@ -56,7 +63,7 @@ docgen.components['Button'].props
 
 ## CLI
 
-The CLI is a single Rust binary (`crates/cli`) — argument parsing, output formatting, and `--format rdt`/`--format storybook` serialization all live there and nowhere else. `@oxc-react-docgen/cli` (once published) is a thin npm wrapper that just execs the platform-appropriate compiled binary; it deliberately contains no reimplementation of CLI behavior, so there's exactly one place that behavior can drift.
+A single Rust binary (`crates/cli`) — argument parsing, output formatting, and `--format rdt`/`--format storybook` serialization all live there. `@oxc-react-docgen/cli` (once published) is a thin npm wrapper that execs the platform-appropriate compiled binary — no reimplemented logic, so there's exactly one place CLI behavior can drift.
 
 ```bash
 # Once published: npx @oxc-react-docgen/cli extract --src src/ --out docgen.json

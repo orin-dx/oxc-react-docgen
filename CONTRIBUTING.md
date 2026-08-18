@@ -20,7 +20,8 @@ cargo clippy -p oxc-react-docgen-core -- -D warnings
 cargo fmt --all
 
 # TypeScript
-pnpm --filter @oxc-react-docgen/vite-plugin test      # 14 vitest tests
+pnpm --filter @oxc-react-docgen/vite-plugin test      # 33 unit tests (mocked NAPI)
+pnpm --filter @oxc-react-docgen/vite-plugin test:integration  # 3 integration tests (real native binding)
 
 # Accuracy comparison (informational — exits 0 regardless of gaps)
 moon run validate:compare

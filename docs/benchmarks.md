@@ -29,7 +29,12 @@ Range (min … max):    44.1 ms …  70.4 ms    (48 runs, hyperfine, 3 warmup)
 
 ### Cold extraction, all three tools under equal footing
 
-react-docgen and react-docgen-typescript can only run inside a Node process — there's no "direct binary" form for them to compare against. So this second number runs **all three** through the same harness (`pnpm exec tsx <script>`, one process per tool, whole corpus per run), which is the fairest apples-to-apples comparison available, at the cost of adding a `proto → pnpm → tsx → Node` startup tax common to all three, plus — specifically for `oxc-react-docgen` — one extra child-process spawn on top of that (the harness shells out to the compiled binary from inside that already-started Node process, since that's how a real consumer's own tooling would call it too):
+react-docgen and react-docgen-typescript can only run inside a Node process — there's no "direct binary" form for them to compare against. This second number runs **all three** through the same harness instead (`pnpm exec tsx <script>`, one process per tool, whole corpus per run) — the fairest apples-to-apples comparison available.
+
+Two costs affect all three equally, plus one extra for us:
+
+- A `proto → pnpm → tsx → Node` startup tax, common to all three tools
+- For `oxc-react-docgen` specifically: one extra child-process spawn on top of that, since the harness shells out to the compiled binary from inside that already-started Node process — the same way a real consumer's tooling would call it
 
 | Tool                      |               Mean |     Min |      Max |     Relative |
 | ------------------------- | -----------------: | ------: | -------: | -----------: |
@@ -39,7 +44,12 @@ react-docgen and react-docgen-typescript can only run inside a Node process — 
 
 (hyperfine, 10 runs each, 2 warmup runs)
 
-**Read this pair of numbers together, not separately.** The first number (50ms) is what actually happens in a real build. The harness-equalized number (2.96s vs 3.39s vs 10.37s) exists only to give react-docgen and react-docgen-typescript a fair shot at the same measurement methodology — most of those ~3 seconds is Node/tsx/pnpm/proto startup cost that has nothing to do with any of the three tools' actual extraction logic. The **3.5× advantage over react-docgen-typescript holds under either framing**; the advantage over react-docgen looks small here only because both numbers are swamped by identical harness overhead — see the per-file numbers below for what's actually happening once that's stripped away.
+**Read this pair of numbers together, not separately:**
+
+- The first number (50ms) is what actually happens in a real build.
+- The harness-equalized number (2.96s vs 3.39s vs 10.37s) exists only to give react-docgen and react-docgen-typescript a fair shot at the same measurement methodology. Most of those ~3 seconds is Node/tsx/pnpm/proto startup cost, unrelated to any tool's actual extraction logic.
+- The **3.5× advantage over react-docgen-typescript holds under either framing**.
+- The advantage over react-docgen looks small here only because both numbers are swamped by identical harness overhead — see the per-file numbers below for what's actually happening once that's stripped away.
 
 ### Per-fixture cold extraction (Rust-internal, criterion)
 
@@ -70,15 +80,26 @@ That's roughly **10-13× faster than this same tool's own cold extraction**, and
 
 ## Output quality
 
-"Coverage: N/M (X%)" was the only quality metric this repo had before this report — a raw prop-count ratio, not a real per-prop match rate, and it didn't account for known, deliberate design differences (see below). This section replaces it with a real per-prop agreement rate and a taxonomy of _why_ props disagree when they do, computed by `apps/validate/src/analyze.ts` from the same three tools' real output on all 21 fixture libraries (`apps/validate/fixtures/`).
+"Coverage: N/M (X%)" was the only quality metric this repo had before this report — a raw prop-count ratio that didn't account for known, deliberate design differences. This section replaces it with a real per-prop agreement rate and a taxonomy of _why_ props disagree, computed by `apps/validate/src/analyze.ts` from all three tools' real output on all 21 fixture libraries.
 
-**Methodology note — how each tool's type string is read:** `react-docgen-typescript` represents union/literal prop types as `{ name: 'enum', value: [...] }` — the real type string comes from `.value`, not `.name` (which is literally the string `"enum"`). `react-docgen` puts real TypeScript type info under `.tsType` (with a `.raw` field carrying the exact original source text), not `.type` (a legacy PropTypes-only field that's absent for TS-typed props). Both comparisons below read the real field on each side.
+**Methodology note — how each tool's type string is read:**
 
-**Reading the aggregate percentage correctly:** a low agreement rate means different things against each comparator, and conflating them is the single easiest way to misread this report. Against RDT, low agreement means _this tool finds fewer props than RDT does_ — a real, directional gap (RDT has a type checker; see the outlier table below). Against react-docgen, low agreement mostly means the reverse — _this tool finds more than react-docgen does_, because react-docgen returns zero props for 45% of comparable components (see below) and everything this tool correctly extracts on top of that shows up as "extra," not as this tool being noisy or over-inclusive. The single percentage can't distinguish "we're missing things" from "the comparator is missing things" — that's why this section leads with the outlier table and the zero-props stat instead of the headline number.
+- `react-docgen-typescript` represents union/literal prop types as `{ name: 'enum', value: [...] }` — the real type string comes from `.value`, not `.name` (literally the string `"enum"`).
+- `react-docgen` puts real TypeScript type info under `.tsType` (with a `.raw` field carrying the exact source text), not `.type` (a legacy PropTypes-only field absent for TS-typed props).
+- Both comparisons below read the real field on each side.
+
+**Reading the aggregate percentage correctly.** A low agreement rate means different things against each comparator — conflating them is the easiest way to misread this report:
+
+- **Against RDT:** low agreement means _this tool finds fewer props than RDT does_ — a real, directional gap (RDT has a type checker; see the outlier table below).
+- **Against react-docgen:** low agreement mostly means the reverse — _this tool finds more than react-docgen does_, because react-docgen returns zero props for 45% of comparable components. Everything this tool correctly extracts on top of that shows up as "extra," not as noise.
+
+The single percentage can't distinguish "we're missing things" from "the comparator is missing things" — that's why each section below leads with the outlier table and the zero-props stat instead of the headline number.
 
 ### Agreement rate vs. react-docgen-typescript
 
-`react-docgen-typescript` always fully expands the real `HTMLAttributes`/`AriaAttributes`/`<Element>HTMLAttributes` interface chain (~250-300 attrs per element) — it has a real type checker to walk that chain. This tool's _default_ is `HtmlAttributeMode::Curated` (~15-20 hand-picked common attrs). Comparing curated-mode output against RDT's always-full output would manufacture a huge fake "missing props" number that's a default-mode mismatch, not a quality gap — so this comparison runs with `--html-attributes full` (this tool structurally resolving the same interface chain RDT does), the fair apples-to-apples setting.
+`react-docgen-typescript` always fully expands the real `HTMLAttributes`/`AriaAttributes`/`<Element>HTMLAttributes` interface chain (~250-300 attrs per element) — it has a real type checker to walk that chain. This tool's _default_ is `HtmlAttributeMode::Curated` (~15-20 hand-picked common attrs).
+
+Comparing curated-mode output against RDT's always-full output would manufacture a huge fake "missing props" number — a default-mode mismatch, not a quality gap. So this comparison runs with `--html-attributes full` instead (this tool structurally resolving the same interface chain RDT does), the fair apples-to-apples setting.
 
 | Metric                                             |     Value |
 | -------------------------------------------------- | --------: |
@@ -90,7 +111,11 @@ That's roughly **10-13× faster than this same tool's own cold extraction**, and
 | Extra in ours                                      |        15 |
 | **Agreement rate**                                 | **16.8%** |
 
-That 16.8% needs immediate context: **it is not evenly distributed, and the missing-props number is 99.1% one root cause.** Of the 2,720 props missing from this tool's output, **2,696 (99.1%) come from just 10 outlier components** (below) — all of them a real, structural gap needing a type checker, not something chosen to omit. The other 24 (0.9%, spread across 12 of the other 23 components) are **100% `ref`/`key`** — React's own reconciliation plumbing, which RDT lists as props and this tool deliberately doesn't. Worth being precise about that one: it's an omission, not a relocation — this tool doesn't surface forwardRef/ref-type metadata anywhere else either (checked `ComponentEntry`'s full field list — no such field exists), so "we chose not to add it" is accurate, but "the same info lives elsewhere" isn't. Excluding those 10 outliers, this tool's real-world agreement with RDT is effectively total (e.g. `antd/Button`: 312 props vs. RDT's 313 — the only difference is `ref`/`key`).
+That 16.8% needs immediate context: **it is not evenly distributed, and the missing-props number is 99.1% one root cause.**
+
+- **2,696 of 2,720 missing props (99.1%) come from just 10 outlier components** (table below) — all a real, structural gap needing a type checker, not something chosen to omit.
+- **The other 24 (0.9%, spread across 12 of the other 23 components) are 100% `ref`/`key`** — React's own reconciliation plumbing, which RDT lists as props and this tool deliberately doesn't. This is an omission, not a relocation: this tool doesn't surface forwardRef/ref-type metadata anywhere else either (checked `ComponentEntry`'s full field list — no such field exists).
+- **Excluding the 10 outliers, agreement with RDT is effectively total** — e.g. `antd/Button`: 312 props vs. RDT's 313, the only difference being `ref`/`key`.
 
 | Component | Ours | RDT | Root cause |
 | --- | --: | --: | --- |
@@ -114,7 +139,7 @@ That 16.8% needs immediate context: **it is not evenly distributed, and the miss
 
 ### Agreement rate vs. react-docgen
 
-`react-docgen` resolves **no** inherited/`extends` props of its own — comparing this tool's HTML-attribute-expanded output against it would manufacture the same kind of fake "extra props" mismatch as above, in reverse. This comparison runs with `--html-attributes none` (own-declared props only on both sides) — the fair setting when the comparator does zero interface-extends resolution.
+`react-docgen` resolves **no** inherited/`extends` props of its own — comparing this tool's HTML-attribute-expanded output against it would manufacture the same kind of fake "extra props" mismatch as above, in reverse. So this comparison runs with `--html-attributes none` (own-declared props only on both sides) — the fair setting when the comparator does zero interface-extends resolution.
 
 | Metric                                      |       Value |
 | ------------------------------------------- | ----------: |
@@ -127,7 +152,9 @@ That 16.8% needs immediate context: **it is not evenly distributed, and the miss
 | Extra in ours                               |         106 |
 | **Agreement rate**                          |   **22.7%** |
 
-The single most important number in this table is **9 of 20 (45%) returning zero props.** `react-docgen` is a Babel-era tool built primarily for `PropTypes`-based components; its native TypeScript support is real but shallow — it frequently can't extract anything at all from an `interface`-typed function component, especially when the props type comes from a separate named interface rather than an inline object literal. A flat per-prop agreement rate is a weak signal when the comparator simply has no opinion on 42% of the corpus — the more honest framing is the coverage claim in the next section.
+The single most important number in this table is **9 of 20 (45%) returning zero props.** `react-docgen` is a Babel-era tool built primarily for `PropTypes`-based components. Its native TypeScript support is real but shallow — it frequently can't extract anything at all from an `interface`-typed function component, especially when the props type comes from a separate named interface rather than an inline object literal.
+
+A flat per-prop agreement rate is a weak signal when the comparator has no opinion on 42% of the corpus — the coverage claim in the next section is the more honest framing.
 
 **Type-diff taxonomy** (61 real mismatches):
 
@@ -146,12 +173,16 @@ The single most important number in this table is **9 of 20 (45%) returning zero
 
 Direct answers to "what information do we have that RDT and react-docgen don't," each backed by a number above or a concrete check run against this corpus, not a claim:
 
-1. **Structured, typed degradation diagnostics.** Running this tool across all 21 fixture libraries produces **82 diagnostics** with typed codes (`UNRESOLVABLE_IMPORT`: 30, `OPAQUE_TYPE`: 29, `INDEXED_ACCESS_OPAQUE`: 19, `DISCRIMINATED_UNION`: 2, `TEMPLATE_LITERAL_OPAQUE`: 2), file/line context, and human-readable help text (e.g. _"Enable typescript-go to resolve indexed access types."_). Neither RDT nor react-docgen tell you _why_ a prop came out wrong or missing — they silently omit it or print a generic parse error. This tool's non-negotiable #6 ("always emit a Diagnostic when degrading, never fail silently," `CLAUDE.md`) makes every gap in the tables above something a consumer's tooling can actually detect and act on, not something they discover by manually diffing output.
-2. **`.d.ts`-only fixtures.** 8 of the 55 fixture files in this corpus (`mui`, `chakra`, `mantine`, `radix`, `react-aria`) are declaration-only — real published library type definitions with no accompanying `.tsx` source. **Neither RDT nor react-docgen can run on these at all** (both need a real component implementation to parse); this tool extracts full prop tables from them today, which is the entire reason it can validate against `node_modules`-vendored third-party types instead of only first-party source.
+1. **Structured, typed degradation diagnostics.** Running this tool across all 21 fixture libraries produces **82 diagnostics** with typed codes (`UNRESOLVABLE_IMPORT`: 30, `OPAQUE_TYPE`: 29, `INDEXED_ACCESS_OPAQUE`: 19, `DISCRIMINATED_UNION`: 2, `TEMPLATE_LITERAL_OPAQUE`: 2), file/line context, and human-readable help text (e.g. _"Enable typescript-go to resolve indexed access types."_).
+   Neither RDT nor react-docgen tell you _why_ a prop came out wrong or missing — they silently omit it or print a generic parse error. This tool's non-negotiable #6 ("always emit a Diagnostic when degrading, never fail silently," `CLAUDE.md`) makes every gap in the tables above something a consumer's tooling can detect and act on, not something discovered by manually diffing output.
+2. **`.d.ts`-only fixtures.** 8 of the 55 fixture files in this corpus (`mui`, `chakra`, `mantine`, `radix`, `react-aria`) are declaration-only — real published library type definitions with no accompanying `.tsx` source.
+   **Neither RDT nor react-docgen can run on these at all** (both need a real component implementation to parse). This tool extracts full prop tables from them today — the reason it can validate against `node_modules`-vendored third-party types, not just first-party source.
 3. **Incremental extraction with a real API** (see the perf section above) — `WatchSession::update_file` for editor/HMR integration. RDT and react-docgen have nothing playing this role; the comparison isn't "we're faster at the same operation," it's "this operation doesn't exist for them."
-4. **Cross-package monorepo import resolution** (`ImportResolutionMap`, barrel/re-export chain following, `extra_paths` workspace aliasing) — RDT resolves within a single `ts.Program`'s file set; getting it to follow a monorepo's package boundaries requires configuring that whole program correctly. This tool's import resolution is a first-class, independently-tested layer (`import_map.rs`, `resolver/import.rs`).
-5. **Machine-consumable structured types**, not stringified type names. This tool's `PropType` is a real tagged union (`union`, `literalUnion`, `array`, `intersection`, `eventHandler`, ...) serialized as JSON — a consumer can programmatically ask "is this a union of string literals" without parsing a type string. RDT and react-docgen both hand back a printed type string (or in react-docgen's case, a partial tagged shape with a `.raw` escape hatch) as the primary representation.
-6. **A `composes` field that actually gets populated.** `ComponentEntry.composes` is react-docgen's own documented mechanism for "these props come from a type we're not flattening — here's its name/expression" — but it existed unused for the type-checker-boundary failures above until this report found and fixed it. `base-ui/MenuTrigger` and all 3 `headlessui/Listbox` components now surface their real unresolvable expression (a mapped type, two conditional types) through `composes` in RDT-format output, instead of silently returning zero props with no trace. This is a stop-gap, not a fix for the underlying gap — 6 of the 10 outlier components (Ariakit, `ark-ui`, `storybook-emotion`, `fluentui`) still show empty `composes`, because their failure happens further upstream (generic-alias substitution not matching the pattern at all) than the one dead end this closed.
+4. **Cross-package monorepo import resolution** (`ImportResolutionMap`, barrel/re-export chain following, `extra_paths` workspace aliasing). RDT resolves within a single `ts.Program`'s file set — following a monorepo's package boundaries means configuring that whole program correctly. This tool's import resolution is a first-class, independently-tested layer (`import_map.rs`, `resolver/import.rs`).
+5. **Machine-consumable structured types**, not stringified type names. This tool's `PropType` is a real tagged union (`union`, `literalUnion`, `array`, `intersection`, `eventHandler`, ...) serialized as JSON — a consumer can programmatically ask "is this a union of string literals" without parsing a type string. RDT and react-docgen both hand back a printed type string (or, for react-docgen, a partial tagged shape with a `.raw` escape hatch) as the primary representation.
+6. **A `composes` field that actually gets populated.** `ComponentEntry.composes` is react-docgen's own documented mechanism for "these props come from a type we're not flattening — here's its name/expression" — but it sat unused for the type-checker-boundary failures above until this report found and fixed it.
+   `base-ui/MenuTrigger` and all 3 `headlessui/Listbox` components now surface their real unresolvable expression (a mapped type, two conditional types) through `composes` in RDT-format output, instead of silently returning zero props with no trace.
+   Not a fix for the underlying gap: 6 of the 10 outlier components (Ariakit, `ark-ui`, `storybook-emotion`, `fluentui`) still show empty `composes` — their failure happens further upstream (generic-alias substitution not matching the pattern at all) than the one dead end this closed.
 
 ---
 
@@ -167,13 +198,6 @@ Confirmed still accurate against current code during this report — see `docs/t
 - **`@emotion/styled`'s two-arg `styled(tag, options)<T>(fn)` overload** (`storybook-emotion/Button` — already `docs/rdt-coverage.md`'s open gap #2). RDT needs a type checker for this too — not a competitive gap.
 - **`styled.X.attrs<T>()` component detection** (`zendesk-garden` — already gap #1). Shared blind spot with RDT.
 - **Same-namespace sibling reference resolution** for select `@types/react` internals (`EventHandler`, `TrustedHTML` — already gap #3; visible in the 30 `UNRESOLVABLE_IMPORT` diagnostics above).
-
-### Already tracked, real but not yet benchmarked (perf, not correctness)
-
-From `docs/STATUS.md`, still accurate:
-
-- `resolver/chain.rs`/`named.rs`/`template.rs` build a `"{file}:{name}"` scoped-key string on every lookup — a `Borrow`-based type-map key would avoid the allocation. Real but unmeasured; do as a focused pass if profiling shows it matters, not preemptively.
-- `cache.rs`'s DTS cache has no dirty-flag and no size cap — rewrites the whole cache file every run, unbounded growth. Low severity (requires local write access already).
 
 ---
 

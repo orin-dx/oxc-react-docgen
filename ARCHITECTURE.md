@@ -177,7 +177,7 @@ Component props and enums are serialized as `BTreeMap<String, …>` rather than 
 | Feature | Status |
 | --- | --- |
 | Preset system (`@oxc-react-docgen/presets`) | Designed; no Rust changes needed — config-side only. |
-| LSP server | `lsp-types` dep present; nothing implemented. |
+| LSP server | Protocol layer implemented (`initialize`/`shutdown`, frame parsing) — `textDocument/hover`, the actual prop-lookup handler, isn't wired up yet. |
 | Conditional types (`T extends U ? X : Y`) | Emitted as `opaque` — needs a real type checker, see `docs/type-checker-integration.md`. |
 | Mapped types with computed keys | Emitted as `opaque`. |
 

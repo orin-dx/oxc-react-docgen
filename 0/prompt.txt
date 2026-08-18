@@ -324,3 +324,7 @@ Is everything done now?
 Let's make sure our docs that are user-facing are friendly, readable and scannable. That we're not overly wordy or have walls of text and that we leverage sections, bullets, diagrams where appropriate to make it more redable and scanable.
 
   We want the docs to be devoid of AI slop, word salad and filler words please.
+
+---
+
+Let's commit the docs yes?

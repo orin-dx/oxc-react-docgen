@@ -1,5 +1,7 @@
 # Contributing
 
+By participating in this project, you agree to abide by the [Code of Conduct](./CODE_OF_CONDUCT.md). Found a security issue? See [SECURITY.md](./SECURITY.md) instead of opening a public issue.
+
 ## Prerequisites
 
 | Tool  | Min version | Notes                                         |

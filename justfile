@@ -13,9 +13,16 @@ install:
     pnpm install
     cargo fetch
 
-# Build all projects
+# Build all projects. Rust crates build via one workspace-wide cargo
+# invocation, not `moon run :build` — that fans out one `cargo build -p`
+# per crate, and every one of those processes contends for the same
+# target/ file lock, serializing what moon's own scheduler thinks is
+# parallel work (confirmed via `Blocking waiting for file lock` in verbose
+# output). napi/vite-plugin have no such lock to contend over, so moon
+# still orchestrates those directly.
 build:
-    moon run :build
+    cargo build --workspace --exclude oxc-react-docgen-napi
+    moon run napi:build vite-plugin:build
     cargo build --release
 
 # Run Rust unit tests (via nextest)

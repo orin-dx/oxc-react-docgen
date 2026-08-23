@@ -120,6 +120,21 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
       - run: cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked
+      # nextest doesn't run doctests — paired with a plain `cargo test --doc`.
+      - run: cargo test --doc --workspace --exclude oxc-react-docgen-napi
+
+  hygiene:
+    name: Hygiene (doc-check · unused deps)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --exclude oxc-react-docgen-napi
+      - uses: taiki-e/install-action@cargo-machete
+      - run: cargo machete
 
   deny:
     name: Deny (licenses · advisories · bans)

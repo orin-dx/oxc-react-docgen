@@ -10,7 +10,7 @@ name = "oxc-react-docgen"
 path = "src/main.rs"
 
 [dependencies]
-oxc-react-docgen-core = { path = "../core" }
+oxc-react-docgen-core = { path = "../core", version = "0.1.0" }
 clap.workspace            = true
 clap_complete.workspace   = true
 clap_mangen.workspace     = true

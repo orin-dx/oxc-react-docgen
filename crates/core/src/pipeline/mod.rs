@@ -57,9 +57,9 @@ pub enum HtmlAttributeMode {
     /// disabled, aria-*, etc.) — the default. Matches RDT's shape for consumers
     /// that filter node_modules-sourced props, just with a smaller, hand-picked set.
     Curated,
-    /// Actually resolve @types/react's real HTMLAttributes/AriaAttributes/
-    /// DOMAttributes/<Element>HTMLAttributes interface chain, matching RDT's full
-    /// ~250-300 attributes per element.
+    /// Actually resolve `@types/react`'s real `HTMLAttributes`/`AriaAttributes`/
+    /// `DOMAttributes`/`<Element>HTMLAttributes` interface chain, matching RDT's
+    /// full ~250-300 attributes per element.
     Full,
     /// Don't synthesize any inherited HTML attributes at all — own props only.
     None,

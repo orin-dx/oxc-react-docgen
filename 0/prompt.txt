@@ -1,0 +1,565 @@
+All done?
+
+---
+
+Have we implemented everything we originally set out to do???
+
+---
+
+Let’s tackle what is done and look for quality fixes and improvements. Perf gains, bugs and gaps
+
+---
+
+What else should we tackle?
+
+---
+
+What is still valid from earlier? Check and verify so we can address as appropriate
+
+---
+
+I think 2 and 4
+
+---
+
+<task-notification>
+<task-id>a54d09e3b274e18b2</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c2e627b7-dced-422f-8477-6a94b0b84862/tasks/a54d09e3b274e18b2.output</output-file>
+<status>completed</status>
+<summary>Agent "Map packages/vite-plugin structure and test coverage" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Confirmed: 18 tests. Now I have everything needed for the report.
+
+## Architecture Summary
+
+**Package:** `@oxc-react-docgen/vite-plugin` (`/Users/gabe/Projects/oxc-react-codegen/packages/vite-plugin`)
+
+**Files (excluding node_modules/dist):**
+- `src/index.ts` (165 lines) — the entire plugin implementation, single file, no other source modules
+- `tests/unit/plugin.test.ts` (214 lines, 18 tests) — only test file that exists
+- `package.json`, `tsconfig.json`, `vitest.config.ts`, `moon.yml` — build/config plumbing, no logic
+
+There is **no `README.md`** for this package, and **no `tests/integration/` directory** despite one being specified in the archived spec (see gap list below).
+
+### How it hooks into Vite (`src/index.ts:15-165`)
+
+`oxcReactDocgen(options)` returns a single `Plugin` object (not `Plugin[]`) with a closure holding mutable state: `sessionId`, `root`, `command`, `resolvedSrcDirs`, `currentOutput` (the in-memory `ExtractionOutput`, seeded with a zero-value placeholder), and `initPromise`.
+
+Hook sequence and responsibilities:
+- **`configResolved(config)`** (`src/index.ts:70-74`) — captures `root`/`command`, resolves `srcDirs` to absolute paths (`root + '/' + dir` unless already absolute), and calls `napi.createSession(napiOptions())` synchronously to get `sessionId`. No try/catch here.
+- **`buildStart()`** (`src/index.ts:77-84`) — build-mode-only cold extraction. Guards on `command !== 'build'` and returns early otherwise. Calls `coldExtract()` inside try/catch, logs on failure via `console.error`. Added later (commit `62ff336`) specifically because Vite never calls `configureServer` during `vite build`, so without this the virtual module always resolved to the empty placeholder in production builds.
+- **`configureServer(server)`** (`src/index.ts:86-112`) — dev-mode cold extraction. Fires `coldExtract()` fire-and-forget (`.then()/.catch()` chain, deliberately not `await`ed since `configureServer` must return its teardown function synchronously — documented at `src/index.ts:90-93`). On success, sends an `oxc-react-docgen:ready` HMR event via `server.environments.client.hot.send`. Returns a teardown closure that calls `napi.closeSession(sessionId)` — added in commit `49b12c6` to fix a dev-server session leak (comment: "`buildEnd` isn't called in dev mode — this is the only reliable cleanup hook", `src/index.ts:108`).
+- **`hotUpdate(opts)`** (`src/index.ts:114-150`) — per-file-change HMR hook. Reads `(this as any).environment`, bails if absent or `env.name !== 'client'` (skips SSR). Bails if `!isSrcFile(opts.file)`. Awaits `initPromise` if set (so incremental calls queue behind the in-flight cold extraction). Calls `napi.extractFileIncremental(file, sessionId, napiOptions())`, parses the JSON result (with a try/catch fallback that logs and sends an empty update on parse failure), merges `updatedComponents` into `currentOutput.components` by `displayName` key, and sends `oxc-react-docgen:update` over HMR. Explicitly returns `undefined` (not `[]`) so Vite/React Fast Refresh still processes the file — documented at `src/index.ts:148-149`.
+- **`resolveId`/`load`** (`src/index.ts:152-159`) — implements a `virtual:oxc-react-docgen` module (`\0`-prefixed per Vite convention) that serializes `currentOutput` as `export default {...}`.
+- **`buildEnd()`** (`src/index.ts:161-163`) — closes the NAPI session; this is the build-mode cleanup counterpart to `configureServer`'s teardown.
+
+`isSrcFile(file)` (`src/index.ts:63-65`): `(file.endsWith('.tsx') || file.endsWith('.ts')) &amp;&amp; resolvedSrcDirs.some(dir =&gt; file.startsWith(`${dir}/`))`.
+
+### NAPI boundary contract (from `packages/napi/binding.d.ts`, `packages/napi/index.d.ts`, and the Rust-side semantic-model doc at `.claude/semantic-model/napi-binding.md`)
+
+The plugin calls exactly 4 of the 5 NAPI entry points (never `extractAll`, which is the CLI's cold one-shot path):
+- `createSession(options) -&gt; number` — sync
+- `initializeSession(sessionId, options) -&gt; Promise&lt;string&gt;` (JSON of `ExtractionOutput`)
+- `extractFileIncremental(filePath, sessionId, options) -&gt; Promise&lt;string&gt;` (JSON of `IncrementalUpdate`)
+- `closeSession(sessionId) -&gt; void` — sync
+
+Per the Rust-side doc, all five entry points are wrapped in `contain_panic` (ADR 0005) so a Rust panic can never crash the host Node process — it always surfaces as a rejected promise / thrown `napi::Error`. This means the plugin's `napi.*` calls *can* legitimately reject/throw for real reasons (bad `reactVersion`, malformed `extraPathsJson`/`knownTypeOverridesJson`, a genuine internal panic converted to an error) — not just theoretical concerns.
+
+## Existing Tests — Full List (18 tests, `tests/unit/plugin.test.ts`)
+
+All tests mock `@oxc-react-docgen/napi` entirely via `vi.mock` (`plugin.test.ts:4-31`); no native binary is loaded (`vitest.config.ts` uses `pool: 'threads'`, which the plan doc explicitly notes is only safe because of this mocking).
+
+**`resolveId` (2)**
+1. `resolves the virtual module id` — `resolveId('virtual:oxc-react-docgen')` returns `\0virtual:oxc-react-docgen`.
+2. `returns undefined for unrelated ids` — checks `'react'` and `'./Button.tsx'` both return `undefined`.
+
+**`load` (2)**
+3. `returns a JS module for the resolved virtual id` — asserts output starts with `export default {` and that `JSON.parse`d result has a `components` key.
+4. `returns undefined for other ids` — checks `\0other` and the un-resolved `virtual:oxc-react-docgen` id both return `undefined`.
+
+**`configResolved` (1)**
+5. `creates a NAPI session with resolved absolute src dirs` — asserts `napi.createSession` called with `srcDirs: ['/project/src']` given `root: '/project'`, `srcDirs: ['src']`.
+
+**`configureServer` (1)**
+6. `calls initializeSession with the session id and resolved options` — invokes `configureServer` with a mock server exposing `environments.client.hot.send`, waits for the mocked `initializeSession` call via `vi.waitUntil`, and asserts it was called with `(42, { srcDirs: ['/project/src'] })`.
+
+**`hotUpdate` (7)**
+7. `calls extractFileIncremental for tsx files in srcDirs` — client env, `/project/src/Button.tsx` → asserts call args `(file, 42, { srcDirs: [...] })`.
+8. `sends oxc-react-docgen:update over HMR` — asserts `hot.send` called with event name and `objectContaining({ file })`.
+9. `returns undefined so React Fast Refresh still processes the file` — asserts the hook's return value is `undefined`.
+10. `skips SSR and other non-client environments` — `env.name = 'ssr'` → `extractFileIncremental` not called.
+11. `skips files outside srcDirs` — `/project/node_modules/react/index.js` → not called.
+12. `skips non-ts/tsx files inside srcDirs` — `/project/src/styles.css` → not called.
+13. `skips files in a sibling directory that shares the srcDir prefix` — `/project/src-generated/Button.tsx` → not called (regression test for the `isSrcFile` prefix-collision bug fixed in commit `49b12c6`, `startsWith(dir)` → `startsWith(`${dir}/`)`).
+
+**`buildEnd` (1)**
+14. `closes the NAPI session` — asserts `napi.closeSession` called with `42`.
+
+**`buildStart` (2)**
+15. `runs cold extraction when the command is "build"` — sets `command: 'build'`, asserts `initializeSession` called and the virtual module now serializes real data.
+16. `does not run cold extraction when the command is "serve"` — asserts `initializeSession` not called (relies on `configureServer` instead).
+
+**`skipHtmlProps` (2)**
+17. `maps to htmlAttributes: "none" for the NAPI call` — `skipHtmlProps: true` → `createSession` called with `htmlAttributes: 'none'`.
+18. `leaves htmlAttributes unset when skipHtmlProps is not passed` — asserts `htmlAttributes: undefined`.
+
+## Package Configuration / Contract Sources
+
+- **`package.json`** (`packages/vite-plugin/package.json`): `"test": "vitest run"`, `"build": "tsc"`. `peerDependencies.vite: "^7.0.0 || ^8.0.0"`. `dependencies: { "@oxc-react-docgen/napi": "workspace:*" }`. No lint script of its own (lint is presumably driven from workspace root via oxlint, per `git log` commit `7730b76`).
+- **`vitest.config.ts`**: `pool: 'threads'`, `include: ['tests/unit/**/*.test.ts']` — only picks up the unit dir; nothing else configured (no coverage thresholds, no globals).
+- **`moon.yml`**: `build` and `test` tasks with input globs; `test` does **not** declare a dependency on `build` (this was deliberately removed from the original plan — commit `49b12c6` "moon wiring" fix — the archived plan at `docs/archive/2026-06-16-phase-5a-vite-plugin.md:864-865` originally had `deps: ['~:build']` on the test task, which was dropped).
+- **`docs/STATUS.md:5,9`**: asserts "Vite plugin all work and are fully tested" and lists "18 vitest" tests as part of "all green" — this is the closest thing to a current top-level contract statement, and it's a stronger claim ("fully tested") than the actual coverage supports (see gaps below).
+- **Archived spec `docs/archive/10-PLUGIN-SPEC.md`** (marked "Status: Not started", now stale/superseded by the real implementation) is nonetheless useful as the *intended* contract: it explicitly calls for a **Layer 2 integration test tier** at `packages/vite-plugin/tests/integration/`, gated by a `NAPI_BINARY_AVAILABLE` env var, using `pool: 'forks'` "required — native `.node` binary cannot load in worker threads" (`docs/archive/10-PLUGIN-SPEC.md:181-186`). **This tier was never built** — confirmed by the file listing (only `tests/unit/` exists) and by `vitest.config.ts`'s `include` glob only matching `tests/unit/**`.
+- **CI (`.github/workflows/ci.yml:220`)** runs `pnpm --filter @oxc-react-docgen/vite-plugin test` (unit only) and separately (`:244-262`) builds and packs the plugin to verify it's installable — no dev-server or build-mode smoke test against a real Vite instance with the real native binary.
+
+## Prioritized Gaps / Risks (grounded in source, with citations)
+
+**P1 — Dev-server session-leak regression has zero test coverage**
+`configureServer`'s returned teardown function (`src/index.ts:109-111`, `napi.closeSession(sessionId)`) exists specifically because of a real bug fixed in commit `49b12c6` ("session leak"). None of the 18 tests invoke the function that `configureServer` returns — test #6 (`configureServer` describe block, `plugin.test.ts:86-98`) only asserts `initializeSession` was called; it never captures or calls the returned teardown. A regression here (e.g., someone refactors `configureServer` and forgets to return the teardown, or breaks the closure over `sessionId`) would not be caught by the suite.
+
+**P1 — `hotUpdate`'s malformed-JSON fallback path is untested**
+`src/index.ts:130-136`: if `napi.extractFileIncremental` resolves to unparsable JSON, the code catches it, logs via `console.error`, and sends `oxc-react-docgen:update` with `updatedComponents: []` and `diagnostics: []` — a real fallback contract (clients should still receive *an* event rather than an unhandled rejection). No test mocks `extractFileIncremental` to return bad JSON and asserts this fallback fires. Same class of gap for `coldExtract`'s JSON.parse failure (`src/index.ts:54-60`, returns `false` and logs) — no test drives `initializeSession` to resolve with malformed JSON.
+
+**P1 — `initPromise` gating (the queue/replay race-guard) is never actually exercised as a race**
+`src/index.ts:126`, `if (initPromise) await initPromise` — this is the mechanism described in the archived spec (`docs/archive/10-PLUGIN-SPEC.md:168`, "If `configureServer` is called before `initializeSession` resolves ... the `hotUpdate` handler queues updates and replays them") as the fix for a real ordering hazard: a file-change event arriving while cold extraction is still in flight. Every current `hotUpdate` test calls `hotUpdate` directly without ever calling `configureServer` first, so `initPromise` is always `null` in every test (`plugin.test.ts:39-44` `beforeEach` only calls `configResolved`, never `configureServer`) — the `await initPromise` branch's actual blocking behavior (does a `hotUpdate` call really wait for a pending cold extraction rather than racing it?) is not verified anywhere.
+
+**P2 — Uncaught/unguarded `napi.createSession` throw in `configResolved`**
+`src/index.ts:73`, `sessionId = napi.createSession(napiOptions())` is unguarded by try/catch, unlike `buildStart`/`configureServer` which both wrap their NAPI calls. Per the Rust-side contract (`.claude/semantic-model/napi-binding.md`, Invariant 2), `createSession`/the underlying `TryFrom&lt;JsExtractOptions&gt;` conversion can legitimately reject on a bad `reactVersion` value reaching the boundary (e.g. via a `reactVersion` value that bypasses the TS union type through an `as any` cast, or a future option that gains validation). A throw here happens synchronously inside `configResolved`, with no catch/log anywhere in the plugin — behavior on this path (does Vite's config-resolution abort cleanly, what message does the user see) is completely unexercised by any test.
+
+**P2 — Trailing-slash / already-slash-terminated `srcDirs` produces a double-slash prefix that silently excludes all files**
+`src/index.ts:72`, `resolvedSrcDirs = options.srcDirs.map((d) =&gt; (d.startsWith('/') ? d : `${root}/${d}`))`, combined with `isSrcFile`'s `file.startsWith(`${dir}/`)` check (`src/index.ts:64`). If a caller passes `srcDirs: ['src/']` (trailing slash) or an absolute dir already ending in `/`, the resolved dir keeps its trailing slash, and the `isSrcFile` check then tests for a *double* slash (`.../src//`) which no real file path will ever match — every file under that srcDir would be silently skipped by `hotUpdate` with no error or log. This is inferred directly from the string-concatenation logic, not from a runtime observation, but no test exercises a trailing-slash `srcDirs` entry either way, so this either is a real bug or is an untested-but-intentional footgun — either way it's unverified.
+
+**P2 — No integration-tier tests against a real Vite dev server / real NAPI binary**
+Confirmed by direct file listing: only `tests/unit/plugin.test.ts` exists; `tests/integration/` (called for in `docs/archive/10-PLUGIN-SPEC.md:181-186`, gated by `NAPI_BINARY_AVAILABLE`, `pool: 'forks'`) was never implemented. Everything the unit suite verifies is really "the plugin calls the mocked NAPI functions with the right arguments and wires their (mocked) return values to the right Vite hook outputs" — it says nothing about whether the actual generated `.node` binary's real JSON shapes match what the plugin expects, whether a real Vite `HotUpdateOptions`/`ViteDevServer` shape matches the plugin's assumptions (e.g. the `(this as any).environment` cast at `src/index.ts:119`, or `(server as any).environments?.client?.hot?.send` at `src/index.ts:99` — both defensive casts specifically because the real Vite API surface across 6/7/8 patch versions isn't type-checked here), or whether the plugin behaves correctly through a real HMR file-save cycle. `docs/STATUS.md:5`'s "fully tested" claim is not supported by what actually exists on disk.
+
+**P3 — Concurrent/out-of-order `hotUpdate` calls for the same file are not addressed or tested**
+`src/index.ts:138-139`, `for (const comp of update.updatedComponents) { currentOutput.components[comp.displayName] = comp }` — there is no sequencing/versioning guard. If Vite fires `hotUpdate` twice in quick succession for the same file (e.g., an editor auto-save plus a formatter re-save, or a git checkout touching many files), and the two `extractFileIncremental` calls resolve out of order, the *older* result could overwrite the newer one in `currentOutput.components`, and the correspondingly stale `oxc-react-docgen:update` HMR payload would be sent after the fresher one. No stats/timestamp/sequence check exists to detect or prevent this, and no test constructs two overlapping `hotUpdate` calls to check ordering.
+
+**P3 — `.d.ts` files match `isSrcFile`'s `.ts` suffix check with unclear intent**
+`src/index.ts:64`, `file.endsWith('.tsx') || file.endsWith('.ts')` — a changed `foo.d.ts` file also ends in `.ts`, so if it's inside `srcDirs` it will trigger a full `extractFileIncremental` call treating the declaration file as an extraction target. There's no test (or comment) establishing whether this is intended (ambient types affecting prop resolution) or an oversight; either way it's unverified behavior.
+
+**P3 — `buildEnd`/`configureServer`-teardown interplay under `vite build --watch` is unaddressed**
+The comment at `src/index.ts:108` states "`buildEnd` isn't called in dev mode — this is the only reliable cleanup hook," implying the two cleanup paths (`configureServer` teardown for serve, `buildEnd` for build) are mutually exclusive. `vite build --watch` is a build-mode long-running watch process where Vite's own hook-calling semantics around repeated `buildEnd` invocations aren't verified against this plugin's single-session-per-`configResolved` model (`sessionId` is set once in `configResolved`, and `buildEnd` unconditionally calls `closeSession(sessionId)` — a second rebuild in watch mode would call `buildEnd` again against an already-closed or newly-needed session). No test or comment covers this mode.
+
+**P4 — Options forwarding beyond `srcDirs`/`htmlAttributes` is largely unasserted**
+Tests consistently use `expect.objectContaining({ srcDirs: [...] })` (e.g. `plugin.test.ts:80,96,122,187`) or `htmlAttributes` alone; `exclude` and `reactVersion` are declared in `OxcDocgenOptions` and threaded through `napiOptions()` (`src/index.ts:39-46`) but no test ever passes non-default `exclude`/`reactVersion` values and asserts they reach the NAPI call. Low risk (simple pass-through) but literally unverified.</result>
+<usage><subagent_tokens>77157</subagent_tokens><tool_uses>31</tool_uses><duration_ms>198882</duration_ms></usage>
+</task-notification>
+
+---
+
+Can we tackle all of them comprehensively, semantically and across models properly?
+
+---
+
+Is this ready for a release? All features implemented?
+
+---
+
+Check whether the release-readiness research agent has completed; if so, synthesize its findings with what I already verified (full green test suite, clippy/fmt clean, all packages at consistent 0.1.0, no prior release tags, edge-cases.md fully closed except 3 explicitly-documented and accepted RDT-parity gaps) into a definitive answer for the user's "is this ready for a release?" question.
+
+---
+
+<task-notification>
+<task-id>a1d049ae3ee86ca58</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c2e627b7-dced-422f-8477-6a94b0b84862/tasks/a1d049ae3ee86ca58.output</output-file>
+<status>completed</status>
+<summary>Agent "Release-readiness mechanics sweep" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result># Release-Readiness Research Report — oxc-react-docgen
+
+Scope: `/Users/gabe/Projects/oxc-react-codegen`. All findings below are sourced from the working tree as of the current `main` branch (HEAD `acf3009`, most recent commit dated 2026-08-13). No files were modified.
+
+---
+
+## 1. Version numbers
+
+| Location | Version | Notes |
+|---|---|---|
+| `Cargo.toml:10` (`[workspace.package]`) | `0.1.0` | shared by all 3 crates via `version.workspace = true` |
+| `crates/core/Cargo.toml:4` | `version.workspace = true` → `0.1.0` | |
+| `crates/cli/Cargo.toml:4` | `version.workspace = true` → `0.1.0` | |
+| `crates/binding/Cargo.toml:3` | `version.workspace = true` → `0.1.0` | |
+| `packages/napi/package.json:3` | `0.1.0` | optionalDependencies on `@oxc-react-docgen/napi-{darwin-arm64,darwin-x64,linux-x64-gnu,win32-x64-msvc,linux-arm64-gnu}` also pinned to `0.1.0` (`packages/napi/package.json:26-30`), and each platform sub-package under `packages/napi/npm/*/package.json` is independently hand-set to `0.1.0` (e.g. `packages/napi/npm/darwin-arm64/package.json:3`) |
+| `packages/cli/package.json:3` | `0.1.0` | same pattern — 5 platform sub-packages under `packages/cli/npm/*/package.json` each independently `0.1.0` |
+| `packages/vite-plugin/package.json:3` | `0.1.0` | |
+| `package.json:3` (root) | `0.0.0`, `"private": true` (`package.json:4`) | not a publishable package, intentionally excluded |
+
+**Consistency:** All 8 publishable units (3 crates + `napi`, `cli`, `vite-plugin` + 10 per-platform sub-packages) are consistently at **`0.1.0`** — clearly pre-1.0. No version has drifted from any other.
+
+**Version-bump tooling:** None found. No `changeset` config (`grep -rn "changesets"` across `*.json`/`*.toml`/`*.yml` returned nothing; no `.changeset/` directory), no `release-please` manifest/config, no `cargo-release` config (`release.toml` absent). Versions across the ~13 files above are being kept in sync by hand — there's no single source of truth or automated propagation mechanism found anywhere in the repo. The only release-adjacent artifact is `.github/workflows/release.yml`, a manual `workflow_dispatch` GitHub Action (see §6) — it publishes whatever version is already hardcoded in each `package.json`, it does not bump anything.
+
+---
+
+## 2. Changelog
+
+No `CHANGELOG.md` exists anywhere in the repo (`find . -iname "CHANGELOG*"` returns zero hits at root or in any package), and `git log --all -- '**/CHANGELOG.md'` shows one never existed in this repo's history. Given 203 commits since the `2026-06-13` scaffold commit and heavy use of conventional-commit prefixes (`feat:`, `fix:`, `perf:`, per `CONTRIBUTING.md:74-89`), a changelog could be generated from history, but nothing does so today. This isn't "stale," it's simply absent.
+
+---
+
+## 3. README
+
+Root `README.md` exists (`README.md`, 151 lines) and is unusually candid for a pre-release repo — it explicitly states packages are **not yet published** and that the Vite plugin/NAPI binding are **not** RDT-drop-in-compatible at that layer:
+
+- `README.md:5`: `&gt; **Status:** Core extraction, NAPI bindings, Vite plugin, CLI, and docgen.config.ts loading are complete.`
+- `README.md:11`: "The Vite plugin and NAPI binding currently expose this tool's own canonical format only — not a drop-in RDT replacement at that layer yet."
+- `README.md:15`: "`@oxc-react-docgen/napi`, `@oxc-react-docgen/vite-plugin`, and `@oxc-react-docgen/cli` are not yet published to npm..."
+- `README.md:59-62,62`: CLI section explicitly labels the npx wrapper as "(once published)" and instructs `# From source today: ./target/release/oxc-react-docgen`.
+
+This self-honesty is a positive signal, but one concrete factual claim is stale relative to the repo's own current benchmark doc:
+
+**Stale performance number.** `README.md:9` claims: *"cold extraction on a 15-component fixture set (shadcn, MUI, Chakra, Mantine, React Aria, Radix) takes **32ms**."* This exact wording (and number) also appears verbatim in `docs/adr/0001-oxc-over-typescript-compiler.md:11` and `docs/adr/README.md:45`, both dated 2026-07-22. But `docs/benchmarks.md` (dated 2026-07-25, `docs/benchmarks.md:5`) — the repo's own current benchmark source of truth — reports a materially different, more current number for the *full* fixture corpus: **50.5 ms ± 5.4 ms across all 21 fixture libraries** (`docs/benchmarks.md:24-26`), not 32ms across 6 libraries. The fixture set has grown from 6 libraries (named in the README) to 21 (`fixtures/` now has 21 library directories plus `rdt-compat/` — confirmed via `ls fixtures/`) without the README's headline number being refreshed. Not necessarily wrong (a 6-library subset could plausibly still be ~32ms), but it's an ADR-era number reused in marketing copy rather than sourced from the current benchmark doc, and the fixture-count context it cites is out of date.
+
+**Internal doc contradiction on LSP status** (cross-referenced per your instruction to check `docs/STATUS.md`): `docs/STATUS.md:5` claims *"...LSP server scaffold...are all fully implemented and verified."* But:
+- `ARCHITECTURE.md:180` states in its "What is not yet implemented" table: `| LSP server | lsp-types dep present; nothing implemented. |`
+- `Cargo.toml:53` carries the dependency comment: `# LSP (Tier 4 scaffold — not implemented)`
+- Actual code (`crates/cli/src/commands/lsp.rs`, 295 lines, module doc at line 1: `//! LSP ... command scaffold`) **does** implement a real Content-Length-framed JSON-RPC read loop handling `initialize`/`shutdown`/`exit` with 9 passing unit tests plus a separate 183-line integration test (`crates/cli/tests/lsp_process.rs`) — more than "nothing," but it explicitly does not implement `textDocument/hover` (`crates/cli/src/commands/lsp.rs:64-68`: `"hoverProvider": false` with a comment explaining no handler exists). 
+
+So three docs (`ARCHITECTURE.md`, `Cargo.toml` comment, `docs/STATUS.md`) disagree with each other about LSP completeness, and none of the three precisely matches what the code does (a working handshake/shutdown loop with zero actual language-server features). This is a genuine documentation-consistency gap worth resolving before release messaging references LSP support either way.
+
+**Cross-check against `docs/rdt-coverage.md`:** the README's "Supported patterns" table (`README.md:115-129`) and output-shape example (`README.md:83-113`) are consistent with what `docs/rdt-coverage.md` documents as covered (forwardRef, HOC-wrapped, intersections, `Omit`/`Pick`, `VariantProps`, discriminated unions, JSDoc tags, etc. — `docs/rdt-coverage.md:91-100` and surrounding tables) — no false claims found there. `MIGRATING.md:48` says the validation harness covers "currently 15" libraries, which is stale in the same direction as the README's 32ms claim — `docs/STATUS.md:11` lists 20.
+
+---
+
+## 4. Incomplete-work markers (TODO/FIXME/XXX/HACK/`unimplemented!()`/`todo!()`/"not yet implemented"/"coming soon")
+
+**Zero hits inside `crates/` or `packages/` live source** for any of these markers (`grep -rn -E "TODO|FIXME|XXX|HACK|unimplemented!\(|todo!\(|not yet implemented|coming soon" crates/ packages/` — no matches, excluding `node_modules`/`dist`). This is a strong positive signal for release-readiness on this specific axis.
+
+All hits found across the whole repo fall into two non-blocking categories:
+
+**A. `docs/archive/` — explicitly historical, not current** (self-documented as such: `docs/STATUS.md:36` says the archive is "historical, not current, kept for reference"):
+- `docs/archive/00-MASTER-PLAN.md:75` — "No Tier 4 / Corsa / tsgo implementation — out of scope, add TODO comments only"
+- `docs/archive/2026-07-07-adversarial-analysis-fixes.md:263,269` — describes a since-fixed `try_load_config` stub (config loading is now confirmed implemented per `docs/STATUS.md:5`)
+- `docs/archive/01-PHASE0-REPO-SETUP.md:259` — `println!("oxc-react-docgen CLI — coming soon");` (pre-scaffold placeholder from phase-0 planning, long superseded)
+- `docs/archive/08-OPEN-QUESTIONS.md:13,108` — planning-era TODOs, including a reference to `WatchSession::update_file` once being `todo!()` (watch mode is now claimed complete per `docs/STATUS.md:5`)
+- `docs/archive/07-AGENT-DISPATCH.md:149,197` — agent-dispatch prompts from planning phase, mention Tier-4/Corsa and a hypothetical `rolldown-plugin` package that doesn't exist in the current tree
+- `docs/archive/04-PHASE2B2C-3A3B.md:277,1031` — planning-doc code sketches (`None // TODO: implement lookup`, `todo!("implement incremental update")`) — not live code
+
+**B. `fixtures/` — third-party library source used as test input, not this project's code:**
+- `fixtures/headlessui/Listbox.tsx:305` and `fixtures/headlessui/render.tsx:77` — TODOs are Headless UI's own upstream comments, copied in as a real-world fixture
+- `fixtures/rdt-compat/pick-source.tsx:16` — this one **is** project-authored (a fixture built to document a real, current limitation): *"Pick&lt;&gt; unwrapping is not yet implemented"* for `Pick&lt;T, Keys&gt;` when `T` is a library type outside the source graph. This is a documented, intentional gap (also referenced in the resolver's known-gaps tracking), not a stray TODO — it's a fixture whose whole purpose is to pin down and regression-test a known limitation.
+
+**Other markers checked and found benign:** the word "stub" appears in `crates/core/src/pipeline/mod.rs:420,432` and `crates/core/src/pipeline/watch.rs:255,267` — in both cases it's a local variable name for a deliberately-empty `ComponentEntry` returned alongside a `Diagnostic` when `panic_guard::contain_panic` catches a panic mid-resolve (verified by reading the surrounding code) — this is intentional defensive/fault-containment code, not unfinished work. "placeholder" hits are either snapshot-test fixture data (a `placeholder` HTML prop) or comments describing *why* a value is a legitimate generic placeholder, not incomplete code.
+
+**Net assessment for §4:** no blocking stubs, no `unimplemented!()`/`todo!()` calls, and no "coming soon" language exist in any currently-shipping code path. The one real, documented gap (`Pick&lt;&gt;` over library types) is already tracked as a known limitation with its own fixture and cross-referenced in `docs/rdt-coverage.md`, not a silent gap.
+
+---
+
+## 5. Publish config
+
+**Cargo crates** — none of the three crates set `publish = false` (`grep -n "publish" Cargo.toml crates/*/Cargo.toml` → no matches at all), so all three default to publishable.
+
+- **License:** all three inherit `license.workspace = true` → `"AGPL-3.0-or-later"` (`Cargo.toml:14`, `crates/core/Cargo.toml:6`, `crates/cli/Cargo.toml:6`, `crates/binding/Cargo.toml:5`). Matches the root `LICENSE` file, which is the unmodified GNU AGPL-3.0 text (`LICENSE:1-4`).
+- **Description:** `crates/core/Cargo.toml:3` and `crates/cli/Cargo.toml:3` have one. **`crates/binding/Cargo.toml` has no `description` field at all** — crates.io requires a description to publish, so this crate as currently written cannot be published to crates.io without adding one.
+- **Repository/homepage:** **no crate** — not the workspace (`Cargo.toml`), not `core`, `cli`, or `binding` — sets a `repository` or `homepage` field. `git remote -v` shows a real (non-placeholder) origin, `git@github.com:orin-dx/oxc-react-docgen.git`, matching the clone URL in `README.md:18`, but this URL isn't propagated into any `Cargo.toml`.
+- **Path-dependency version gap (likely publish blocker, not independently verified by an actual `cargo publish --dry-run` in this read-only audit):** `crates/cli/Cargo.toml:13` and `crates/binding/Cargo.toml:11` both depend on core via a bare path with no `version` key: `oxc-react-docgen-core = { path = "../core" }`. Cargo requires path dependencies to also carry a `version` field to be packageable/publishable (since the path is stripped at publish time and the registry needs a version to resolve against) — as written, this manifest shape does not meet that requirement for `crates/cli` and `crates/binding`.
+
+**npm packages:**
+- `packages/napi/package.json`, `packages/cli/package.json`, `packages/vite-plugin/package.json` — none has `"private": true`, consistent with intent to publish. All three have `license`, `description` (`packages/napi/package.json:3-4`, `packages/cli/package.json:3-4`, `packages/vite-plugin/package.json:3-4`) matching AGPL-3.0-or-later.
+- Root `package.json:4` and `apps/validate/package.json:4` are correctly `"private": true` (workspace root and internal validation harness — neither should publish).
+- **No `repository`, `homepage`, or `bugs` field in any `package.json`** in the repo (root or any of the 4 workspace packages) — grepped individually, zero matches.
+- **No `author` field** in any `package.json` — zero matches.
+- Per-platform sub-packages (`packages/napi/npm/*/package.json`, `packages/cli/npm/*/package.json`) all have `license` and `description` filled in with real, non-placeholder text (e.g. `packages/napi/npm/darwin-arm64/package.json:11-12`).
+
+**LICENSE file:** present at root (`LICENSE`, 662 lines, standard unmodified AGPL-3.0 text, `Copyright (C) 2007 Free Software Foundation, Inc.` at line 4). Matches every `license`/`license.workspace` declaration found. The `Copyright (C) &lt;year&gt;  &lt;name of author&gt;` placeholder at `LICENSE:633` is part of the FSF's standard "How to Apply These Terms" boilerplate section of the AGPL itself (present in every unmodified copy of this license), not an unfilled template field specific to this project.
+
+---
+
+## 6. CI status
+
+Two workflows: `.github/workflows/ci.yml` (10.1K, runs on push/PR to `main`) and `.github/workflows/release.yml` (7.3K, manual `workflow_dispatch` only).
+
+**`ci.yml`:** no jobs use `continue-on-error`, no `if: false`, no disabled/skip markers other than legitimate affected-file gating (a `detect-changes` job that conditionally skips Rust or TypeScript jobs when nothing in that language changed — explicitly documented to "fail open," i.e., run everything on any detection error, `.github/workflows/ci.yml:21-23,64-74,87-89`). One soft-fail setting: `codecov-action@v5` is configured with `fail_ci_if_error: false` (`.github/workflows/ci.yml:148`) — a Codecov upload failure won't fail CI, a common/deliberate pattern for third-party-service flakiness, not a sign of a broken check. No job is `allow-failure`d or otherwise marked known-broken.
+
+**`release.yml` — explicitly self-flagged as not production-ready.** The workflow's own header comment states, verbatim:
+
+```
+# UNTESTED SCAFFOLDING — this workflow has never been run. Before relying on it:
+#   1. Verify the aarch64-unknown-linux-gnu cross-compilation step actually links
+#      (cross-compiling without a container is the most likely failure point).
+#   2. Confirm an NPM_TOKEN secret with publish rights for the @oxc-react-docgen
+#      org exists in this repo's settings before flipping dry_run to false.
+#   3. Run once with dry_run: true and inspect the uploaded artifacts/tarballs
+#      before ever running with dry_run: false.
+```
+— `.github/workflows/release.yml:10-16`. This is the single clearest, most explicit "not ready for release" signal found anywhere in the repo: the publish pipeline itself is documented by its authors as never having been executed end-to-end, with three concrete unverified prerequisites (cross-compilation linking, an `NPM_TOKEN` secret, and a dry-run sanity check) called out before it should be trusted.
+
+---
+
+## 7. Other "not ready" signals
+
+- **`packages/vite-plugin` is at real risk of publishing empty/broken if run manually.** `packages/vite-plugin/package.json:6-12` points `main`/`types`/`exports` at `./dist/index.js` / `./dist/index.d.ts`, but `dist/` is gitignored (`.gitignore:6`) and not committed (confirmed via `git ls-files packages/vite-plugin` — no `dist/*` entries). There is **no `files` field**, **no `.npmignore`** anywhere in the repo (`find . -iname ".npmignore"` → no results), and **no `prepublishOnly`/`prepack` script** in `packages/vite-plugin/package.json:14-18` (only `build`, `test`, `test:integration`). Per npm's documented packing rules, with no `files` array npm falls back to `.npmignore`, and with no `.npmignore` it falls back to `.gitignore` — meaning a bare `npm publish` run from `packages/vite-plugin/` without first manually running `pnpm build` would very likely publish a package missing its own entry point (`dist/` excluded by `.gitignore`). This is only currently safe because CI (`.github/workflows/release.yml:139-140`, `.github/workflows/ci.yml:244-245`) happens to run `pnpm --filter @oxc-react-docgen/vite-plugin build` before packing/publishing — nothing in the package manifest itself enforces that ordering.
+- **`packages/napi`, by contrast, is protected:** it has `"prepublishOnly": "napi prepublish --tag-style npm"` (`packages/napi/package.json:22`), which npm runs automatically before `npm publish`, and an explicit `"files"` allowlist (`packages/napi/package.json:24`).
+- **`packages/cli`** ships only a static, git-committed wrapper (`packages/cli/bin/cli.js`, confirmed tracked via `git ls-files packages/cli`) with `"files": ["bin"]` (`packages/cli/package.json:9`) — no build step needed for that package itself, though the actual compiled binaries for its per-platform sub-packages only exist after a CI build (consistent with the release workflow being the only thing that populates them).
+- **No placeholder URLs/text found.** `git remote -v` and `README.md:18` both point to a real-looking `github.com/orin-dx/oxc-react-docgen`, not `example.com` or similar. A broad search for `example.com`, `TODO.*author`, `yourname`, `YOUR_NAME`, `placeholder` across `*.json`/`*.toml`/`*.md` turned up hits only inside internal docs/specs discussing patterns abstractly (e.g. `docs/adr/README.md`'s style-guide table using "placeholder" as an example word) — none are literal unfilled template fields in a shipping manifest.
+- **`root package.json` `engines.node` is `"&gt;=26"`** (`package.json:9`) — worth double-checking this is intentional given Node 26 is a very recent major; not a defect per se, just worth confirming it's not a typo for `&gt;=20`/`&gt;=22`, since it would gate `pnpm install` for anyone on an older Node.
+- **No `.moon`/root-level indication of a version-sync task** — `.moon/tasks.yml` and `.moon/workspace.yml` were checked for anything version-bump related; none found (only build/test/lint tasks, per `justfile` and `.moon/*` inspection).</result>
+<usage><subagent_tokens>90301</subagent_tokens><tool_uses>47</tool_uses><duration_ms>354943</duration_ms></usage>
+</task-notification>
+
+---
+
+Everything committed? We need to prep to use Callisto but we need to wait for the next release. You can investigate how michi is setup and the Callisto repo in ~/projects
+
+---
+
+Isn’t it better to use wasm or not?
+
+---
+
+What can we prepare before the next publish of callisto that will be usable for us?
+
+---
+
+Are you absolutely sure that is nothing else you can do and that everythig you've done is completely correct? Check, research and verify
+
+---
+
+Is everything done now?
+
+---
+
+Let's make sure our docs that are user-facing are friendly, readable and scannable. That we're not overly wordy or have walls of text and that we leverage sections, bullets, diagrams where appropriate to make it more redable and scanable.
+
+  We want the docs to be devoid of AI slop, word salad and filler words please.
+
+---
+
+Let's commit the docs yes?
+
+---
+
+/insights
+
+---
+
+Investigate whether this repo has a Cargo-workspace build-lock serialization bug in its
+CI/lint/test task runner (moon, Turborepo, Nx, Makefile, or similar), and fix it if so.
+
+## Background
+
+Cargo takes a process-level file lock on a workspace's shared `target/` directory for the
+duration of any `cargo` invocation (build, check, clippy, test) touching it. If a monorepo
+task runner fans out one `cargo <cmd> -p $crate` invocation per crate — even when it *thinks*
+it's running them in parallel — every one of those processes contends for the same lock, so
+they serialize behind each other. The task runner's own parallelism is real at the process-
+spawn level; Cargo silently defeats it underneath. Symptom: a lint/build/test step that "hangs"
+or takes 10-60+ minutes even though no single crate should take that long, with repeated
+"Blocking waiting for file lock on build directory" lines in verbose output — easy to
+misdiagnose as a hung process, a bad dependency (heavy C-linked crates like aws-lc-sys/ring/
+wasmtime are common red herrings), or a caching bug, when it's actually just N processes
+queued behind one lock.
+
+This is a known, acknowledged Cargo/monorepo-tool interaction — moonrepo's own Rust handbook
+states it explicitly: "if you do per-crate, Cargo itself will 'wait for build lock' when
+multiple processes are running," and recommends workspace-wide invocations instead.
+
+## Diagnose
+
+1. Find the task definition that runs clippy/build/test per-crate (e.g. a global task template
+   with `-p $project` or equivalent, applied to every package).
+2. Run the full task with verbose/streaming output and check for repeated
+   "Blocking waiting for file lock" lines, and whether wall-clock time is roughly the *sum* of
+   each crate's individual build time rather than the *max*.
+3. Confirm: kill everything, run one crate's task alone and time it, then run the full fan-out
+   and compare total wall time against (that time) × (crate count). If they're close, this is
+   the bug.
+
+## Fix
+
+Two changes, not one — they serve different call sites:
+
+1. **Full-scope runs (CI, `just ci`-equivalent):** replace the per-crate fan-out with a single
+   `cargo clippy --workspace --all-targets -- -D warnings` (same pattern for `build`/`test`,
+   though `cargo test --workspace` doesn't run doctests — pair with `cargo test --doc`, or use
+   `cargo nextest run --workspace` and fall back to the runner's own task for coverage it
+   doesn't handle). One process, Cargo's internal job scheduler parallelizes compilation across
+   crates on its own — no lock contention because there's only one lock-holder.
+
+2. **Affected-only runs (pre-push, incremental CI):** don't drop the task runner's affected-
+   project detection — it's real, dependency-graph-aware signal a plain Cargo invocation can't
+   compute on its own. Instead of letting it *execute* per-project (which reintroduces the same
+   lock problem at a smaller scale whenever 2+ projects are affected), use it only to *build the
+   scope*, then feed that into one Cargo invocation with multiple `-p` flags:
+   projects=$(<task-runner query for affected project ids>)
+   if [ -z "$projects" ]; then exit 0; fi
+   args=(); for p in $projects; do args+=(-p "$p"); done
+   cargo clippy "${args[@]}" --all-targets -- -D warnings
+For moon specifically: `moon query projects --affected` returns JSON with a `.projects[].id`
+array of exactly the changed crates (verified: touching two crates' files returns exactly
+those two project ids, nothing else) — pipe that through `jq -r '.projects[].id'`.
+
+Do not scope lint to affected crates' *downstream dependents* — clippy warnings are about a
+crate's own source, not its callers, so only the changed crates themselves need relinting. Test
+scoping is a separate, judgment-call question (a changed crate's behavior can break a
+downstream crate's integration tests) — don't fold that into a lint fix without deciding it
+explicitly.
+
+## Verify
+
+- Time the old fan-out path once for a real before/after number, not just "it feels faster."
+- Test both the zero-affected case (clean tree → instant no-op) and a multi-affected case
+  (touch 2+ unrelated crates → confirm the resulting single command lints exactly those crates
+  and nothing else) before trusting the fix.
+- Re-run the repo's full CI/lint suite once after the change to confirm nothing else broke.
+
+---
+
+<task-notification>
+<task-id>bbanp9510</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/bbanp9510.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+{ time cargo build -p oxc-react-docgen-core 2&gt;&amp;1 | tail -5 ; } 2&gt; /tmp/core-solo-time.txt
+cat /tmp/core-solo-time.txt" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b3rx078y3</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/b3rx078y3.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+cargo clean -p oxc-react-docgen-core -p oxc-react-docgen -p oxc-react-docgen-napi 2&gt;&amp;1 | tail -3
+{ time moon run :build 2&gt;&amp;1 | tee /tmp/moon-build-fanout.log ; } 2&gt; /tmp/moon-build-time.txt
+echo "=== TIME ===" &amp;&amp; cat /tmp/moon-build-time.txt
+echo "=== LOCK WAIT EVIDENCE ===" &amp;&amp; grep -i "blocking waiting for file lock" /tmp/moon-build-fanout.log || echo "none found"" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bixb7j3bu</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/bixb7j3bu.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+cargo clean -p oxc-react-docgen-core -p oxc-react-docgen -p oxc-react-docgen-napi 2&gt;&amp;1 | tail -3
+{ time pnpm run build 2&gt;&amp;1 | tee /tmp/fixed-build.log ; } 2&gt; /tmp/fixed-build-time.txt
+echo "=== TIME ===" &amp;&amp; cat /tmp/fixed-build-time.txt
+echo "=== LOCK WAIT EVIDENCE (should be empty) ===" &amp;&amp; grep -i "blocking waiting for file lock" /tmp/fixed-build.log || echo "none found — fix confirmed"" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b32q80c3t</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/b32q80c3t.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+echo "=== pnpm lint ===" &amp;&amp; pnpm run lint 2&gt;&amp;1 | tail -10
+echo "=== pnpm test ===" &amp;&amp; pnpm run test 2&gt;&amp;1 | tail -20" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bbsfw8gpw</task-id>
+<tool-use-id>toolu_01VdqVmtKguaB3tRbi6Lj3o3</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/bbsfw8gpw.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+just ci 2&gt;&amp;1 | tail -40" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Can we take a look at the current setup for callisto at ~/Projects and see what else we should adjust in terms of moon, cargo or any of our ecosystem setup? Summarize what you find and a proposal.
+
+  This is what michi learned:
+
+  Callisto setup vs. michi's
+
+  Surveyed ~/Projects/callisto (orin-dx/callisto's own repo — same moon+cargo+changesets stack, more mature/battle-tested). Two categories of findings.
+
+  1. A live bug in callisto itself (worth knowing, not michi's to fix)
+
+  callisto's own justfile already has the exact same fix I just applied to michi — lint (single cargo clippy --workspace) + lint-affected (moon-affected-detection → single multi--p invocation), with near-identical comments explaining the lock-contention problem. So callisto's maintainers hit and fixed this before.
+
+  But .github/workflows/callisto-release.yml never got the memo — it calls moon run :format-check/moon run :lint/moon run :test directly, bypassing the fixed justfile recipes entirely. Callisto's own .moon/tasks/rust.yml still defines the raw per-crate -p $project fan-out tasks (dormant, unlike michi's now-deleted ones), so every release-verification run on callisto still pays the lock-serialization tax. callisto-ci.yml (the main CI) correctly uses just lint/just fmt-check/just test — only the release workflow regressed. Michi's own release.yml is unaffected — it calls orin-dx/callisto's callisto-action, which runs callisto status/version/publish directly, never moon run :*.
+
+  2. Patterns callisto has that michi doesn't
+
+  Centralized lints (highest value) — callisto declares lint policy once, in root Cargo.toml:
+  [workspace.lints.rust]
+  unsafe_code = "forbid"
+  unused_must_use = "deny"
+  [workspace.lints.clippy]
+  all = { level = "warn", priority = -1 }
+  map_err_ignore = "deny"
+  then each crate opts in with one line: [lints] / workspace = true. Michi instead has this exact block hand-copied at the top of all six lib.rs files:
+  #![deny(unsafe_code)]
+  #![warn(missing_docs)]
+  #![warn(clippy::unwrap_used, clippy::expect_used)]
+  #![warn(clippy::disallowed_types)]
+  Same policy, 6x duplicated, invisible from Cargo.toml, and drifts silently if one file gets updated and the others don't. Rust 1.74+ feature (michi's MSRV is 1.96) — straightforward to consolidate. One nuance: michi's unsafe_code needs to stay deny (overridable), not callisto's forbid, since CLAUDE.md explicitly allows unsafe at the NAPI boundary via local #[allow].
+
+  cargo-semver-checks — callisto runs cargo semver-checks check-release as just check-api. Michi has no mechanical enforcement of its own documented SemVer contract (docs/spec/05-scope-and-quality.md's Patch/Minor/Major table) — which is exactly the gap that let four breaking changes land without changesets this session. This is the single highest-leverage addition given what we just found.
+
+  cargo-machete — unused-dependency check, cheap to add, no downside.
+
+  cargo-mutants as a standing just mutants recipe — michi already gets mutation testing during implementation via the lambda:mutator agent skill, but it's not a repeatable local/CI gate the way callisto has it. Lower priority — already partially covered.
+
+  Not relevant to michi: callisto's .moon/tasks/callisto.yml (dogfooding its own CLI) and its heavier wasm-check (building a real Extism/wasmtime plugin) — those are specific to callisto being a moon plugin, not applicable here.
+
+  ---
+
+  Proposal
+
+  1. Add cargo-semver-checks — just check-api recipe + CI job, gates on the SemVer contract already documented. Directly closes the gap this session surfaced.
+  2. Consolidate lints — move the 6x-duplicated #![...] block into [workspace.lints] + [lints] workspace = true per crate, keeping unsafe_code = "deny" (not forbid).
+  3. Add cargo-machete — cheap unused-dep hygiene check.
+  4. (Optional, lower priority) just mutants recipe for on-demand mutation sweeps outside the agent workflow.
+
+  Want me to implement any of these now? I'd suggest #1 first given it's directly tied to the changeset gap we just found.
+
+---
+
+Let's implement everything that adds value for our current state please
+
+---
+
+<task-notification>
+<task-id>beolcxa9d</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/beolcxa9d.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+echo "=== clippy ===" &amp;&amp; cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings 2&gt;&amp;1 | tail -10
+echo "=== machete (should be clean now) ===" &amp;&amp; cargo machete 2&gt;&amp;1
+echo "=== doc-check ===" &amp;&amp; RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --exclude oxc-react-docgen-napi 2&gt;&amp;1 | tail -10
+echo "=== full test suite ===" &amp;&amp; cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked 2&gt;&amp;1 | tail -15" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b0cfaxabm</task-id>
+<tool-use-id>toolu_01VpoNcAS1GBeCunWFpJw6uh</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/b0cfaxabm.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+just ci 2&gt;&amp;1 | tail -60" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>buvzbllow</task-id>
+<tool-use-id>toolu_01Sn7cNJsQ5LnSEiQeRLM7St</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/buvzbllow.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+echo "=== build ===" &amp;&amp; cargo build --workspace --exclude oxc-react-docgen-napi 2&gt;&amp;1 | tail -10
+echo "=== binding check ===" &amp;&amp; cargo check -p oxc-react-docgen-napi 2&gt;&amp;1 | tail -10
+echo "=== clippy ===" &amp;&amp; cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings 2&gt;&amp;1 | tail -10
+echo "=== machete (should now be fully clean) ===" &amp;&amp; cargo machete 2&gt;&amp;1
+echo "=== doc-check ===" &amp;&amp; RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --exclude oxc-react-docgen-napi 2&gt;&amp;1 | tail -10
+echo "=== full test suite ===" &amp;&amp; cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked 2&gt;&amp;1 | tail -12" completed (exit code 0)</summary>
+</task-notification>

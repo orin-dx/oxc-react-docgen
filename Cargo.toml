@@ -13,6 +13,16 @@ rust-version = "1.94"
 authors = ["oxc-react-docgen contributors"]
 license = "AGPL-3.0-or-later"
 
+# "deny" rather than "forbid": a member crate could locally #[allow(unsafe_code)]
+# on a real FFI boundary if one ever needs it — none currently do (verified:
+# zero `unsafe` usage across crates/core, crates/cli, crates/binding; napi-rs's
+# #[napi] macros generate the FFI glue without user-visible unsafe).
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
 [workspace.dependencies]
 # OXC — all main crates move in lockstep; module_lexer and resolver have separate versioning
 oxc_allocator     = "0.135"

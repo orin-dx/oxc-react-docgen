@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 #![recursion_limit = "256"]
 
 mod commands;

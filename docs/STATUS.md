@@ -7,7 +7,7 @@ Core extraction, resolver, CLI, NAPI binding, and Vite plugin all work and are f
 ## Numbers
 
 - 545 Rust tests (77 cli + 443 core unit + 8 snapshot + 1 core compile-fail + 16 napi binding), 36 vitest (33 unit, mocked NAPI + 3 integration against the real native binding — `packages/vite-plugin/tests/integration/`, gated on a locally-built `.node` binary, auto-skips otherwise) — all green
-- `cargo clippy --workspace --all-targets -D warnings` clean with `#![forbid(unsafe_code)]` enforced
+- `cargo clippy --workspace --all-targets -D warnings` clean with `unsafe_code = "deny"` enforced workspace-wide
 - 20 real-world fixture libraries validated against `react-docgen-typescript` (shadcn, Radix, MUI, Chakra, Mantine, React Aria, antd, ariakit, ark-ui, base-ui, blueprint, day-picker, fluentui, headlessui, panda, react-final-form, react-resizable-panels, storybook-emotion, tanstack-table, zendesk-garden — see `rdt-coverage.md`)
 
 ## Features & Improvements Added
@@ -18,7 +18,7 @@ Core extraction, resolver, CLI, NAPI binding, and Vite plugin all work and are f
 - **JSON schema export** (`oxc-react-docgen schema`) — Machine-readable Draft-07 JSON Schema export for component metadata validation.
 - **Atomic & Bounded DTS cache** (`cache.rs`) — Atomic temp-file swap writes, dirty flag tracking, and 5,000 entry eviction cap.
 - **LSP server protocol handler** (`oxc-react-docgen lsp`) — Language Server Protocol handler for IDE component prop hovers.
-- **Strict Safe Rust** — `#![forbid(unsafe_code)]` active across `crates/core` and `crates/cli`.
+- **Strict Safe Rust** — `unsafe_code = "deny"` via `[workspace.lints]`, active across all three crates (`core`, `cli`, `binding`) — none currently use `unsafe`, including the NAPI FFI boundary (napi-rs's `#[napi]` macros generate the glue without user-visible `unsafe`).
 
 ## Known gaps that won't get fixed without a type checker
 

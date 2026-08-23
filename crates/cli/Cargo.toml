@@ -5,6 +5,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "oxc-react-docgen"
 path = "src/main.rs"
@@ -13,11 +16,8 @@ path = "src/main.rs"
 oxc-react-docgen-core = { path = "../core", version = "0.1.0" }
 clap.workspace            = true
 clap_complete.workspace   = true
-clap_mangen.workspace     = true
 miette                    = { workspace = true, features = ["fancy"] }
-anyhow.workspace          = true
 indicatif.workspace       = true
-tracing-indicatif.workspace = true
 tracing.workspace         = true
 tracing-subscriber.workspace = true
 owo-colors.workspace      = true
@@ -28,7 +28,6 @@ serde_json.workspace      = true
 camino.workspace          = true
 comfy-table               = "7.0"
 crossterm                 = "0.28"
-lsp-types.workspace       = true
 
 [dev-dependencies]
 insta.workspace           = true

@@ -1,0 +1,64 @@
+{
+  "cli_version": "0.10.3-nightly.202608220610.6bf587d66",
+  "checkpoint_id": "01M0RF54NZ7AHA4105GN8YBA6B",
+  "session_id": "c2e627b7-dced-422f-8477-6a94b0b84862",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-23T23:26:41.563073Z",
+  "branch": "main",
+  "checkpoints_count": 13,
+  "save_step_count": 1,
+  "files_touched": [
+    "docs/benchmarks.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "452569689b9f",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 2800,
+    "cache_creation_tokens": 6470272,
+    "cache_read_tokens": 669761263,
+    "output_tokens": 1087585,
+    "api_call_count": 1401
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-insights-2026-08-20T22:32:44.37572Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "insights"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "f63021a06190",
+      "timestamp": "2026-08-20T22:32:44.37572Z",
+      "native": {
+        "command": "/insights"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/insights",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 27
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-23T23:26:40.715987Z",
+    "agent_lines": 3,
+    "agent_removed": 7,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 3,
+    "total_lines_changed": 10,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}

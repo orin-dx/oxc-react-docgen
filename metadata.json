@@ -1,0 +1,57 @@
+{
+  "cli_version": "0.10.3-nightly.202608260614.6561a64b8",
+  "checkpoint_id": "01M11XEG35EZSWVVGEWEYH204N",
+  "strategy": "manual-commit",
+  "branch": "fix/proto-only-toolchain-setup",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".claude/specs/SPEC-TYPES-001.json",
+    "crates/binding/src/lib.rs",
+    "crates/cli/src/commands/check.rs",
+    "crates/cli/src/commands/completions.rs",
+    "crates/cli/src/commands/extract.rs",
+    "crates/cli/src/commands/inspect.rs",
+    "crates/cli/src/commands/lsp.rs",
+    "crates/cli/src/commands/watch.rs",
+    "crates/cli/src/config.rs",
+    "crates/cli/tests/cli_exit_codes.rs",
+    "crates/cli/tests/lsp_process.rs",
+    "crates/core/src/cache.rs",
+    "crates/core/src/extractor/component.rs",
+    "crates/core/src/extractor/interface.rs",
+    "crates/core/src/extractor/mod.rs",
+    "crates/core/src/extractor/visit.rs",
+    "crates/core/src/known.rs",
+    "crates/core/src/named_type_index.rs",
+    "crates/core/src/pipeline/watch.rs",
+    "crates/core/src/react_types.rs",
+    "crates/core/src/resolver/alias.rs",
+    "crates/core/src/resolver/chain.rs",
+    "crates/core/src/resolver/extends.rs",
+    "crates/core/src/resolver/import.rs",
+    "crates/core/src/resolver/mod.rs",
+    "crates/core/src/resolver/named.rs",
+    "crates/core/src/resolver/precedence.rs",
+    "crates/core/src/resolver/primitives.rs",
+    "crates/core/src/resolver/substitute.rs",
+    "crates/core/src/resolver/template.rs",
+    "crates/core/src/types/global.rs",
+    "docs/root-cause-analysis.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2806,
+    "cache_creation_tokens": 6472039,
+    "cache_read_tokens": 671363248,
+    "output_tokens": 1088681,
+    "api_call_count": 1404
+  }
+}

@@ -186,13 +186,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: moonrepo/setup-toolchain@v0
         with:
-          version: "10"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "26"
-          cache: pnpm
+          auto-install: true
       - run: pnpm install --frozen-lockfile
       - if: needs.detect-changes.outputs.typescript == 'true'
         run: >-
@@ -224,13 +220,9 @@ jobs:
         node: ["24", "26"]
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: "10"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: pnpm
+      - uses: moonrepo/setup-toolchain@v0
+      - run: proto pin node ${{ matrix.node }} --to local
+      - run: proto install
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @oxc-react-docgen/vite-plugin test
 
@@ -248,13 +240,9 @@ jobs:
         pm: [npm, pnpm]
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: "10"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: pnpm
+      - uses: moonrepo/setup-toolchain@v0
+      - run: proto pin node ${{ matrix.node }} --to local
+      - run: proto install
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @oxc-react-docgen/vite-plugin build
       - run: pnpm --filter @oxc-react-docgen/vite-plugin pack --out-dir /tmp/packed

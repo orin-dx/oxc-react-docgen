@@ -2,25 +2,43 @@
 default:
     @just --list
 
-# Install Cargo tools required for local development (nextest, llvm-cov)
+# Install Cargo tools required for local development
 install-tools:
     cargo install cargo-nextest --locked
     cargo install cargo-llvm-cov --locked
+    cargo install cargo-machete --locked
+    cargo install cargo-mutants --locked
     rustup component add llvm-tools-preview
+
+# Check the public Rust API for accidental SemVer breaks against the last
+# published version. Not wired into `just ci` yet — there is no published
+# baseline to diff against until v0.1.0's first real crates.io release ships.
+# Install with `cargo install cargo-semver-checks --locked` once needed.
+check-api:
+    cargo semver-checks check-release
 
 # Install all dependencies
 install:
     pnpm install
     cargo fetch
 
-# Build all projects
+# Build all projects. Rust crates build via one workspace-wide cargo
+# invocation, not `moon run :build` — that fans out one `cargo build -p`
+# per crate, and every one of those processes contends for the same
+# target/ file lock, serializing what moon's own scheduler thinks is
+# parallel work (confirmed via `Blocking waiting for file lock` in verbose
+# output). napi/vite-plugin have no such lock to contend over, so moon
+# still orchestrates those directly.
 build:
-    moon run :build
+    cargo build --workspace --exclude oxc-react-docgen-napi
+    moon run napi:build vite-plugin:build
     cargo build --release
 
-# Run Rust unit tests (via nextest)
+# Run Rust unit tests (via nextest, which doesn't run doctests — paired
+# with `cargo test --doc` to cover those too)
 test:
     cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked
+    cargo test --doc --workspace --exclude oxc-react-docgen-napi
 
 # Run TypeScript tests
 test-ts:
@@ -36,6 +54,19 @@ bench:
 # Coverage report — opens HTML in browser
 coverage:
     cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --html --open
+
+# Documentation build check (warnings, including broken intra-doc links,
+# treated as errors)
+doc-check:
+    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --exclude oxc-react-docgen-napi
+
+# Unused-dependency check
+machete:
+    cargo machete
+
+# Mutation testing sweep — slow, run on demand, not part of `just ci`
+mutants:
+    cargo mutants --workspace --exclude oxc-react-docgen-napi
 
 ts_src := "'packages/vite-plugin/src/**/*.ts' 'packages/vite-plugin/tests/**/*.ts' 'packages/vite-plugin/vitest.config.ts' 'packages/napi/*.d.ts' 'packages/cli/bin/**/*.js' 'apps/validate/src/**/*.ts'"
 ts_src_only := "'packages/vite-plugin/src' 'packages/vite-plugin/vitest.config.ts' 'packages/napi/*.d.ts' 'packages/cli/bin/**/*.js' 'apps/validate/src'"
@@ -65,8 +96,8 @@ deny:
 typos:
     typos
 
-# Simulate full CI locally (lint → test → deny → typos → ts tests)
-ci: lint test deny typos test-ts
+# Simulate full CI locally (lint → test → deny → typos → doc-check → machete → ts tests)
+ci: lint test deny typos doc-check machete test-ts
 
 # Run moon compare task (accuracy vs react-docgen + react-docgen-typescript)
 compare:

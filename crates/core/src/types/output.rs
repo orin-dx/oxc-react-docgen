@@ -273,13 +273,13 @@ pub enum PropType {
     CssProperties,
     /// Event handler: (e: MouseEvent) => void etc.
     EventHandler {
-        /// "MouseEvent", "ChangeEvent<HTMLInputElement>", etc.
+        /// "MouseEvent", "`ChangeEvent<HTMLInputElement>`", etc.
         event_type: std::string::String,
         /// The source parameter's name (e.g. "open" in `(open: boolean) => void`),
         /// if the underlying function type had a simple identifier binding.
         param_name: Option<std::string::String>,
     },
-    /// Ref<T> / RefObject<T> / ForwardedRef<T>
+    /// `Ref<T>` / `RefObject<T>` / `ForwardedRef<T>`
     Ref {
         /// Inner element type if known
         element: Option<std::string::String>,

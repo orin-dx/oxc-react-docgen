@@ -13,6 +13,11 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
   RUST_BACKTRACE: 1
+  # Single source of truth for the version 5 jobs below all pin to (was
+  # hardcoded in each dtolnay/rust-toolchain@1.96.0 ref separately, drifting
+  # from .prototools's own rust = "1.96.0" pin the same way pnpm's version
+  # once drifted across this repo -- see fix/proto-only-toolchain-setup).
+  RUST_VERSION: "1.96.0"
 
 jobs:
   # Computes which projects (per moon's project graph, including transitive
@@ -102,10 +107,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: orin-dx/actions/setup-rust@v1.1
         with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+          toolchain: ${{ env.RUST_VERSION }}
+          components: clippy,rustfmt
       - run: cargo fmt --check
       - run: cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings
 
@@ -116,10 +121,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.96.0
-      - uses: Swatinem/rust-cache@v2
+      - uses: orin-dx/actions/setup-rust@v1.1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
       - uses: taiki-e/install-action@nextest
       - run: cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked
+      # nextest doesn't run doctests — paired with a plain `cargo test --doc`.
+      - run: cargo test --doc --workspace --exclude oxc-react-docgen-napi
+
+  hygiene:
+    name: Hygiene (doc-check · unused deps)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: orin-dx/actions/setup-rust@v1.1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --exclude oxc-react-docgen-napi
+      - uses: taiki-e/install-action@cargo-machete
+      - run: cargo machete
 
   deny:
     name: Deny (licenses · advisories · bans)
@@ -135,10 +157,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: orin-dx/actions/setup-rust@v1.1
         with:
+          toolchain: ${{ env.RUST_VERSION }}
           components: llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@nextest
       - run: cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --lcov --output-path lcov.info
@@ -154,8 +176,9 @@ jobs:
     if: github.ref == 'refs/heads/main' && needs.detect-changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.96.0
-      - uses: Swatinem/rust-cache@v2
+      - uses: orin-dx/actions/setup-rust@v1.1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
       - run: cargo bench --workspace --exclude oxc-react-docgen-napi 2>&1 | tee bench-results.txt
       - uses: actions/upload-artifact@v4
         with:
@@ -171,13 +194,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: moonrepo/setup-toolchain@v0
         with:
-          version: "10"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "26"
-          cache: pnpm
+          auto-install: true
+      - uses: orin-dx/actions/setup-pnpm-cache@v1.1
       - run: pnpm install --frozen-lockfile
       - if: needs.detect-changes.outputs.typescript == 'true'
         run: >-
@@ -207,15 +227,14 @@ jobs:
       fail-fast: false
       matrix:
         node: ["24", "26"]
+    env:
+      PROTO_NODE_VERSION: ${{ matrix.node }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: moonrepo/setup-toolchain@v0
         with:
-          version: "10"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: pnpm
+          auto-install: true
+      - uses: orin-dx/actions/setup-pnpm-cache@v1.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @oxc-react-docgen/vite-plugin test
 
@@ -231,15 +250,14 @@ jobs:
       matrix:
         node: ["24", "26"]
         pm: [npm, pnpm]
+    env:
+      PROTO_NODE_VERSION: ${{ matrix.node }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: moonrepo/setup-toolchain@v0
         with:
-          version: "10"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: pnpm
+          auto-install: true
+      - uses: orin-dx/actions/setup-pnpm-cache@v1.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @oxc-react-docgen/vite-plugin build
       - run: pnpm --filter @oxc-react-docgen/vite-plugin pack --out-dir /tmp/packed

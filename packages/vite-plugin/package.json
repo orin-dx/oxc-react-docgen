@@ -13,9 +13,11 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "pnpm build",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
+  "files": ["dist"],
   "peerDependencies": {
     "vite": "^7.0.0 || ^8.0.0"
   },

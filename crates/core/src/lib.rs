@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 pub(crate) mod cache;
 pub(crate) mod extractor;
 pub(crate) mod import_map;

@@ -4,14 +4,13 @@
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
-  "packageManager": "pnpm@10",
   "engines": {
-    "node": ">=26"
+    "node": ">=24"
   },
   "scripts": {
-    "build": "moon run :build",
-    "test": "moon run :test",
-    "lint": "moon run :lint"
+    "build": "cargo build --workspace --exclude oxc-react-docgen-napi && moon run napi:build vite-plugin:build",
+    "test": "cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked && pnpm --filter @oxc-react-docgen/vite-plugin test",
+    "lint": "cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings"
   },
   "devDependencies": {
     "@chakra-ui/react": "^3.36.0",

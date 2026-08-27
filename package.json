@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "engines": {
-    "node": ">=26"
+    "node": ">=24"
   },
   "scripts": {
     "build": "cargo build --workspace --exclude oxc-react-docgen-napi && moon run napi:build vite-plugin:build",

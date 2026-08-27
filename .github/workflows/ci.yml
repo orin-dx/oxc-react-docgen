@@ -218,11 +218,13 @@ jobs:
       fail-fast: false
       matrix:
         node: ["24", "26"]
+    env:
+      PROTO_NODE_VERSION: ${{ matrix.node }}
     steps:
       - uses: actions/checkout@v4
       - uses: moonrepo/setup-toolchain@v0
-      - run: proto pin node ${{ matrix.node }} --to local
-      - run: proto install
+        with:
+          auto-install: true
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @oxc-react-docgen/vite-plugin test
 
@@ -238,11 +240,13 @@ jobs:
       matrix:
         node: ["24", "26"]
         pm: [npm, pnpm]
+    env:
+      PROTO_NODE_VERSION: ${{ matrix.node }}
     steps:
       - uses: actions/checkout@v4
       - uses: moonrepo/setup-toolchain@v0
-      - run: proto pin node ${{ matrix.node }} --to local
-      - run: proto install
+        with:
+          auto-install: true
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @oxc-react-docgen/vite-plugin build
       - run: pnpm --filter @oxc-react-docgen/vite-plugin pack --out-dir /tmp/packed

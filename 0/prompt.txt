@@ -1,0 +1,1 @@
+Let's also not lose track of what our architecture is, react best practices, performance considerations, the DX and the accuracy of the resulting docgen

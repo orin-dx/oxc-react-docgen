@@ -1,0 +1,1 @@
+We should save the settings and hooks but not worktrees

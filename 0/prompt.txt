@@ -1,0 +1,1 @@
+I want you to cleanup the commit history with these rules in mind. Combine commits where appropriate and ensure that clippy rules are appropriately setup. Wrap comments in RS code at no less than 120 char

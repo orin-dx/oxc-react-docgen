@@ -1,0 +1,28 @@
+<task-notification>
+<task-id>a4058c8f1adec0d69</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a4058c8f1adec0d69.output</output-file>
+<status>completed</status>
+<summary>Agent "Build Fluent UI Button fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Confirmed clean state: `apps/validate/` has no leftover diff, and the fixture directory contains only `Button.tsx`. Final verification run confirms exit 0, no crash.
+
+## Summary
+
+**File created:** `/Users/gabe/Projects/oxc-react-codegen/fixtures/fluentui/Button.tsx` (228 lines, self-contained, imports only `react`)
+
+**Real sources (fetched via WebFetch/curl against raw.githubusercontent.com, branch `master`, verified current):**
+- `packages/react-components/react-button/library/src/components/Button/Button.tsx`
+- `packages/react-components/react-button/library/src/components/Button/Button.types.ts`
+- `packages/react-components/react-utilities/src/compose/types.ts` (note: no `library/` segment for this package — path differs from the two above)
+- `packages/react-components/react-aria/library/src/button/types.ts`
+
+**What was trimmed/stubbed:** All external imports (`@fluentui/react-utilities`, `@fluentui/react-aria`, `@fluentui/react-shared-contexts`, `@griffel/react`) were replaced with inlined, type-accurate simplified versions of `Slot`, `ComponentProps`, `ComponentState`, `ForwardRefComponent`, `DistributiveOmit`, and `ARIAButtonSlotProps`, each transcribed from the real source with only the render-function/shorthand-children machinery dropped. `ButtonSlots`, `ButtonProps`, `ButtonSize`, `ButtonBaseProps`, `ButtonState` are copied verbatim from the real `Button.types.ts` (including all JSDoc and `@default` tags). The real hooks (`useButton_unstable`, `useButtonStyles_unstable`, `renderButton_unstable`) were replaced with minimal stand-ins just to keep the component runnable — the real `Button.tsx` structure (annotated-const + `React.forwardRef(...) as ForwardRefComponent&lt;ButtonProps&gt;`) is preserved exactly.
+
+**Verification results:**
+- `cargo`-built binary (`./target/release/oxc-react-docgen extract --src fixtures/fluentui --format canonical`): exits 0, no crash, but extracts **0 components**.
+- Real `react-docgen-typescript` (verified via a throwaway script, deleted after): parses successfully, extracts `Button` with **303 props** including `appearance`, `shape`, `size`, `iconPosition`, `disabled`, `disabledFocusable`, `icon` — each with correct description text and `@default` values (e.g. `appearance` default `'secondary'`), plus the full flattened set of native button/anchor/aria attributes.
+
+**Unresolved problem:** Our extractor's forwardRef detectors (`crates/core/src/extractor/component.rs`: `try_fc_annotation`, `try_forward_ref`, `try_hoc_wrapped`) never unwrap a `TSAsExpression`. Fluent's real Button is authored as `const Button: ForwardRefComponent&lt;ButtonProps&gt; = React.forwardRef((props, ref) =&gt; {...}) as ForwardRefComponent&lt;ButtonProps&gt;` — a plain (non-generic) `forwardRef` call wrapped in a trailing `as` cast, which is required per Fluent's own source comment ("casting is required due to lack of distributive union to support unions on @types/react"). This falls between all three existing patterns and isn't detected, confirmed with a minimal 12-line repro outside the fixture. I did not modify `crates/core` since that's out of scope for a fixture-only task — flagging it here as the actionable finding this fixture was built to surface.</result>
+<usage><subagent_tokens>95704</subagent_tokens><tool_uses>66</tool_uses><duration_ms>571367</duration_ms></usage>
+</task-notification>

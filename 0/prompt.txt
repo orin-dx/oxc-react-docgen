@@ -1,0 +1,1 @@
+Can we look at the roadmap for oxc, vite and rolldown to see if there are things we should consider? are there issues in react-docgen and typescript-react-docgen that are not an issue on our archtecture or that we can pre-emptively solve?

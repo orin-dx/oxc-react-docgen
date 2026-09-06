@@ -1,0 +1,55 @@
+<task-notification>
+<task-id>a5acc3ae2cf70c44a</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/a5acc3ae2cf70c44a.output</output-file>
+<status>completed</status>
+<summary>Agent "Phase 2a: Implement extractor.rs and react_types.rs" completed</summary>
+<result>All 11 extractor tests pass.
+
+Here is the summary of what was implemented:
+
+---
+
+## What was implemented
+
+### `crates/core/src/react_types.rs`
+Implemented from scratch:
+- `html_element_for(type_name)` — maps 13 `@types/react` HTML attribute type names to DOM element names
+- `is_react_builtin(name)` — recognizes ~38 React-specific types (event handlers, FC, ref types, etc.) as terminal/builtin
+- `ReactVersion` struct with `implicit_children` and `ref_as_prop` fields
+- `REACT_18` and `REACT_19` constants
+
+### `crates/core/src/extractor.rs`
+Full implementation of the OXC AST extractor:
+- `parse_file(path, source) -&gt; SourceData` — the pure entry point; allocator is local, no AST refs escape
+- `SourceDataCollector` struct with `Visit&lt;'a&gt;` implementation covering all required node types
+- **Component detection patterns**:
+  1. `const Button: FC&lt;ButtonProps&gt; = ...` via `try_fc_annotation`
+  2. `const Button = React.forwardRef&lt;HTMLButtonElement, ButtonProps&gt;(...)` via `try_forward_ref`
+  3. `const Button = anyHOC(function Button(props: ButtonProps) {...})` via `try_hoc_wrapped`
+  4. `function Button(props: ButtonProps) {...}` via `visit_function`
+- `displayName` scanning: `Button.displayName = "Button"` updates the component name retroactively
+- Type alias classification: `Omit`, `Pick`, `Partial`, `Required`, `Union`, `LiteralUnion`, `Intersection`, `Passthrough`
+- JSDoc extraction: `find_jsdoc()`, `parse_jsdoc_text()`, `extract_jsdoc_tags()` with `@param propName desc` and `@default` support
+- `classify_extends()` producing `SameFile / Imported / Builtin` variants
+- Enum collection: both `TSEnumDeclaration` and `as const` object patterns
+
+### `crates/core/benches/extraction.rs`
+Updated to a proper `divan` bench over 4 fixture files.
+
+### Dependency additions
+- `oxc_ast_visit = "0.135"` — added to workspace deps and `crates/core/Cargo.toml` (in OXC 0.135, `Visit` is a separate crate, not re-exported from `oxc_ast`)
+- `oxc_syntax = "0.135"` — needed for `ScopeFlags` used in `visit_function` signature
+
+### OXC 0.135 API differences found
+1. **`Visit` trait** lives in `oxc_ast_visit` crate (separate from `oxc_ast`), imported as `use oxc_ast_visit::{Visit, walk}`
+2. **`Box&lt;'a, T&gt;`** is `oxc_allocator::Box&lt;'a, T&gt;` — must import explicitly as `OxcBox` to avoid conflict with `std::boxed::Box` in function signatures
+3. **`program.comments`** is `Vec&lt;'a, Comment&gt;` directly on `Program` — not a separate field or accessor
+4. **`visit_function`** takes `ScopeFlags` as second parameter — requires `oxc_syntax` dep
+5. **`SourceType::from_path`** signature unchanged: `Result&lt;Self, UnknownExtension&gt;`
+6. **`ModuleExportName::name()`** returns `Str&lt;'a&gt;` (from `oxc_str`) not `&amp;str` — use `.as_str()`
+7. **`type_arguments`** (not `type_parameters`) on `TSTypeReference` and `TSInterfaceHeritage`
+8. **`VariableDeclarator.type_annotation`** is at the top level, not nested in `id`
+9. **`FormalParameter.type_annotation`** is also at the top level, not inside the pattern</result>
+<usage><subagent_tokens>113409</subagent_tokens><tool_uses>158</tool_uses><duration_ms>703716</duration_ms></usage>
+</task-notification>

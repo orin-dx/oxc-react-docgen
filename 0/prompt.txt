@@ -1,0 +1,2 @@
+<local-command-stdout>[2mCompacted (ctrl+o to see full summary)[22m
+[2mTip: You have access to Sonnet 1M with 5x more context[22m</local-command-stdout>

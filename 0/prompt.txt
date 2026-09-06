@@ -1,0 +1,16 @@
+<task-notification>
+<task-id>ab4ac17d5ee8dea99</task-id>
+<tool-use-id>toolu_01JcXttqUEyonMVELywAoyiQ</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0ae3953f-9438-46c4-a76a-88fce9eed529/tasks/ab4ac17d5ee8dea99.output</output-file>
+<status>completed</status>
+<summary>Agent "Draft spec@1 for pipeline orchestration" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The seventh-pass (final) revision of SPEC-PIPELINE-001 is complete (full JSON above) and relayed to `canon-draft-pipeline`.
+
+Notably, for this round I didn't just apply the supplied AC-001 replacement text — I located the actual vendored `ignore 0.4.26` crate source at `~/.cargo/registry/src/.../ignore-0.4.26/src/dir.rs` and traced `add_parents`, `add_child_path`, and `matched_ignore` myself to confirm the asymmetric git-presence gating (ancestors gated only by `git_ignore`, the walked subtree gated by `git_ignore || git_exclude`) before committing to the precise wording rather than the authorized lower-precision fallback.
+
+Other fixes this round: AC-023's diagnostic requirement was dropped (confirmed `discover.rs` performs no validation of `exclude_patterns` content, so no such diagnostic could exist), and AC-018 gained a dirty-cache precondition plus a complementary "no diagnostic when nothing was cached" clause (confirmed against `crates/core/src/cache.rs`'s `save_to_disk`/`dirty` logic).
+
+Files consulted this round: `crates/core/src/pipeline/discover.rs`, `crates/core/src/cache.rs`, and the vendored `ignore-0.4.26` crate source.</result>
+<usage><subagent_tokens>186783</subagent_tokens><tool_uses>9</tool_uses><duration_ms>218978</duration_ms></usage>
+</task-notification>

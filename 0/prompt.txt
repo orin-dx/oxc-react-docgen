@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b2qrefrit</task-id>
+<tool-use-id>toolu_019TMooGJsP395gxxRWw1ZJM</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/b2qrefrit.output</output-file>
+<status>failed</status>
+<summary>Background command "Get test results" failed with exit code 1</summary>
+</task-notification>

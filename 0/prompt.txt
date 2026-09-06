@@ -1,0 +1,4 @@
+<local-command-stdout>Set workflowSizeGuideline to [1munrestricted[22m
+Set permissionMode to [1mauto[22m
+Set worktreeBaseRef to [1mfresh[22m
+Set output style to [1mConcise[22m</local-command-stdout>

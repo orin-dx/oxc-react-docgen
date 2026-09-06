@@ -1,0 +1,1 @@
+Everything committed? We need to prep to use Callisto but we need to wait for the next release. You can investigate how michi is setup and the Callisto repo in ~/projects

@@ -1,0 +1,30 @@
+<task-notification>
+<task-id>a82290d8d86d76cc7</task-id>
+<tool-use-id>toolu_01ErGi4qicCYTSQf1uGDoCZP</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a82290d8d86d76cc7.output</output-file>
+<status>completed</status>
+<summary>Agent "Scout real-world design system repos for validation" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Ranked shortlist (6 candidates, all verified)
+
+**1. Fluent UI React v9 — `microsoft/fluentui`, MIT.** Its "slots" architecture (`Slot&lt;T&gt;`, `ComponentProps&lt;Slots&gt;`, `ComponentState&lt;Slots&gt;`) is structurally unlike anything in mui/chakra/mantine/radix — types are derived from a slot map rather than a flat props interface, plus `DistributiveOmit` for union-safe omission. Every prop carries real JSDoc with `@default`. `Button.tsx` is tiny (25 lines, logic lives in `useButton`/`useButtonStyles`) while `Button.types.ts` (84 lines) is a dense, easy-to-eyeball JSDoc/type showcase — ideal for cross-checking. Self-contained `.d.ts`.
+Files: `packages/react-components/react-button/library/src/components/Button/Button.tsx`, `.../Button/Button.types.ts`
+
+**2. Base UI (MUI's headless successor) — `mui/base-ui`, MIT.** Deliberately different from Radix/MUI already covered: components are generic over a `Payload` type param (`MenuRoot&lt;Payload&gt;`), namespace-style exported types (`MenuRoot.Props&lt;Payload&gt;`), a `Store`/`Handle` abstraction, and `render`-prop polymorphism instead of `asChild`. `MenuRoot.tsx` is large and genuinely hard to eyeball-verify (dozens of imports, floating-ui hooks, context composition) — good for stress-testing rather than manual spot-checks. Self-contained.
+Files: `packages/react/src/menu/root/MenuRoot.tsx`, `packages/react/src/menu/trigger/MenuTrigger.tsx`
+
+**3. Ant Design — `ant-design/ant-design`, MIT.** Very different documentation style: dense `@deprecated` annotations in production props (`iconPosition` → `iconPlacement`), a template-literal index signature (`[key: \`data-${string}\`]: string`), and a `GenerateSemantic&lt;Semantic, Props&gt;` utility that derives per-slot `classNames`/`styles` types. `Button.tsx` is 515 lines — big enough that manual verification is a real exercise, not a rubber stamp. Self-contained.
+Files: `components/button/Button.tsx`, `components/button/buttonHelpers.tsx`
+
+**4. Ark UI — `chakra-ui/ark`, MIT.** Note: same GitHub org as the already-covered Chakra UI, but architecturally distinct (headless, Zag.js state-machine-driven, multi-framework core). `select-root.tsx` has a real generic component: `SelectImpl = &lt;T extends CollectionItem&gt;(props: SelectRootProps&lt;T&gt;, ref) =&gt; ...` combined with `PolymorphicProps` and an `Assign&lt;HTMLProps&lt;'div'&gt;, SelectRootBaseProps&lt;T&gt;&gt;` merge utility — good coverage of generic + polymorphic + intersection composition in one file. Individual files are short (~75 lines) but the type layering across `use-select.ts`/context files is deep. Self-contained.
+Files: `packages/react/src/components/select/select-root.tsx`, `packages/react/src/components/select/use-select.ts`
+
+**5. Ariakit — `ariakit/ariakit`, MIT** (confirmed via `packages/ariakit-react-components/license`, not surfaced by GitHub's license API). Store-based compound components (`Select.Provider`, `Select`, `SelectPopover`, `SelectItem`...) sharing a `select-store.ts` context — a different compound-component idiom than Radix's Root/Trigger context pattern. `select.tsx` is 368 lines, moderately dense but readable; the interesting complexity is spread across ~18 sibling files per component family. Self-contained.
+Files: `packages/ariakit-react-components/src/select/select.tsx`, `.../select/select-provider.tsx`
+
+**6. HeroUI v3 — `heroui-inc/heroui`, Apache-2.0 (v3 is a from-scratch rewrite, actively tagged, e.g. v3.2.2).** Caveat: v3 wraps `react-aria-components` directly (`ComponentPropsWithRef&lt;typeof ButtonPrimitive&gt;`), so it overlaps with the existing react-aria fixture more than the others. Still worth including for its `@heroui/styles` tailwind-variants layer intersected with the react-aria props, plus symbol-keyed context props (`[BUTTON_GROUP_CHILD]?: boolean`) for group-context propagation — a variant system genuinely distinct from CVA (shadcn) and Panda. `button.tsx` is small (72 lines) and easy to verify. Self-contained.
+Files: `packages/react/src/components/button/button.tsx`, `packages/react/src/components/button-group/`
+
+Recommend picking 4–5 of the above; drop HeroUI first if you want to minimize react-aria overlap, or drop Ark UI first if org-overlap with Chakra is disqualifying.</result>
+<usage><subagent_tokens>53287</subagent_tokens><tool_uses>42</tool_uses><duration_ms>232477</duration_ms></usage>
+</task-notification>

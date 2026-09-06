@@ -1,0 +1,48 @@
+Can we take a look at the current setup for callisto at ~/Projects and see what else we should adjust in terms of moon, cargo or any of our ecosystem setup? Summarize what you find and a proposal.
+
+  This is what michi learned:
+
+  Callisto setup vs. michi's
+
+  Surveyed ~/Projects/callisto (orin-dx/callisto's own repo — same moon+cargo+changesets stack, more mature/battle-tested). Two categories of findings.
+
+  1. A live bug in callisto itself (worth knowing, not michi's to fix)
+
+  callisto's own justfile already has the exact same fix I just applied to michi — lint (single cargo clippy --workspace) + lint-affected (moon-affected-detection → single multi--p invocation), with near-identical comments explaining the lock-contention problem. So callisto's maintainers hit and fixed this before.
+
+  But .github/workflows/callisto-release.yml never got the memo — it calls moon run :format-check/moon run :lint/moon run :test directly, bypassing the fixed justfile recipes entirely. Callisto's own .moon/tasks/rust.yml still defines the raw per-crate -p $project fan-out tasks (dormant, unlike michi's now-deleted ones), so every release-verification run on callisto still pays the lock-serialization tax. callisto-ci.yml (the main CI) correctly uses just lint/just fmt-check/just test — only the release workflow regressed. Michi's own release.yml is unaffected — it calls orin-dx/callisto's callisto-action, which runs callisto status/version/publish directly, never moon run :*.
+
+  2. Patterns callisto has that michi doesn't
+
+  Centralized lints (highest value) — callisto declares lint policy once, in root Cargo.toml:
+  [workspace.lints.rust]
+  unsafe_code = "forbid"
+  unused_must_use = "deny"
+  [workspace.lints.clippy]
+  all = { level = "warn", priority = -1 }
+  map_err_ignore = "deny"
+  then each crate opts in with one line: [lints] / workspace = true. Michi instead has this exact block hand-copied at the top of all six lib.rs files:
+  #![deny(unsafe_code)]
+  #![warn(missing_docs)]
+  #![warn(clippy::unwrap_used, clippy::expect_used)]
+  #![warn(clippy::disallowed_types)]
+  Same policy, 6x duplicated, invisible from Cargo.toml, and drifts silently if one file gets updated and the others don't. Rust 1.74+ feature (michi's MSRV is 1.96) — straightforward to consolidate. One nuance: michi's unsafe_code needs to stay deny (overridable), not callisto's forbid, since CLAUDE.md explicitly allows unsafe at the NAPI boundary via local #[allow].
+
+  cargo-semver-checks — callisto runs cargo semver-checks check-release as just check-api. Michi has no mechanical enforcement of its own documented SemVer contract (docs/spec/05-scope-and-quality.md's Patch/Minor/Major table) — which is exactly the gap that let four breaking changes land without changesets this session. This is the single highest-leverage addition given what we just found.
+
+  cargo-machete — unused-dependency check, cheap to add, no downside.
+
+  cargo-mutants as a standing just mutants recipe — michi already gets mutation testing during implementation via the lambda:mutator agent skill, but it's not a repeatable local/CI gate the way callisto has it. Lower priority — already partially covered.
+
+  Not relevant to michi: callisto's .moon/tasks/callisto.yml (dogfooding its own CLI) and its heavier wasm-check (building a real Extism/wasmtime plugin) — those are specific to callisto being a moon plugin, not applicable here.
+
+  ---
+
+  Proposal
+
+  1. Add cargo-semver-checks — just check-api recipe + CI job, gates on the SemVer contract already documented. Directly closes the gap this session surfaced.
+  2. Consolidate lints — move the 6x-duplicated #![...] block into [workspace.lints] + [lints] workspace = true per crate, keeping unsafe_code = "deny" (not forbid).
+  3. Add cargo-machete — cheap unused-dep hygiene check.
+  4. (Optional, lower priority) just mutants recipe for on-demand mutation sweeps outside the agent workflow.
+
+  Want me to implement any of these now? I'd suggest #1 first given it's directly tied to the changeset gap we just found.

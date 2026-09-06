@@ -1,0 +1,1 @@
+We should not restrict ourselves to just structural changes if behavioral changes result in better, faster or more maintainable code right? All of these are equally important. We want high quality, not just working code.

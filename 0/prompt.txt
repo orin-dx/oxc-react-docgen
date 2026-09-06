@@ -1,0 +1,19 @@
+<task-notification>
+<task-id>ac342c6b0df9a23a0</task-id>
+<tool-use-id>toolu_01U29UTPCMyaSTX3y71PbCLg</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/8659ece6-b660-4616-9f1d-5c547b9c57c2/tasks/ac342c6b0df9a23a0.output</output-file>
+<status>completed</status>
+<summary>Agent "Team G: Fix merge_parent extend() overwriting or_insert() in resolver/mod.rs" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Commit succeeded. Here's a summary of what was done:
+
+**Fix applied** — `crates/core/src/resolver/mod.rs` line 203: replaced `self.inherited_by_name.extend(parent.inherited_by_name)` with a `for (name, prop) in parent.inherited_by_name` loop using `or_insert`, enforcing child-wins-over-grandparent semantics throughout.
+
+**Snapshot review** — Running `INSTA_UPDATE=always` in the worktree showed 7 snapshot updates, but on inspection all diffs were worktree path artifacts (`[ROOT]/node_modules/` vs `[ROOT]/Users/.../node_modules/`) caused by the shared `node_modules` symlink not matching the worktree root. The `inherited_by_name` fix produced no change in any fixture's prop metadata. Snapshots were restored to their committed state; they pass on the main checkout.
+
+**Pre-commit hook** — `cargo deny` blocked the commit on a pre-existing `anyhow v1.0.102` RUSTSEC advisory (Stacked Borrows UB in `downcast_mut`). Updated via `cargo update -p anyhow` to `1.0.103` (the advisory's own recommended fix); included `Cargo.lock` in the commit.
+
+**Commit:** `5ff6577` on branch `worktree-agent-ac342c6b0df9a23a0`.</result>
+<usage><subagent_tokens>45752</subagent_tokens><tool_uses>37</tool_uses><duration_ms>300039</duration_ms></usage>
+<worktree><worktreePath>/Users/gabe/Projects/oxc-react-codegen/.claude/worktrees/agent-ac342c6b0df9a23a0</worktreePath><worktreeBranch>worktree-agent-ac342c6b0df9a23a0</worktreeBranch></worktree>
+</task-notification>

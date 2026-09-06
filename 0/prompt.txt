@@ -1,0 +1,1 @@
+I think we need to rethink some of our architecture for maintenability and rust best practices no? You're writing some ridiculously complex, long and disorganized files. Other AIs have failed at this and I'm worried about your abiltiy to deliver a codebase that will stand the test of time and the scrutiny of open source reviews

@@ -1,0 +1,3 @@
+<command-name>/compact</command-name>
+            <command-message>compact</command-message>
+            <command-args>and keep all of the state we need to adance to the next phase please. Keep learnings so far so we don't waste effort going forward too</command-args>

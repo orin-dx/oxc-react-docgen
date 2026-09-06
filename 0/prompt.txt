@@ -1,0 +1,138 @@
+<task-notification>
+<task-id>ac09e7834ea5d2515</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/6e77fa42-b39d-4d85-9370-fe0b0fa9b104/tasks/ac09e7834ea5d2515.output</output-file>
+<status>completed</status>
+<summary>Agent "Comment quality sweep: cli + binding crates" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Now I have full coverage. Here's the audit.
+
+# Comment Quality Audit — `crates/cli/src` and `crates/binding/src`
+
+## Overall calibration
+
+This codebase is already close to the target house style. The large majority of non-trivial comments explain a hidden constraint, a bug that was fixed, or a reason a design choice looks the way it does, and they're terse. `config.rs` and `output.rs` in particular are close to exemplary and can be used as the reference standard for the rest of the codebase. Issues found are minor and few — mostly a couple of WHAT-restating comments and one vague "process" comment with no actual content.
+
+I did **not** flag the `///` doc comments on clap `Args`/`Subcommand`/`ValueEnum` fields in `main.rs` (lines 27–119) — these compile into `--help` text shown to end users, so their job is literally to describe what the flag does; that's a different contract than an internal implementation comment explaining WHY, and they're all fine for that purpose (concise, no filler, no hedging).
+
+---
+
+## `crates/binding/src/lib.rs`
+
+**Line 20–21** (in `next_session_id`):
+```rust
+// Combine pid (upper 16 bits) with counter (lower 16 bits) into u32.
+// This avoids collisions across concurrent Vite dev server instances.
+```
+- Category: 1 (first line restates the bit-shifting the next line of code already makes obvious) mixed with a good WHY (second line).
+- Suggestion: keep only the WHY line — `// Avoids session-ID collisions across concurrent Vite dev server instances.` Delete the mechanical restatement.
+
+**Line 39**:
+```rust
+// Fields from architectural review:
+```
+- Category: 4 (word salad / vague). Doesn't say what the review found, why these fields exist, or what invariant they protect — just gestures at an external, unrecorded event. Not calibrated with e.g. the `TryFrom` doc comment at line 55 which *does* name the actual finding.
+- Suggestion: delete, or replace with the actual reasoning (e.g., what gap the review found that these fields close).
+
+**Line 55–57** (GOOD example):
+```rust
+/// Names the bad `reactVersion` value — a typo (or a caller bypassing the
+/// `'react18' | 'react19'` TS type, e.g. via `as any`) must not silently
+/// fall back to react19 (crates/core/CLAUDE.md non-negotiable #6).
+```
+Exemplary: names a hidden constraint, the failure mode it guards against, and points to the authoritative rule. This is the house style working as intended.
+
+**Line 45, 118–119, 131–132, 142–144, 170–172, 193** — all good, terse, mostly "what this is for / when to call it" (useful integration context, not restating obvious code).
+
+---
+
+## `crates/cli/src/main.rs`
+
+No internal implementation comments beyond the `--help`-generating doc comments discussed above (all fine). No issues.
+
+---
+
+## `crates/cli/src/config.rs`
+
+This file is the strongest in the audit — treat it as the calibration reference.
+
+**GOOD examples**:
+- Lines 5–12 (doc on `DocgenConfigSchema`): explains *why* it's a subset of `PipelineOptions`, why `deny_unknown_fields`, and links the reasoning to a rule stated elsewhere.
+- Lines 103–111 (doc on `try_load_config`): explicitly states the failure-mode rationale ("a config a user explicitly wrote getting quietly ignored is a plausible-looking but wrong result forever") — genuinely good writing, no filler.
+- Lines 115–116: names the actual security risk avoided (command injection via crafted filenames).
+- Lines 130–134: explains a non-obvious two-part reason for `current_dir`, both concrete.
+- Lines 179–180 (doc on `BuildOptionsArgs`): explains why the struct exists (clippy threshold), not just what it holds.
+- Test comments at lines 261–262, 271, 290–295, 320–325, 333–336, 362–365: all explain *why* the test exists (an adversarial-review finding, a bug that was fixed) rather than restating assertions. This is exactly the target style for regression tests.
+
+**Minor flag — Line 143**:
+```rust
+// Write the script to stdin, then close stdin to signal EOF.
+```
+- Category: 1, borderline. The two lines below (`write_all` + `drop(stdin)`) are fairly self-explanatory; the only non-obvious nugget is "closing signals EOF to node," which is real but could be folded into fewer words.
+- Suggestion: shorten to `// drop(stdin) signals EOF so node's read finishes.` or delete — mild, not a priority fix.
+
+**Line 92**: `// Stop at workspace root signals` — borderline WHAT, but short enough and adjacent to non-obvious logic (a `for` loop checking marker files) that it earns its keep. Keep as-is.
+
+---
+
+## `crates/cli/src/output.rs`
+
+No issues found. Every doc comment explains a WHY (why stderr not stdout, why grouping exists, why the formatter is a separate pure function for testability). This file is a second strong calibration example, e.g.:
+```rust
+/// Human-readable extraction summary. Always written to stderr — stdout is reserved for the
+/// JSON payload (canonical/RDT/storybook), in every mode, so `oxc-react-docgen extract | jq .`
+/// never sees this interleaved with the data.
+```
+and
+```rust
+/// Collapses near-duplicate diagnostics (same code + same quoted subject) into groups, so a
+/// single root cause that produced hundreds of diagnostics reports as one line with a count
+/// instead of flooding the terminal.
+```
+
+---
+
+## `crates/cli/src/commands/check.rs`
+
+No issues. The doc comment on `cmd_check` (lines 6–8) cross-references `cmd_extract`'s doc comment instead of duplicating it — good instinct to avoid redundant restatement (category 5 avoided deliberately).
+
+## `crates/cli/src/commands/completions.rs`
+
+Trivial file, no comments, nothing to flag.
+
+## `crates/cli/src/commands/extract.rs`
+
+**GOOD examples**:
+- Lines 6–9 (doc on `cmd_extract`): explains why the function returns an exit code instead of calling `process::exit` directly.
+- Line 44: `// --json ignores --out/--format — see ExtractArgs::json's doc comment.` — good, non-redundant cross-reference.
+- Lines 65–66: `// Must run regardless of --json — this is the one thing CI actually depends on the exit code for.` — good WHY.
+- Lines 75–79 (doc on `rdt_type_json`): explains the actual RDT consumer convention and why it matters (Storybook addon pattern-matching), not just what the function returns.
+- Test comment lines 180–182: explains the real bug this test guards against — exemplary regression-test comment.
+
+**Minor flags**:
+
+**Line 97**: `// RDT-compatible shape: flatten to Record&lt;string, ComponentDoc&gt;`
+- Category: 1 (mostly restates what the following map-building code already visibly does; function is even named `serialize_rdt`).
+- Suggestion: rewrite as a WHY, e.g. why RDT expects a flat `Record` instead of an array (matches its known consumer shape) — or delete if that's already implied by the `rdt_type_json` doc comment above.
+
+**Line 130**: `// Storybook __docgenInfo shape`
+- Category: 1, same pattern as above — restates the obvious purpose of the following block without adding info not in the function name.
+- Suggestion: delete, or fold into a doc comment on `serialize_storybook` if there's a non-obvious constraint to state (e.g. why `methods: []` is always empty — that's the one field here that actually needs a WHY and doesn't have one).
+
+## `crates/cli/src/commands/inspect.rs`
+
+No comments in the function body at all — nothing to flag (also nothing exemplary to point to).
+
+## `crates/cli/src/commands/watch.rs`
+
+**Line 53**: `// Keyboard input thread (q=quit, r=re-extract)`
+- Category: 1, mild — restates what the thread spawned right below obviously does (matches keys to quit/re-extract). Somewhat useful as a structural label in a long function.
+- Suggestion: keep as a section label but shorten to `// q=quit, r=re-extract` (drop "Keyboard input thread" since `std::thread::spawn` on the next line already says that).
+
+**Line 78**: `// File watcher using watchexec 8.x (synchronous constructor, async main)`
+- Category: mostly fine — the "sync constructor, async main" part is a real, non-obvious API-shape note about the `watchexec` crate. The version pin (`8.x`) is currently accurate (`Cargo.toml` pins `watchexec = "8.2"`), so not stale today, but it's the kind of comment that goes stale silently on a major-version bump with no compiler-enforced reminder.
+- Suggestion: keep, but consider dropping the version number (or moving the version-specific caveat to reference the actual API shape that requires it, so it stays true across minor bumps and only needs revisiting on a major version change).
+
+No other issues in this file — the rest is plain, no filler.</result>
+<usage><subagent_tokens>51267</subagent_tokens><tool_uses>21</tool_uses><duration_ms>133895</duration_ms></usage>
+</task-notification>

@@ -1,0 +1,1 @@
+Can we do an adversarial analysis looking at performance and rust best practices? Checking security and considering the UX/DX of using our tool along with the appropriateness of the results?

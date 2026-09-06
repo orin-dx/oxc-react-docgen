@@ -1,0 +1,1 @@
+save the current status to docs/ in the repo to keep track of the project

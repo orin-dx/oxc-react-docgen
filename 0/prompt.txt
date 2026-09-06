@@ -1,0 +1,35 @@
+<task-notification>
+<task-id>a7369b8793b0bf69c</task-id>
+<tool-use-id>toolu_01M2ucSGb87Yy37WGWjoGSjG</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/a7369b8793b0bf69c.output</output-file>
+<status>completed</status>
+<summary>Agent "Expand fixtures with MUI, Chakra, Mantine" completed</summary>
+<result>All 8 files created successfully. Here is a summary of what was done:
+
+---
+
+## Created files
+
+### `fixtures/mui/`
+
+**`Button.d.ts`** (replaced) — Full rewrite with `SxProps&lt;Theme&gt;` and `Theme` stubbed inline. Adds `loading`, `loadingIndicator`, `loadingPosition` (MUI v6+), `disableElevation`, `disableFocusRipple`, `TouchRippleProps`, `focusVisibleClassName`, and `classes`. `ButtonBaseProps` now includes all real MUI ButtonBase props (`focusRipple`, `disableTouchRipple`, `onFocusVisible`, `tabIndex`, `touchRippleRef`).
+
+**`TextField.d.ts`** — Discriminated union on `variant` with three concrete types (`StandardTextFieldProps | FilledTextFieldProps | OutlinedTextFieldProps`), each sharing a `TextFieldPropsBase` with 30+ props. Includes `InputLabelProps`, `FormHelperTextProps`, and `BaseInputProps` as sub-component stubs. Covers `select`, `multiline`, `rows`/`maxRows`, `margin`, `SelectProps`, `InputProps`, `inputProps`, `FormHelperTextProps`, and `InputLabelProps`.
+
+### `fixtures/chakra/`
+
+**`Button.d.ts`** — `ButtonProps` extends `HTMLChakraProps&lt;'button'&gt;` and `ThemingProps&lt;'Button'&gt;`, both stubbed inline. Includes `isLoading`, `isDisabled`, `isActive`, `isFullWidth` (deprecated), `leftIcon`/`rightIcon` as `React.ReactElement`, `loadingText`, `spinner`, `spinnerPlacement`, `iconSpacing`, and polymorphic `as`. Also exports `ButtonGroup`.
+
+**`Input.d.ts`** — `InputProps` extends `HTMLChakraProps&lt;'input'&gt;` and `ThemingProps&lt;'Input'&gt;`. Includes `isDisabled`, `isReadOnly`, `isRequired`, `isInvalid`, `isFullWidth`, `focusBorderColor`, `errorBorderColor` as CSS color token strings. Also exports `InputGroup`, `InputLeftAddon`, `InputRightAddon`, `InputLeftElement`, `InputRightElement`.
+
+**`index.ts`** — Barrel re-exports for all Chakra components and types.
+
+### `fixtures/mantine/`
+
+**`Button.d.ts`** — `ButtonProps` extends `React.ButtonHTMLAttributes&lt;HTMLButtonElement&gt;` and `StylesApiProps&lt;ButtonStylesNames&gt;`. Stubs `MantineColor`, `MantineSize`, `MantineRadius`, `LoaderProps`, `StylesApiProps`, `StylesRecord` inline. Includes `variant` (7 values + `gradient`), `gradient` object, `size` (including `compact-${MantineSize}` template literal), `loaderProps`, `leftSection`/`rightSection`, `fullWidth`, `justify`, polymorphic `component`, and `autoContrast`.
+
+**`TextInput.d.ts`** — Composes `InputWrapperBaseProps` (label, description, error, withAsterisk, labelProps, descriptionProps, errorProps, inputWrapperOrder) and `InputBaseProps` (pointer, leftSection/rightSection with width and pointer-events controls, size, radius, variant, disabled, wrapperProps, leftSectionProps/rightSectionProps). Inherits all native `&lt;input&gt;` attributes minus `size`/`color`. Exports `TextInputStylesNames` for the Styles API.
+
+**`index.ts`** — Barrel re-exports for all Mantine components and types.</result>
+<usage><subagent_tokens>30214</subagent_tokens><tool_uses>16</tool_uses><duration_ms>214748</duration_ms></usage>
+</task-notification>

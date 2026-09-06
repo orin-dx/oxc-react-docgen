@@ -1,0 +1,36 @@
+<task-notification>
+<task-id>ab62743d4e70d9bc7</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/ab62743d4e70d9bc7.output</output-file>
+<status>completed</status>
+<summary>Agent "Build Headless UI Listbox fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Everything is clean and confirmed. Summary below.
+
+## Report
+
+**Files created** (only these three, under `fixtures/headlessui/`):
+- `fixtures/headlessui/Listbox.tsx` — main fixture
+- `fixtures/headlessui/types.ts` — the shared `Props&lt;TTag, TSlot, TOmittableProps, Overrides&gt;` helper, verbatim
+- `fixtures/headlessui/render.tsx` — trimmed `utils/render.ts` stand-ins (`RenderFeatures`, `forwardRefWithAs`, `useRender`, etc.)
+
+Sources (MIT, tailwindlabs/headlessui, `main` branch, verified live):
+- `packages/@headlessui-react/src/components/listbox/listbox.tsx` (1067 lines — path confirmed current)
+- `packages/@headlessui-react/src/types.ts`
+- `packages/@headlessui-react/src/utils/render.ts`
+
+**Components included**: `Listbox` (root, 3 type params `TTag/TType/TActualType`, `Fragment` default tag), `ListboxButton` (1 type param, `'button'` default — the "classic" case), `ListboxOption` (2 type params, `TType` inferred via a real forward-reference `Parameters&lt;typeof ListboxRoot&gt;[0]['value']`, and a *required* generic `value: TType` prop). Dropped `ListboxOptions`/`ListboxLabel`/`ListboxSelectedOption` — same pattern, no new shape.
+
+**Trimmed**: all floating-ui/state-machine/a11y hooks (`useControllable`, `useId`, `useListboxMachine`, focus/hover rings, portal, scroll-lock, etc.) replaced with a plain `useState`+context implementation. The `Props&lt;&gt;` helper and every `*Props&lt;TTag,...&gt;` type signature were kept byte-faithful. Verified the whole fixture type-checks with `tsc --strict` (zero errors).
+
+**Our binary**: exit 0, 3 components, 12 warnings, 0 errors. Findings:
+- Components are named `ButtonFn`/`ListboxFn`/`OptionFn` (the inner impl functions), not `ListboxButton`/`Listbox`/`ListboxOption` — the tool doesn't unwrap the `let X = forwardRefWithAs(fn) as InterfaceType` export indirection to recover the real exported name.
+- `as` prop correctly appears, optional, typed as symbolic `TTag` (kept as a named reference, not expanded).
+- `value` on `OptionFn` correctly `required: true` despite being generic.
+- `PropsOf&lt;TTag&gt;`/`ClassNameOverride&lt;TTag&gt;` can't be resolved (TTag unbound) — they degrade into an unresolved `composes: ["PropsOf","ClassNameOverride"]` list rather than flattening real DOM props (`onClick`, `type`, `id` never appear).
+
+**RDT** (real `react-docgen-typescript@2.4.0`, own throwaway script, deleted after): parsed all 3, correctly under the real export names `ListboxButton`/`ListboxOption`/`Listbox`, correctly `value: required`. But it resolves `PropsOf&lt;TTag&gt;` against the full `ElementType` constraint (not the default tag), exploding to 234–246 props including every intrinsic element's attributes, and collapses conflicting overloads like `onChange` to `any`. `as` typed as bare `ElementType`.
+
+No blockers hit. No files touched outside `fixtures/headlessui/`; noticed unrelated untracked `fixtures/blueprint/`, `fixtures/day-picker/`, `fixtures/zendesk-garden/` in git status (not created by me — left untouched, likely concurrent work).</result>
+<usage><subagent_tokens>122003</subagent_tokens><tool_uses>53</tool_uses><duration_ms>555155</duration_ms></usage>
+</task-notification>

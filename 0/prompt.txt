@@ -1,0 +1,137 @@
+<task-notification>
+<task-id>a1d049ae3ee86ca58</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c2e627b7-dced-422f-8477-6a94b0b84862/tasks/a1d049ae3ee86ca58.output</output-file>
+<status>completed</status>
+<summary>Agent "Release-readiness mechanics sweep" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result># Release-Readiness Research Report — oxc-react-docgen
+
+Scope: `/Users/gabe/Projects/oxc-react-codegen`. All findings below are sourced from the working tree as of the current `main` branch (HEAD `acf3009`, most recent commit dated 2026-08-13). No files were modified.
+
+---
+
+## 1. Version numbers
+
+| Location | Version | Notes |
+|---|---|---|
+| `Cargo.toml:10` (`[workspace.package]`) | `0.1.0` | shared by all 3 crates via `version.workspace = true` |
+| `crates/core/Cargo.toml:4` | `version.workspace = true` → `0.1.0` | |
+| `crates/cli/Cargo.toml:4` | `version.workspace = true` → `0.1.0` | |
+| `crates/binding/Cargo.toml:3` | `version.workspace = true` → `0.1.0` | |
+| `packages/napi/package.json:3` | `0.1.0` | optionalDependencies on `@oxc-react-docgen/napi-{darwin-arm64,darwin-x64,linux-x64-gnu,win32-x64-msvc,linux-arm64-gnu}` also pinned to `0.1.0` (`packages/napi/package.json:26-30`), and each platform sub-package under `packages/napi/npm/*/package.json` is independently hand-set to `0.1.0` (e.g. `packages/napi/npm/darwin-arm64/package.json:3`) |
+| `packages/cli/package.json:3` | `0.1.0` | same pattern — 5 platform sub-packages under `packages/cli/npm/*/package.json` each independently `0.1.0` |
+| `packages/vite-plugin/package.json:3` | `0.1.0` | |
+| `package.json:3` (root) | `0.0.0`, `"private": true` (`package.json:4`) | not a publishable package, intentionally excluded |
+
+**Consistency:** All 8 publishable units (3 crates + `napi`, `cli`, `vite-plugin` + 10 per-platform sub-packages) are consistently at **`0.1.0`** — clearly pre-1.0. No version has drifted from any other.
+
+**Version-bump tooling:** None found. No `changeset` config (`grep -rn "changesets"` across `*.json`/`*.toml`/`*.yml` returned nothing; no `.changeset/` directory), no `release-please` manifest/config, no `cargo-release` config (`release.toml` absent). Versions across the ~13 files above are being kept in sync by hand — there's no single source of truth or automated propagation mechanism found anywhere in the repo. The only release-adjacent artifact is `.github/workflows/release.yml`, a manual `workflow_dispatch` GitHub Action (see §6) — it publishes whatever version is already hardcoded in each `package.json`, it does not bump anything.
+
+---
+
+## 2. Changelog
+
+No `CHANGELOG.md` exists anywhere in the repo (`find . -iname "CHANGELOG*"` returns zero hits at root or in any package), and `git log --all -- '**/CHANGELOG.md'` shows one never existed in this repo's history. Given 203 commits since the `2026-06-13` scaffold commit and heavy use of conventional-commit prefixes (`feat:`, `fix:`, `perf:`, per `CONTRIBUTING.md:74-89`), a changelog could be generated from history, but nothing does so today. This isn't "stale," it's simply absent.
+
+---
+
+## 3. README
+
+Root `README.md` exists (`README.md`, 151 lines) and is unusually candid for a pre-release repo — it explicitly states packages are **not yet published** and that the Vite plugin/NAPI binding are **not** RDT-drop-in-compatible at that layer:
+
+- `README.md:5`: `&gt; **Status:** Core extraction, NAPI bindings, Vite plugin, CLI, and docgen.config.ts loading are complete.`
+- `README.md:11`: "The Vite plugin and NAPI binding currently expose this tool's own canonical format only — not a drop-in RDT replacement at that layer yet."
+- `README.md:15`: "`@oxc-react-docgen/napi`, `@oxc-react-docgen/vite-plugin`, and `@oxc-react-docgen/cli` are not yet published to npm..."
+- `README.md:59-62,62`: CLI section explicitly labels the npx wrapper as "(once published)" and instructs `# From source today: ./target/release/oxc-react-docgen`.
+
+This self-honesty is a positive signal, but one concrete factual claim is stale relative to the repo's own current benchmark doc:
+
+**Stale performance number.** `README.md:9` claims: *"cold extraction on a 15-component fixture set (shadcn, MUI, Chakra, Mantine, React Aria, Radix) takes **32ms**."* This exact wording (and number) also appears verbatim in `docs/adr/0001-oxc-over-typescript-compiler.md:11` and `docs/adr/README.md:45`, both dated 2026-07-22. But `docs/benchmarks.md` (dated 2026-07-25, `docs/benchmarks.md:5`) — the repo's own current benchmark source of truth — reports a materially different, more current number for the *full* fixture corpus: **50.5 ms ± 5.4 ms across all 21 fixture libraries** (`docs/benchmarks.md:24-26`), not 32ms across 6 libraries. The fixture set has grown from 6 libraries (named in the README) to 21 (`fixtures/` now has 21 library directories plus `rdt-compat/` — confirmed via `ls fixtures/`) without the README's headline number being refreshed. Not necessarily wrong (a 6-library subset could plausibly still be ~32ms), but it's an ADR-era number reused in marketing copy rather than sourced from the current benchmark doc, and the fixture-count context it cites is out of date.
+
+**Internal doc contradiction on LSP status** (cross-referenced per your instruction to check `docs/STATUS.md`): `docs/STATUS.md:5` claims *"...LSP server scaffold...are all fully implemented and verified."* But:
+- `ARCHITECTURE.md:180` states in its "What is not yet implemented" table: `| LSP server | lsp-types dep present; nothing implemented. |`
+- `Cargo.toml:53` carries the dependency comment: `# LSP (Tier 4 scaffold — not implemented)`
+- Actual code (`crates/cli/src/commands/lsp.rs`, 295 lines, module doc at line 1: `//! LSP ... command scaffold`) **does** implement a real Content-Length-framed JSON-RPC read loop handling `initialize`/`shutdown`/`exit` with 9 passing unit tests plus a separate 183-line integration test (`crates/cli/tests/lsp_process.rs`) — more than "nothing," but it explicitly does not implement `textDocument/hover` (`crates/cli/src/commands/lsp.rs:64-68`: `"hoverProvider": false` with a comment explaining no handler exists). 
+
+So three docs (`ARCHITECTURE.md`, `Cargo.toml` comment, `docs/STATUS.md`) disagree with each other about LSP completeness, and none of the three precisely matches what the code does (a working handshake/shutdown loop with zero actual language-server features). This is a genuine documentation-consistency gap worth resolving before release messaging references LSP support either way.
+
+**Cross-check against `docs/rdt-coverage.md`:** the README's "Supported patterns" table (`README.md:115-129`) and output-shape example (`README.md:83-113`) are consistent with what `docs/rdt-coverage.md` documents as covered (forwardRef, HOC-wrapped, intersections, `Omit`/`Pick`, `VariantProps`, discriminated unions, JSDoc tags, etc. — `docs/rdt-coverage.md:91-100` and surrounding tables) — no false claims found there. `MIGRATING.md:48` says the validation harness covers "currently 15" libraries, which is stale in the same direction as the README's 32ms claim — `docs/STATUS.md:11` lists 20.
+
+---
+
+## 4. Incomplete-work markers (TODO/FIXME/XXX/HACK/`unimplemented!()`/`todo!()`/"not yet implemented"/"coming soon")
+
+**Zero hits inside `crates/` or `packages/` live source** for any of these markers (`grep -rn -E "TODO|FIXME|XXX|HACK|unimplemented!\(|todo!\(|not yet implemented|coming soon" crates/ packages/` — no matches, excluding `node_modules`/`dist`). This is a strong positive signal for release-readiness on this specific axis.
+
+All hits found across the whole repo fall into two non-blocking categories:
+
+**A. `docs/archive/` — explicitly historical, not current** (self-documented as such: `docs/STATUS.md:36` says the archive is "historical, not current, kept for reference"):
+- `docs/archive/00-MASTER-PLAN.md:75` — "No Tier 4 / Corsa / tsgo implementation — out of scope, add TODO comments only"
+- `docs/archive/2026-07-07-adversarial-analysis-fixes.md:263,269` — describes a since-fixed `try_load_config` stub (config loading is now confirmed implemented per `docs/STATUS.md:5`)
+- `docs/archive/01-PHASE0-REPO-SETUP.md:259` — `println!("oxc-react-docgen CLI — coming soon");` (pre-scaffold placeholder from phase-0 planning, long superseded)
+- `docs/archive/08-OPEN-QUESTIONS.md:13,108` — planning-era TODOs, including a reference to `WatchSession::update_file` once being `todo!()` (watch mode is now claimed complete per `docs/STATUS.md:5`)
+- `docs/archive/07-AGENT-DISPATCH.md:149,197` — agent-dispatch prompts from planning phase, mention Tier-4/Corsa and a hypothetical `rolldown-plugin` package that doesn't exist in the current tree
+- `docs/archive/04-PHASE2B2C-3A3B.md:277,1031` — planning-doc code sketches (`None // TODO: implement lookup`, `todo!("implement incremental update")`) — not live code
+
+**B. `fixtures/` — third-party library source used as test input, not this project's code:**
+- `fixtures/headlessui/Listbox.tsx:305` and `fixtures/headlessui/render.tsx:77` — TODOs are Headless UI's own upstream comments, copied in as a real-world fixture
+- `fixtures/rdt-compat/pick-source.tsx:16` — this one **is** project-authored (a fixture built to document a real, current limitation): *"Pick&lt;&gt; unwrapping is not yet implemented"* for `Pick&lt;T, Keys&gt;` when `T` is a library type outside the source graph. This is a documented, intentional gap (also referenced in the resolver's known-gaps tracking), not a stray TODO — it's a fixture whose whole purpose is to pin down and regression-test a known limitation.
+
+**Other markers checked and found benign:** the word "stub" appears in `crates/core/src/pipeline/mod.rs:420,432` and `crates/core/src/pipeline/watch.rs:255,267` — in both cases it's a local variable name for a deliberately-empty `ComponentEntry` returned alongside a `Diagnostic` when `panic_guard::contain_panic` catches a panic mid-resolve (verified by reading the surrounding code) — this is intentional defensive/fault-containment code, not unfinished work. "placeholder" hits are either snapshot-test fixture data (a `placeholder` HTML prop) or comments describing *why* a value is a legitimate generic placeholder, not incomplete code.
+
+**Net assessment for §4:** no blocking stubs, no `unimplemented!()`/`todo!()` calls, and no "coming soon" language exist in any currently-shipping code path. The one real, documented gap (`Pick&lt;&gt;` over library types) is already tracked as a known limitation with its own fixture and cross-referenced in `docs/rdt-coverage.md`, not a silent gap.
+
+---
+
+## 5. Publish config
+
+**Cargo crates** — none of the three crates set `publish = false` (`grep -n "publish" Cargo.toml crates/*/Cargo.toml` → no matches at all), so all three default to publishable.
+
+- **License:** all three inherit `license.workspace = true` → `"AGPL-3.0-or-later"` (`Cargo.toml:14`, `crates/core/Cargo.toml:6`, `crates/cli/Cargo.toml:6`, `crates/binding/Cargo.toml:5`). Matches the root `LICENSE` file, which is the unmodified GNU AGPL-3.0 text (`LICENSE:1-4`).
+- **Description:** `crates/core/Cargo.toml:3` and `crates/cli/Cargo.toml:3` have one. **`crates/binding/Cargo.toml` has no `description` field at all** — crates.io requires a description to publish, so this crate as currently written cannot be published to crates.io without adding one.
+- **Repository/homepage:** **no crate** — not the workspace (`Cargo.toml`), not `core`, `cli`, or `binding` — sets a `repository` or `homepage` field. `git remote -v` shows a real (non-placeholder) origin, `git@github.com:orin-dx/oxc-react-docgen.git`, matching the clone URL in `README.md:18`, but this URL isn't propagated into any `Cargo.toml`.
+- **Path-dependency version gap (likely publish blocker, not independently verified by an actual `cargo publish --dry-run` in this read-only audit):** `crates/cli/Cargo.toml:13` and `crates/binding/Cargo.toml:11` both depend on core via a bare path with no `version` key: `oxc-react-docgen-core = { path = "../core" }`. Cargo requires path dependencies to also carry a `version` field to be packageable/publishable (since the path is stripped at publish time and the registry needs a version to resolve against) — as written, this manifest shape does not meet that requirement for `crates/cli` and `crates/binding`.
+
+**npm packages:**
+- `packages/napi/package.json`, `packages/cli/package.json`, `packages/vite-plugin/package.json` — none has `"private": true`, consistent with intent to publish. All three have `license`, `description` (`packages/napi/package.json:3-4`, `packages/cli/package.json:3-4`, `packages/vite-plugin/package.json:3-4`) matching AGPL-3.0-or-later.
+- Root `package.json:4` and `apps/validate/package.json:4` are correctly `"private": true` (workspace root and internal validation harness — neither should publish).
+- **No `repository`, `homepage`, or `bugs` field in any `package.json`** in the repo (root or any of the 4 workspace packages) — grepped individually, zero matches.
+- **No `author` field** in any `package.json` — zero matches.
+- Per-platform sub-packages (`packages/napi/npm/*/package.json`, `packages/cli/npm/*/package.json`) all have `license` and `description` filled in with real, non-placeholder text (e.g. `packages/napi/npm/darwin-arm64/package.json:11-12`).
+
+**LICENSE file:** present at root (`LICENSE`, 662 lines, standard unmodified AGPL-3.0 text, `Copyright (C) 2007 Free Software Foundation, Inc.` at line 4). Matches every `license`/`license.workspace` declaration found. The `Copyright (C) &lt;year&gt;  &lt;name of author&gt;` placeholder at `LICENSE:633` is part of the FSF's standard "How to Apply These Terms" boilerplate section of the AGPL itself (present in every unmodified copy of this license), not an unfilled template field specific to this project.
+
+---
+
+## 6. CI status
+
+Two workflows: `.github/workflows/ci.yml` (10.1K, runs on push/PR to `main`) and `.github/workflows/release.yml` (7.3K, manual `workflow_dispatch` only).
+
+**`ci.yml`:** no jobs use `continue-on-error`, no `if: false`, no disabled/skip markers other than legitimate affected-file gating (a `detect-changes` job that conditionally skips Rust or TypeScript jobs when nothing in that language changed — explicitly documented to "fail open," i.e., run everything on any detection error, `.github/workflows/ci.yml:21-23,64-74,87-89`). One soft-fail setting: `codecov-action@v5` is configured with `fail_ci_if_error: false` (`.github/workflows/ci.yml:148`) — a Codecov upload failure won't fail CI, a common/deliberate pattern for third-party-service flakiness, not a sign of a broken check. No job is `allow-failure`d or otherwise marked known-broken.
+
+**`release.yml` — explicitly self-flagged as not production-ready.** The workflow's own header comment states, verbatim:
+
+```
+# UNTESTED SCAFFOLDING — this workflow has never been run. Before relying on it:
+#   1. Verify the aarch64-unknown-linux-gnu cross-compilation step actually links
+#      (cross-compiling without a container is the most likely failure point).
+#   2. Confirm an NPM_TOKEN secret with publish rights for the @oxc-react-docgen
+#      org exists in this repo's settings before flipping dry_run to false.
+#   3. Run once with dry_run: true and inspect the uploaded artifacts/tarballs
+#      before ever running with dry_run: false.
+```
+— `.github/workflows/release.yml:10-16`. This is the single clearest, most explicit "not ready for release" signal found anywhere in the repo: the publish pipeline itself is documented by its authors as never having been executed end-to-end, with three concrete unverified prerequisites (cross-compilation linking, an `NPM_TOKEN` secret, and a dry-run sanity check) called out before it should be trusted.
+
+---
+
+## 7. Other "not ready" signals
+
+- **`packages/vite-plugin` is at real risk of publishing empty/broken if run manually.** `packages/vite-plugin/package.json:6-12` points `main`/`types`/`exports` at `./dist/index.js` / `./dist/index.d.ts`, but `dist/` is gitignored (`.gitignore:6`) and not committed (confirmed via `git ls-files packages/vite-plugin` — no `dist/*` entries). There is **no `files` field**, **no `.npmignore`** anywhere in the repo (`find . -iname ".npmignore"` → no results), and **no `prepublishOnly`/`prepack` script** in `packages/vite-plugin/package.json:14-18` (only `build`, `test`, `test:integration`). Per npm's documented packing rules, with no `files` array npm falls back to `.npmignore`, and with no `.npmignore` it falls back to `.gitignore` — meaning a bare `npm publish` run from `packages/vite-plugin/` without first manually running `pnpm build` would very likely publish a package missing its own entry point (`dist/` excluded by `.gitignore`). This is only currently safe because CI (`.github/workflows/release.yml:139-140`, `.github/workflows/ci.yml:244-245`) happens to run `pnpm --filter @oxc-react-docgen/vite-plugin build` before packing/publishing — nothing in the package manifest itself enforces that ordering.
+- **`packages/napi`, by contrast, is protected:** it has `"prepublishOnly": "napi prepublish --tag-style npm"` (`packages/napi/package.json:22`), which npm runs automatically before `npm publish`, and an explicit `"files"` allowlist (`packages/napi/package.json:24`).
+- **`packages/cli`** ships only a static, git-committed wrapper (`packages/cli/bin/cli.js`, confirmed tracked via `git ls-files packages/cli`) with `"files": ["bin"]` (`packages/cli/package.json:9`) — no build step needed for that package itself, though the actual compiled binaries for its per-platform sub-packages only exist after a CI build (consistent with the release workflow being the only thing that populates them).
+- **No placeholder URLs/text found.** `git remote -v` and `README.md:18` both point to a real-looking `github.com/orin-dx/oxc-react-docgen`, not `example.com` or similar. A broad search for `example.com`, `TODO.*author`, `yourname`, `YOUR_NAME`, `placeholder` across `*.json`/`*.toml`/`*.md` turned up hits only inside internal docs/specs discussing patterns abstractly (e.g. `docs/adr/README.md`'s style-guide table using "placeholder" as an example word) — none are literal unfilled template fields in a shipping manifest.
+- **`root package.json` `engines.node` is `"&gt;=26"`** (`package.json:9`) — worth double-checking this is intentional given Node 26 is a very recent major; not a defect per se, just worth confirming it's not a typo for `&gt;=20`/`&gt;=22`, since it would gate `pnpm install` for anyone on an older Node.
+- **No `.moon`/root-level indication of a version-sync task** — `.moon/tasks.yml` and `.moon/workspace.yml` were checked for anything version-bump related; none found (only build/test/lint tasks, per `justfile` and `.moon/*` inspection).</result>
+<usage><subagent_tokens>90301</subagent_tokens><tool_uses>47</tool_uses><duration_ms>354943</duration_ms></usage>
+</task-notification>

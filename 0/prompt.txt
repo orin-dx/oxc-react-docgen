@@ -1,0 +1,29 @@
+<task-notification>
+<task-id>ad00f19851caf9648</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/8659ece6-b660-4616-9f1d-5c547b9c57c2/tasks/ad00f19851caf9648.output</output-file>
+<status>completed</status>
+<summary>Agent "Team D: Fix inline Pick/Omit in extends + discriminant candidate scanning" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Done. Here's a summary of what was implemented:
+
+**Fix 1 — Inline Pick/Omit/Partial in extends position (`chain.rs`, Step 0.5)**
+
+Added a new step before the step-1 silent no-op. When `resolve_props_chain` is called with a utility type name AND non-empty `type_args` (indicating `extends Pick&lt;T,K&gt;` rather than a bare `Pick` reference), it now constructs a synthetic `CollectedTypeAlias` and routes through `resolve_type_alias_chain` — the same code path used for `type X = Pick&lt;T,K&gt;`. A `!type_args[0].contains('&lt;')` guard prevents the path from activating when the base type is itself generic (since nested generics can't be reliably parsed from the raw string representation).
+
+Added `parse_string_union_keys` helper at the bottom of `chain.rs` to split `'disabled' | 'type' | 'form'` into individual key strings.
+
+**Fix 2 — Discriminant prop from all union members (`chain.rs`, `find_discriminant_prop`)**
+
+Replaced the `members[0]`-only iteration with a proper intersection: first collects the set of prop names common to ALL members (BTreeSet intersection for deterministic ordering), then checks each candidate for string-literal presence. This finds the discriminant prop even when it doesn't appear in the first member.
+
+**Snapshot housekeeping**
+
+- `redact_paths` in `snapshots.rs` now also replaces workspace-path occurrences embedded within strings (diagnostic messages), not just at string starts — making snapshots stable across git worktrees.
+- All 7 snapshot fixtures updated to reflect the improved redaction format and the new `rdt-compat` props (`disabled`, `form`, `type` resolved from `Pick&lt;ButtonBaseProps, ...&gt;`).
+- `anyhow 1.0.102 → 1.0.103` bump to clear a RUSTSEC advisory that was blocking the pre-commit hook.
+
+All 101 tests pass.</result>
+<usage><subagent_tokens>106554</subagent_tokens><tool_uses>81</tool_uses><duration_ms>800274</duration_ms></usage>
+<worktree><worktreePath>/Users/gabe/Projects/oxc-react-codegen/.claude/worktrees/agent-ad00f19851caf9648</worktreePath><worktreeBranch>worktree-agent-ad00f19851caf9648</worktreeBranch></worktree>
+</task-notification>

@@ -1,0 +1,46 @@
+<task-notification>
+<task-id>af23a93de40712275</task-id>
+<tool-use-id>toolu_01FZWwyuAwZAZQiEAb71H2z1</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/45b9a47b-5f62-4e04-a9aa-d8a71dab3bfe/tasks/af23a93de40712275.output</output-file>
+<status>completed</status>
+<summary>Agent "Investigate notableInherited implementation surface" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Findings
+
+**1. Curated list — `crates/core/src/react_types.rs:104-155`**
+
+`notable_html_attrs(element: &amp;str) -&gt; &amp;'static [&amp;'static str]` is a `match` keyed by **lowercase DOM element name** (`"button"`, `"input"`, `"a"`, `"textarea"`, `"select"`, `"form"`, `"img"`), each returning a hardcoded `&amp;'static [&amp;'static str]` of ~5-18 attr names (e.g. button: `onClick, onKeyDown, onKeyUp, onFocus, onBlur, disabled, type, form, name, value, tabIndex, aria-label, aria-describedby, aria-expanded, aria-pressed, aria-haspopup`). A `_ =&gt;` catch-all returns a generic 8-item fallback for any other element. There is no per-attribute type/metadata here beyond the name strings — types are inferred separately.
+
+**2. Population — `crates/core/src/resolver/mod.rs:116-156`** (in `resolve_component`)
+
+For each `InheritedLayer` in `chain.inheritance`: if `layer.html_element` is `Some`, it calls `react_types::notable_html_attrs(element)`, iterates the fixed name list, skips any name already in `props` (own prop wins) or already in `notable_inherited`, then **synthesizes** a `ParsedProp` via `html::infer_html_attr_prop_type(attr_name)` (a second hardcoded name→type heuristic in `resolver/html.rs`) with a fabricated `parent` pointing at `"{Element}HTMLAttributes"` / `node_modules/@types/react/index.d.ts`. For non-HTML layers, it instead copies real resolved props from `chain.inherited_by_name`. Note: this loop does **not** consult `layer.omitted` — an `Omit&lt;ButtonHTMLAttributes, 'onClick'&gt;` wouldn't currently suppress `onClick` from `notable_inherited` (pre-existing gap worth flagging when scoping).
+
+**3. `InheritedLayer` — `crates/core/src/types/output.rs:30-42`** — metadata only, no attribute set
+
+```rust
+pub struct InheritedLayer {
+    pub type_name: String,       // "ButtonHTMLAttributes"
+    pub file_name: String,
+    pub omitted: Vec&lt;String&gt;,    // from Omit&lt;Base, K&gt;
+    pub html_element: Option&lt;String&gt;,
+    pub total_props: u32,        // count only, not names
+}
+```
+
+Confirmed: **no full attribute set is held anywhere in memory**. The pipeline never parses `@types/react`'s real `ButtonHTMLAttributes` interface — HTML inheritance is detected structurally (via `ExtendsRef::Builtin`, `ComponentPropsWithoutRef&lt;'button'&gt;`, etc. in `resolver/chain.rs:126-140` and `known.rs`) and immediately collapsed into this metadata-only layer plus the synthesized curated names. **"Full expansion" is structurally hard, not a filter toggle** — it requires a new attribute database (all ~250-300 real attr names + types per element, either hand-authored as a static table or by actually parsing `node_modules/@types/react/index.d.ts`'s HTML interfaces through the normal extractor/resolver path).
+
+**4. Options struct — `PipelineOptions` in `crates/core/src/pipeline/mod.rs:38-93`** (there's no separate `ExtractOptions`; this is the one true options struct)
+
+Relevant existing field: `pub skip_html_props: bool` (default `false`). Notably, **this field is currently dead** — grepped the whole workspace; it's only declared in `PipelineOptions`, defaulted, and passed through `JsExtractOptions` → `PipelineOptions` in `crates/binding/src/lib.rs:37,89` — nothing in `resolver/` ever reads it. This is the obvious natural seam: either repurpose/wire up `skip_html_props`, or add `pub html_attributes: HtmlAttributeMode` alongside it (enum precedent already exists: `KnownTypeOverride` at `pipeline/mod.rs:31-35`).
+
+**5. CLI — `crates/cli/src/main.rs` / `crates/cli/src/config.rs`**
+
+`ExtractArgs` (main.rs:63-88) has no HTML-attrs flag today (`src`, `out`, `format`, `no_cross_package`, `react_version`, `cache_dir`). `config.rs` is a genuine stub confirmed: `load_config_file` walks up for `docgen.config.ts`, `try_load_config` actually spawns `node`+`tsx` to evaluate the file and confirms it parses as JSON — but then **always hard-errors** ("`config file support is not yet implemented`") rather than mapping the JSON onto `PipelineOptions`, by deliberate design (comment cites "never fail silently"). So there is zero existing plumbing from `docgen.config.ts` values to `PipelineOptions` — any config-file key for this feature needs that mapping built essentially from scratch.
+
+**6. NAPI surface — `crates/binding/src/lib.rs:29-49` (`JsExtractOptions`) / `packages/napi/index.d.ts`**
+
+`JsExtractOptions` mirrors `PipelineOptions` almost 1:1 (flat, `Option&lt;T&gt;` fields, camelCase via napi-derive), including `skip_html_props: Option&lt;bool&gt;` (→ `skipHtmlProps?: boolean` in generated `binding.d.ts`, re-exported by `index.d.ts`). `index.d.ts` also hand-maintains `InheritedLayer`/`PropType::HtmlAttributes` shapes matching Rust. This is the second seam — a new mode would need a matching `Option&lt;String&gt;`/ts_type enum field here plus a `From&lt;JsExtractOptions&gt;` mapping arm.
+
+**Summary:** three consumer surfaces (CLI flag, NAPI option, config-file key) all ultimately funnel into `PipelineOptions`, which already has an unused `skip_html_props` bool suggesting this exact feature was anticipated but never finished. Curated mode is trivial (already implemented). Full mode requires new data — either a static "all real HTML attrs per element" table (react-docgen-typescript style, hand-authored, straightforward) or teaching the resolver to actually parse `@types/react`'s interfaces (much larger). The config-file plumbing (JSON→`PipelineOptions` mapping) is entirely missing and is a prerequisite blocker independent of this feature.</result>
+<usage><subagent_tokens>57706</subagent_tokens><tool_uses>32</tool_uses><duration_ms>162959</duration_ms></usage>
+</task-notification>

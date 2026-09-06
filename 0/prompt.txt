@@ -1,0 +1,27 @@
+<task-notification>
+<task-id>a6575740070f44031</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/8659ece6-b660-4616-9f1d-5c547b9c57c2/tasks/a6575740070f44031.output</output-file>
+<status>completed</status>
+<summary>Agent "Team F: Fix union alias — include non-Named members + Union base type in resolve_base_as_chain" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Both fixes are committed. Here is a summary of what was done:
+
+---
+
+**Fix 1 (I2) — Non-Named union members silently dropped in `resolve_union_alias`**
+
+After the existing Named-member merge loop (lines 183–188), a new loop now iterates all members of the union and calls `resolve_base_as_chain` for any member that is not `CollectedType::Named { .. }`. This means inline objects, intersections, and nested unions inside a discriminated union are now included in the merged props rather than silently discarded.
+
+**Fix 2 (I4) — `CollectedType::Union` fell to `_ =&gt;` default in `resolve_base_as_chain`**
+
+A new `CollectedType::Union(members)` match arm was inserted before the `_ =&gt;` wildcard. It recursively calls `resolve_base_as_chain` for each member and merges the results, so `Omit&lt;A | B, K&gt;` and similar utility-type patterns over union bases now produce props instead of returning empty.
+
+**Bonus — RUSTSEC-2026-0190 (`anyhow` unsound advisory)**
+
+The pre-commit `cargo deny check` was failing due to `anyhow v1.0.102`. Fixed by running `cargo update -p anyhow` (→ `1.0.103`). The `Cargo.lock` bump is included in the same commit.
+
+File changed: `/Users/gabe/Projects/oxc-react-codegen/.claude/worktrees/agent-a6575740070f44031/crates/core/src/resolver/alias.rs` (+21 lines, 0 removals of logic). All 93 unit tests pass; the 7 snapshot test failures are a pre-existing worktree environment artifact (node_modules path normalization) unrelated to the logic changes.</result>
+<usage><subagent_tokens>58781</subagent_tokens><tool_uses>59</tool_uses><duration_ms>409480</duration_ms></usage>
+<worktree><worktreePath>/Users/gabe/Projects/oxc-react-codegen/.claude/worktrees/agent-a6575740070f44031</worktreePath><worktreeBranch>worktree-agent-a6575740070f44031</worktreeBranch></worktree>
+</task-notification>

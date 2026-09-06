@@ -1,0 +1,1 @@
+Could we leverage our package dependencies? Explicit dependencies in our package.json should be documented perhaps. Is that a good way to think through this? is that enough? Might not be. React-aria might depend on other spectrum packages that we don't explicitly add as depedencies? What of direct imports of related to direct imports?? Do you understand what I mean?

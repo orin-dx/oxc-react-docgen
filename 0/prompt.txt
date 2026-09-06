@@ -1,0 +1,14 @@
+The tool-comparison analysis (changesets/release-please/nx/knope) reads as solid and consistent with known napi-rs monorepo patterns — I can't independently verify those other repos' exact configs from here, but nothing in it looks wrong.
+
+The callisto-specific analysis and recommendation need a correction, though. I checked PublishOrchestrator::execute (crates/callisto-graph/src/commands/publish.rs:679) directly:
+
+for rust_crate in &plan.rust_crates { ... }
+for npm_pkg in &plan.npm_platform_packages { ... }   // <- platform packages
+for npm_pkg in &plan.npm_main_packages { ... }        // <- wrapper package, published AFTER
+for pypi_pkg in &plan.pypi_packages { ... }
+
+Callisto already publishes native platform packages before the main/wrapper package, unconditionally, by category. Combined with SPEC-006 (native artifact placement into package dirs before publish — shipped this session) and fixed-group version alignment (platform + wrapper packages share one version via callisto.toml groups), callisto's existing machinery already does most of the 3-phase choreography agy is proposing to hand-build: version decision → artifact placement → ordered publish (platform first) is already how callisto publish works internally, in one pass.
+
+So the real question for that repo isn't "does callisto support this ordering" — it does. It's: are the 10 platform packages actually configured as discoverable workspace members in the right fixed group, with napi.targets correctly declared so walk.rs classifies them as npm_platform_packages in the first place? If not, that's a callisto.toml/manifest-configuration gap in that repo, not a missing callisto feature — and the fix is much smaller than a custom CI build-matrix-plus-3-phase-workflow rewrite (still need the CI job that builds the N native binaries, that's unavoidable and outside callisto's job — but the placement/versioning/publish-ordering choreography around them is already callisto's job).
+
+One more thing worth their attention: depends_on_platforms: Vec<String> (crates/callisto-model/src/plan.rs:106) is populated at construction but I found zero consumers reading it for ordering logic — the category-based loop above ignores it entirely. It's either dead weight or meant for something not yet wired up. Worth asking them to check before assuming it does anything.

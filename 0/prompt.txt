@@ -1,0 +1,1 @@
+Isn’t it better to use wasm or not?

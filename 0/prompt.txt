@@ -1,0 +1,1 @@
+We should not use prettier, instead use oxfmt rsfmt, oxlint and clippy

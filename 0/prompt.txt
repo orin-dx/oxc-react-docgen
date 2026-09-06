@@ -1,0 +1,1 @@
+We're adding support for TS 7 and tsgo to close the evaluation gap, right? Can we make the HTML attributes default but configurable??

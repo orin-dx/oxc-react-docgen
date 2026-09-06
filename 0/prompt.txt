@@ -1,0 +1,1 @@
+We should use the latest stable node version 26 right?

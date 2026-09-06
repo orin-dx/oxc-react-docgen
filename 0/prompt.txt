@@ -1,0 +1,29 @@
+<task-notification>
+<task-id>a144bc37cb16095de</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/8659ece6-b660-4616-9f1d-5c547b9c57c2/tasks/a144bc37cb16095de.output</output-file>
+<status>completed</status>
+<summary>Agent "Team B: Add React namespace type recognitions (SVGAttributes, HTMLProps, ComponentRef)" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The snapshot test results are as expected: 93 non-snapshot tests pass, and the 7 snapshot failures are pre-existing (6 due to path substitution issues unrelated to my changes, 1 for `rdt_compat` due to the new svg-icon.tsx fixture with no baseline snapshot yet).
+
+Task complete. Here is what was done:
+
+**Files modified:**
+
+1. `/crates/core/src/react_types.rs` — two changes:
+   - `html_element_for()`: added `"SVGAttributes" | "SVGProps" =&gt; None` and `"HTMLProps" =&gt; Some("div")`
+   - `is_react_builtin()`: added `"ComponentRef" | "JSXElementConstructor" | "SVGAttributes" | "SVGProps" | "HTMLProps"` to the `matches!` macro
+
+2. `/crates/core/src/resolver/named.rs` — added to the step-6 silent list:
+   - `"SVGAttributes" | "SVGProps" | "HTMLProps"` (SVG/generic HTML prop types)
+   - `"ComponentRef" | "JSXElementConstructor"` (React component utility types)
+
+3. `/fixtures/rdt-compat/svg-icon.tsx` — created with `Icon` (extends `React.SVGAttributes&lt;SVGSVGElement&gt;`) and `Box` (extends `React.HTMLProps&lt;HTMLDivElement&gt;`) components
+
+4. `Cargo.lock` — bumped `anyhow` from `1.0.102` to `1.0.103` to clear the `cargo deny check` advisory that was blocking the pre-commit hook.
+
+**Build:** clean (no errors). **Snapshot failures:** 7 total — 6 pre-existing path-substitution issues on the library fixtures, 1 from the new fixture (`rdt_compat`) which has no baseline snapshot yet (expected per the task).</result>
+<usage><subagent_tokens>56425</subagent_tokens><tool_uses>58</tool_uses><duration_ms>486300</duration_ms></usage>
+<worktree><worktreePath>/Users/gabe/Projects/oxc-react-codegen/.claude/worktrees/agent-a144bc37cb16095de</worktreePath><worktreeBranch>worktree-agent-a144bc37cb16095de</worktreeBranch></worktree>
+</task-notification>

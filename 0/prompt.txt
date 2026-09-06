@@ -1,0 +1,263 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   This session continued long-running work on `oxc-react-docgen` (a Rust-based, 10-100x faster drop-in replacement for `react-docgen-typescript`). In this most recent portion of the conversation, the user's explicit requests in order were:
+   - "Shall we fix the issues you identified and mak[e] sure we're u[s]ing oxlint and oxfmt and making sure our MD is not wrapped ever?" — fix the docs/benchmarks.md-identified issues, ensure lint/format tooling is properly wired, enforce markdown never being wrapped.
+   - "You're doing a lot with our CI workflow, are we following the best practices here? Are there better ways to do what we want to do? If so how? Why? When?" — a CI best-practices review question (answered inline in prose, no code changes requested).
+   - "Do we have such a large gap to cover still? I thought we were way better???? WTF" — user alarm at a benchmark number, requiring a calm, data-backed clarification (answered: 72% of components are near-perfect matches, low aggregate is skewed by 9-10 outlier components needing a type checker).
+   - "All our history should be using gabe@techworx.dev right?" — verification-only question about git author consistency.
+   - "The benchmarks don't need to detail what was fixed during the report" — explicit instruction to remove the "process narrative" (bugs found/fixed while building the report) from docs/benchmarks.md, and just report current, correct state.
+   - "Also, let's dig into the diff with RDT. Are those valid gaps or things we chose to not add to have the meaningful info vs overload??" — asked mid-turn while I was already editing the doc; required real data investigation, not a re-hash of old context.
+   - "Don't we provide the same info in metadata/details/etc??" — a very specific follow-up asking whether the `ref`/`key` gap (the one deliberate omission found) is actually captured elsewhere in tool output (e.g., forwardRef metadata) rather than genuinely absent.
+   - "Is there a way in the react-docgen format to document what we actually know? Is there a way for us to have a stop-gap solution to close that massive gap we have without horrendous performance? Maybe optionally?" — asked for (a) whether RDT's format has a channel for partial/degraded info, and (b) a low-cost, optionally-enabled fix for the type-checker-boundary gap without needing a real type checker (which would kill performance).
+   - Via AskUserQuestion, user explicitly chose: "Default on (Recommended)" for whether the composes-population fix should be default behavior vs an opt-in flag, and "Implement now with TDD (Recommended)" for whether to implement immediately vs write a plan first.
+   - Final message (this turn): "How does that change our benchmarks?" — with an explicit system-level instruction to respond with **TEXT ONLY, no tool calls**, since the user already has all needed context in the conversation.
+
+2. Key Technical Concepts:
+   - **`ComponentEntry.composes: Vec<String>`** — a field in `crates/core/src/types/output.rs` (line 63, with doc comment "Type names that could not be resolved (react-docgen compat)") that mirrors real `react-docgen`'s own documented `composes` field — its actual purpose: list a type by name/expression instead of flattening its (unresolvable) props into the props map.
+   - **`ResolvedChain::empty_with_compose(type_name: String)`** — private helper in `crates/core/src/resolver/mod.rs` (~line 360): `Self { composes: vec![type_name], ..Default::default() }`. Already used at several existing call sites in `chain.rs` (known-opaque patterns, terminal React builtins, unresolvable imports) but NOT at the one dead end fixed this session.
+   - **`ResolvedChain::merge_parent`** (`crates/core/src/resolver/mod.rs` ~line 365-393) — confirmed `self.composes.extend(parent.composes)` (line ~382) already correctly propagates `composes` through intersection/union member merges, meaning fixing the single leaf dead-end point was sufficient to bubble the info up to the top-level component.
+   - **`resolve_base_as_chain`** (`crates/core/src/resolver/alias.rs`, function starting ~line 122) — the actual dead-end function. Its final match arm (originally ~line 205-250) handles `CollectedType::Conditional`, `Mapped`, `IndexedAccess`, `Function`, `TemplateLiteral`, `TypeOf`, and primitive types used directly as a props "base" (e.g., an intersection member, or a Passthrough alias target) — these "cannot be used as a component's props base" per the diagnostic message it already built, but previously returned `ResolvedChain::default()` (fully empty, no trace).
+   - **`serialize_rdt`** (`crates/cli/src/commands/extract.rs`, ~line 98) — builds the RDT-compatible JSON output; previously omitted `composes` entirely from its per-component JSON object (only `displayName`, `props`, `description`, `methods: []`, `tags`).
+   - **`OpaqueReason` / `push_known_opaque_diagnostic`** (`crates/core/src/known.rs`) — the module that formats diagnostic messages like `"'{type_name}' is a conditional type and can't be statically resolved — it will appear as opaque"` (code `OpaqueType`) — confirmed this diagnostic ALREADY existed and was already firing for the outlier components, but its raw text was never also recorded into `composes`.
+   - **TDD discipline** — every fix in this session followed RED (confirmed failing for the right reason) → GREEN → full test suite + clippy + fmt + snapshot check → commit, consistent with the project's established convention.
+   - **`apps/validate`'s benchmarking harness** — `analyze.ts` computes per-prop agreement rate + type-diff taxonomy by comparing `NormalizedComponent.props` only; it does NOT read or compare `composes` at all, so the `composes` fix is orthogonal to and does not change any of the quantitative numbers in `docs/benchmarks.md`.
+   - **`docs/benchmarks.md`** — the living report file, iteratively revised this session to (a) remove "process narrative" per explicit instruction, (b) add a precise 99.1%/0.9% breakdown of the RDT prop-gap, (c) add a 6th item documenting the `composes` stop-gap as a differentiator.
+   - **`react_types::html_element_from_type_arg`** — new function added in the *previous* portion of this session (before this compaction's start) mapping concrete DOM element type names (e.g. `"HTMLDivElement"` → `"div"`, `"SVGSVGElement"` → `"svg"`) for the SVGAttributes/HTMLProps generic-element-mapping fix; mentioned here for continuity since it's referenced in `docs/benchmarks.md`'s "Shortcomings" section.
+   - **The 10 outlier components** (from `docs/benchmarks.md`, unchanged by this session's `composes` work in terms of their `props` counts): `storybook-emotion/Button` (7 vs RDT 306), `fluentui/Button` (8 vs 303), `ariakit/menu-button/MenuButton` (5 vs 294), `base-ui/MenuTrigger` (11 vs 293), `ariakit/menu/Menu` (7 vs 286), `ariakit/menu-item/MenuItem` (5 vs 284), `ark-ui/Select/SelectRoot` (36 vs 314), `headlessui/Listbox/Listbox` (14 vs 246), `ListboxButton` (5 vs 234), `ListboxOption` (5 vs 234).
+
+3. Files and Code Sections:
+   - **`crates/core/src/resolver/alias.rs`** — the key fix location.
+     - Read in full (447 lines) to trace the exact dead-end.
+     - Modified the final match arm of `resolve_base_as_chain`:
+       ```rust
+       CollectedType::String
+       | CollectedType::Number
+       | CollectedType::Boolean
+       | CollectedType::Null
+       | CollectedType::Undefined
+       | CollectedType::Any
+       | CollectedType::Never
+       | CollectedType::Unknown
+       | CollectedType::Void
+       | CollectedType::BigInt
+       | CollectedType::Symbol
+       | CollectedType::StringLiteral(_)
+       | CollectedType::NumberLiteral(_)
+       | CollectedType::BoolLiteral(_)
+       | CollectedType::Array(_)
+       | CollectedType::Tuple(_)
+       | CollectedType::TypeOf(_)
+       | CollectedType::IndexedAccess { .. }
+       | CollectedType::TemplateLiteral(_)
+       | CollectedType::Function { .. }
+       | CollectedType::Conditional { .. }
+       | CollectedType::Mapped { .. }
+       | CollectedType::KeyOf(_)
+       | CollectedType::Raw(_) => {
+           state.diagnostics.push(Diagnostic {
+               severity: DiagnosticSeverity::Warning,
+               message: format!(
+                   "'{}' cannot be used as a component's props base in '{}' — expected an interface, \
+                    intersection, union, or inline object type",
+                   base.to_raw_string(),
+                   file_path
+               ),
+               file: Some(file_path.to_string()),
+               line: None,
+               column: None,
+               help: Some("Check that this member of the props type resolves to an object-like shape.".into()),
+               code: DiagnosticCode::OpaqueType,
+           });
+           // `composes` (react-docgen's own mechanism for "props come from this type,
+           // named instead of flattened") records the raw expression we just diagnosed,
+           // instead of vanishing with only a diagnostic to show for it.
+           ResolvedChain::empty_with_compose(base.to_raw_string())
+       }
+       ```
+       (changed only the final return statement from `ResolvedChain::default()` to `ResolvedChain::empty_with_compose(base.to_raw_string())`, plus the explanatory comment above it).
+
+   - **`crates/core/src/pipeline/mod.rs`** — added a new test (placed immediately before `test_same_display_name_across_files_with_identical_stem_does_not_collide`, after the SVGAttributes test):
+     ```rust
+     // ── test_unresolvable_intersection_member_records_raw_type_in_composes ────
+     //
+     // `resolve_base_as_chain`'s final match arm (conditional types, mapped types,
+     // indexed access, etc. used directly as a props base) already builds a real
+     // diagnostic naming the exact unresolvable expression — but returned a bare
+     // `ResolvedChain::default()` instead of `empty_with_compose`, so the props
+     // map ends up with zero trace of it. `composes` (`ComponentEntry.composes:
+     // Vec<String>`) is the react-docgen-native mechanism for exactly this case
+     // ("props come from this type, which we're listing by name/expression
+     // instead of flattening") — populating it here needs no new type inference,
+     // just recording the raw text this code path was already computing for the
+     // diagnostic message.
+
+     #[test]
+     fn test_unresolvable_intersection_member_records_raw_type_in_composes() {
+         let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+         let tmp = TempDir::new_in(manifest_dir).unwrap();
+         write_file(
+             &tmp,
+             "Comp.tsx",
+             r#"
+     export type Weird<T> = T extends string ? { a: string } : { b: number };
+     export type CompProps = Weird<'x'> & { c: boolean };
+     export function Comp(props: CompProps) { return null; }
+     "#,
+         );
+
+         let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+         let options = PipelineOptions {
+             src_dirs: vec![dir],
+             cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+             ..Default::default()
+         };
+
+         let output = extract(&options);
+
+         let comp = output.components.get("Comp").expect("Comp component not found");
+         assert!(comp.props.contains_key("c"), "expected the resolvable intersection member's prop to survive");
+         assert!(
+             !comp.composes.is_empty(),
+             "expected the unresolvable Weird<'x'> member to be recorded in `composes` instead of silently vanishing"
+         );
+         assert!(
+             comp.composes[0].contains("extends") && comp.composes[0].contains("string"),
+             "expected composes to carry the actual conditional-type expression, got {:?}",
+             comp.composes
+         );
+     }
+     ```
+     Confirmed RED (panic: "expected the unresolvable Weird<'x'> member to be recorded in `composes`") before the alias.rs fix, GREEN after.
+
+   - **`crates/cli/src/commands/extract.rs`** — second fix location.
+     - Modified `serialize_rdt`'s JSON-building block:
+       ```rust
+       map.insert(
+           name.clone(),
+           serde_json::json!({
+               "displayName": entry.display_name,
+               "props": serde_json::Value::Object(props),
+               "description": entry.description,
+               "methods": [],
+               "tags": entry.tags,
+               "composes": entry.composes,
+           }),
+       );
+       ```
+       (added the `"composes": entry.composes` line).
+     - Added a new test in the existing `#[cfg(test)] mod tests` block, after `non_json_mode_returns_the_same_error_exit_code`:
+       ```rust
+       // ── rdt_output_includes_composes ──────────────────────────────────────────
+       //
+       // `ComponentEntry.composes` (react-docgen's own "props come from this type,
+       // listed by name instead of flattened" field) was populated by the resolver
+       // but silently dropped by serialize_rdt — this is the RDT-format half of
+       // that fix; the resolver half is
+       // pipeline::tests::test_unresolvable_intersection_member_records_raw_type_in_composes.
+
+       #[test]
+       fn rdt_output_includes_composes() {
+           let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+           let tmp = tempfile::TempDir::new_in(manifest_dir).unwrap();
+           std::fs::write(
+               tmp.path().join("Comp.tsx"),
+               r#"
+       export type Weird<T> = T extends string ? { a: string } : { b: number };
+       export type CompProps = Weird<'x'> & { c: boolean };
+       export function Comp(props: CompProps) { return null; }
+       "#,
+           )
+           .unwrap();
+
+           let dir = camino::Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+           let options = oxc_react_docgen_core::pipeline::PipelineOptions {
+               src_dirs: vec![dir],
+               cache_dir: Some(camino::Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+               ..Default::default()
+           };
+           let output = oxc_react_docgen_core::pipeline::extract(&options);
+
+           let rdt_json = serialize_rdt(&output);
+           let parsed: serde_json::Value = serde_json::from_str(&rdt_json).unwrap();
+           let composes = parsed["Comp"]["composes"].as_array().expect("expected a composes array in RDT output");
+           assert!(!composes.is_empty(), "expected the unresolvable Weird<'x'> member to appear in RDT's composes field");
+       }
+       ```
+       Confirmed RED before, GREEN after the serialize_rdt fix. Uses `tempfile::TempDir` which is available since `crates/cli/Cargo.toml`'s `[dev-dependencies]` already includes `tempfile.workspace = true`.
+
+   - **`docs/benchmarks.md`** — heavily edited across this session:
+     - Removed the "Fixed during this report" subsection (previously under "## Shortcomings and remediation plan") that detailed the SVGAttributes and component-collision bug fixes.
+     - Simplified header from "**Generated:** 2026-07-25, against commit `d985eeb1` on this branch. **Updated** same day after fixing two of this report's own findings..." to just "**Generated:** 2026-07-25."
+     - Simplified the methodology note (previously "**Methodology note — two real bugs in the comparison harness itself, found and fixed while building this report:**" with a 2-item numbered list) to: "**Methodology note — how each tool's type string is read:** `react-docgen-typescript` represents union/literal prop types as `{ name: 'enum', value: [...] }` — the real type string comes from `.value`, not `.name`... `react-docgen` puts real TypeScript type info under `.tsType`... Both comparisons below read the real field on each side."
+     - Removed the "`rdt-compat/svg-icon/Icon` and `Box`... are **fixed** as of this update" callout line entirely.
+     - Restored the full title (`# Benchmarks: oxc-react-docgen vs. react-docgen-typescript vs. react-docgen` — had been accidentally shortened to `# Benchmarks` by an earlier edit/reformat).
+     - Replaced the vague "23 near-perfect, ref/key only difference" paragraph with a precise breakdown:
+       > "That 16.8% needs immediate context: **it is not evenly distributed, and the missing-props number is 99.1% one root cause.** Of the 2,720 props missing from this tool's output, **2,696 (99.1%) come from just 10 outlier components** (below) — all of them a real, structural gap needing a type checker, not something chosen to omit. The other 24 (0.9%, spread across 12 of the other 23 components) are **100% `ref`/`key`** — React's own reconciliation plumbing, which RDT lists as props and this tool deliberately doesn't. Worth being precise about that one: it's an omission, not a relocation — this tool doesn't surface forwardRef/ref-type metadata anywhere else either (checked `ComponentEntry`'s full field list — no such field exists), so \"we chose not to add it\" is accurate, but \"the same info lives elsewhere\" isn't. Excluding those 10 outliers, this tool's real-world agreement with RDT is effectively total (e.g. `antd/Button`: 312 props vs. RDT's 313 — the only difference is `ref`/`key`)."
+     - Added a new item 6 to "## What this tool can provide that they can't":
+       > "6. **A `composes` field that actually gets populated.** `ComponentEntry.composes` is react-docgen's own documented mechanism for "these props come from a type we're not flattening — here's its name/expression" — but it existed unused for the type-checker-boundary failures above until this report found and fixed it. `base-ui/MenuTrigger` and all 3 `headlessui/Listbox` components now surface their real unresolvable expression (a mapped type, two conditional types) through `composes` in RDT-format output, instead of silently returning zero props with no trace. This is a stop-gap, not a fix for the underlying gap — 6 of the 10 outlier components (Ariakit, `ark-ui`, `storybook-emotion`, `fluentui`) still show empty `composes`, because their failure happens further upstream (generic-alias substitution not matching the pattern at all) than the one dead end this closed."
+     - All quantitative tables (agreement-rate metrics, outlier table with per-component ours/RDT prop counts, type-diff taxonomies, performance numbers) were **NOT** modified by the `composes` work, since `composes` is orthogonal to `props` and `analyze.ts` never reads it.
+
+   - **`crates/core/src/react_types.rs`, `crates/core/src/extractor/mod.rs`, `crates/core/tests/snapshots/snapshots__snapshot_rdt_compat.snap`** — modified in the *earlier* part of this session (before this compaction's start point) for the SVGAttributes/HTMLProps element-mapping fix; not touched again in this most recent portion, but relevant context: `html_element_from_type_arg` function added to `react_types.rs`, `classify_extends` in `extractor/mod.rs` updated to check it before falling back to `html_element_for`.
+
+   - **`crates/core/src/pipeline/mod.rs`** (separately, earlier in this session) — also contains `test_same_display_name_across_files_with_identical_stem_does_not_collide` (component-collision fix) and the fix to Phase 5's dedup key in `extract()` changing from `"{name} ({file_stem})"` to `"{name} ({entry.file_path})"` — established before this compaction's tracked portion but directly referenced/relevant to `docs/benchmarks.md`'s content.
+
+4. Errors and fixes:
+   - **`spawnSync('tsx', ...)` ENOENT** — recurring issue in `apps/validate/src/baseline.ts` when run without `node_modules/.bin` on `PATH`. Fixed each time by running via `PATH="$PWD/node_modules/.bin:$PATH" node_modules/.bin/tsx src/baseline.ts` instead of bare `tsx`.
+   - **Miscategorization bug in ad hoc Python analysis script** — when investigating "are RDT diffs real gaps," an initial `python3` one-liner categorized missing-prop diffs into "from 10 outliers" vs "from the rest" using a set built from `fixture` alone (e.g. `'storybook-emotion/Button'`) instead of the correct `(fixture, component)` tuple (`('storybook-emotion/Button', 'Button')`), causing `storybook-emotion/Button`'s real outlier diffs (form, formAction, ref, key) to be miscounted as "near-perfect group" data. Caught this by noticing `ref`/`key` counts (15 each) didn't match the expected ~23-components scale, re-ran with corrected tuple-based key matching, got the clean 2,696/24 split reported in the doc.
+   - **`resolve_base_as_chain`'s composes fix does not help all 10 outliers** — initially assumed (per the user's framing of "close that massive gap") that fixing this one function would meaningfully help most/all outliers. Empirically verified via direct CLI runs (`./target/release/oxc-react-docgen extract --src fixtures/fluentui --format rdt`, etc.) that only `base-ui/MenuTrigger` and `headlessui/Listbox`'s 3 components benefit; `fluentui/Button`, `ariakit`'s 3 components, `ark-ui/SelectRoot`, and `storybook-emotion/Button` still show `"composes": []`. Traced (without fully implementing a fix) that their failure occurs upstream in generic-alias substitution/matching (e.g., Ariakit's `Props<"button", MenuButtonOptions>` never even being recognized as a substitutable generic alias reference), not at the `resolve_base_as_chain` dead end. Reported this scope limitation honestly in the commit message and in `docs/benchmarks.md` rather than overclaiming.
+   - **User's alarm at low agreement rate ("Do we have such a large gap... I thought we were way better???? WTF")** — handled by immediately producing real distribution data (23/32 near-perfect vs 9-10 outliers) rather than being defensive or vague; this was well-received context, no explicit follow-up correction from the user on this point.
+   - No other build/test failures encountered in this session's most recent portion — all `cargo build`, `cargo test --workspace`, `cargo clippy -- -D warnings`, `cargo fmt --check`, `cargo deny check`, `just lint` runs were green after each fix, confirmed via explicit reruns after every code change.
+
+5. Problem Solving:
+   - Confirmed via direct read of `ComponentEntry`'s full field list (`crates/core/src/types/output.rs` line 47-68: `display_name`, `file_path`, `description`, `props`, `inheritance`, `notable_inherited`, `discriminant_prop`, `composes`, `tags`, `methods`) that there is no `forwardRef`/ref-type metadata field anywhere — answering the user's "don't we provide the same info in metadata/details/etc" question definitively as "no."
+   - Traced the exact resolver code path for the `composes` gap using `grep -n "ResolvedChain::default()\|ResolvedChain::empty_with_compose"` across `crates/core/src/resolver/*.rs`, finding that `chain.rs` already routes all its dead ends through `empty_with_compose` correctly, but `alias.rs`'s `resolve_base_as_chain` final match arm (and only that one) was the actual unfixed dead end.
+   - Verified `composes` propagation is structurally sound (via `merge_parent`'s `self.composes.extend(parent.composes)`) before implementing, avoiding wasted work on a fix that wouldn't actually bubble up to the top-level `ComponentEntry`.
+   - Used a minimal, targeted reproduction case (`type Weird<T> = T extends string ? { a: string } : { b: number }; type CompProps = Weird<'x'> & { c: boolean };`) verified empirically against the real CLI binary *before* writing any test, confirming the exact diagnostic message and empty-composes behavior matched the hypothesis.
+
+6. All user messages (verbatim, this compacted portion only):
+   - "Shall we fix the issues you identified and makes ure we're uxing oxlint and oxfmt and making sure our MD is not wrapped ever?"
+   - "You're doing a lot with our CI workflow, are we following the best practices here? Are there better ways to do what we want to do? If so how? Why? When?"
+   - "Is there a better tools to leverage for benchmarking with rust??? What are the best practices? What are the best crates to use?" (Note: this and the next were addressed in a slightly earlier part of the same broad session per context, but the "And let's adopt hyperfine" and "Do we have such a large gap..." messages follow chronologically as below.)
+   - "And let's adopt hyperfine"
+   - "Do we have such a large gap to cover still? I thought we were way better???? WTF"
+   - "All our history should be using gabe@techworx.dev right?"
+   - "The benchmarks don't need to detail what was fixed during the report"
+   - "Also, let's dig into the diff with RDT. Are those valid gaps or things we chose to not add to have the meaningful info vs overload??" (sent mid-turn while I was editing the doc)
+   - "Don't we provide the same info in metadata/details/etc ??" (sent mid-turn)
+   - "Is there a way in the react-docgen format to document what we actually know? Is there a way for us to have a stop-gap solution to close that massive gap we have without horrendous performance? Maybe optionally?"
+   - [Via AskUserQuestion tool, selected]: "Default on (Recommended)" and "Implement now with TDD (Recommended)"
+   - "How does that change our benchmarks?" (final message, with explicit system-level TEXT ONLY / no-tool-calls constraint for this turn)
+
+   Note: no security-relevant instructions, sensitive-file constraints, or credential-handling rules were stated by the user in this portion of the conversation.
+
+7. Pending Tasks:
+   - Directly answer the final user question: "How does that change our benchmarks?" — referring to the `composes` fix (commits `df769ee` and `edab9b7`).
+   - No other explicitly pending tasks remain open from this compacted portion — the SVGAttributes fix, component-collision fix, markdown enforcement, comment-quality sweep, RDT-diff investigation, and composes stop-gap were all completed and committed. Two long-standing pending items from earlier in the overall session (outside this compaction's detailed tracking) remain unresolved but not currently being worked on: (a) whether to force-push the rebased/author-normalized git history to `orin-dx/oxc-react-docgen`, and (b) the `deny.toml` AGPL license-scope item (deliberately deferred, review downgraded it to "not a real problem").
+
+8. Current Work:
+   Immediately before this summary request, I had just committed `edab9b7` ("docs(benchmarks): document the composes stop-gap as a differentiator"), which added item 6 to `docs/benchmarks.md`'s "What this tool can provide that they can't" section, and confirmed via `git status --short` that the working tree was clean. My last text response to the user was:
+
+   > "Working tree is clean, everything committed.
+   >
+   > **Summary:**
+   > - Yes — RDT's real format has a native mechanism for exactly this: `composes: string[]` ("props come from this type, named instead of flattened"). It existed in our own `ComponentEntry` but was completely unused for the type-checker-boundary gap, and was even dropped entirely when serializing to RDT format.
+   > - The stop-gap costs zero performance: no new type inference, just recording text the resolver was already computing for its diagnostic message, instead of discarding it. Made it default-on since it's strictly additive.
+   > - Real result: `base-ui/MenuTrigger` and all 3 `headlessui/Listbox` components now surface their actual unresolvable expressions. The other 6 outliers don't benefit — their failure happens earlier, in generic-alias substitution not matching the pattern at all, which is real further work, not something this pass could reach.
+   >
+   > Both fixes are committed with TDD tests (RED confirmed before each), full suite/clippy/fmt green, and the benchmarks report updated with an honest scope note rather than overclaiming the win."
+
+   The user then immediately asked: **"How does that change our benchmarks?"** — with an explicit system-level instruction attached to this specific turn requiring a TEXT-ONLY response with no tool calls, since "You already have all the context you need in the conversation above."
+
+   The correct, fully-supported-by-existing-context answer (which I have not yet delivered to the user, since this turn was redirected into a compaction/summary task) is:
+   - **The quantitative benchmark numbers in `docs/benchmarks.md` are completely unchanged.** `apps/validate/src/analyze.ts` (the agreement-rate/taxonomy engine) only ever reads and compares `NormalizedComponent.props` — it never reads `composes`. So all of: the 16.8% agreement rate vs RDT, the 22.7% vs react-docgen, the 946 matched / 1,953 mismatched / 2,720 missing / 15 extra table, the type-diff taxonomy buckets, the 10-outlier table's exact ours/RDT prop counts (e.g. `base-ui/MenuTrigger`: 11 vs 293; `headlessui/Listbox`: 14 vs 246, etc.) — none of these numbers moved, because `composes` is a separate, additional field alongside `props`, not a replacement or supplement counted in the props comparison.
+   - **What did change** is purely qualitative: a new item (#6) was added to the "What this tool can provide that they can't" section, documenting that `composes` (react-docgen's real, native field for exactly this scenario) is now actually populated for a real subset of the type-checker-boundary gap — specifically `base-ui/MenuTrigger` and all 3 `headlessui/Listbox` components, i.e. 4 of the 10 outlier components — instead of being silently empty everywhere as before.
+   - The doc explicitly scopes this honestly: 6 of the 10 outliers (Ariakit's 3 components, `ark-ui/SelectRoot`, `storybook-emotion/Button`, `fluentui/Button`) still show `composes: []`, because their failure occurs earlier in the pipeline (generic-alias substitution not matching the pattern at all) than the one dead end this fix closed.
+   - So in short: **the benchmarks' "how good is the tool" numbers are unaffected; what changed is the tool's degrade-gracefully behavior and the report's list of differentiators.** This is a positive, real, but narrowly-scoped improvement — not a change to the headline comparison metrics at all.
+
+9. Optional Next Step:
+   Deliver the above answer to the user's exact question — "How does that change our benchmarks?" — as a direct, prose-only reply (per the explicit instruction attached to that turn: "Respond with TEXT ONLY... Do NOT use Read, Bash, Grep, Glob, Edit, Write, or ANY other tool... You already have all the context you need in the conversation above"). This is the direct continuation of the immediately-preceding work and requires no further investigation, since the relevant facts (composes is orthogonal to props in `analyze.ts`; the outlier table's prop counts are unaffected; only the qualitative "what we can provide" list gained one new, honestly-scoped item) were already established and verified earlier in this same session.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

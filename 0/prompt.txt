@@ -1,0 +1,2 @@
+<command-message>proof:proof</command-message>
+<command-name>/proof:proof</command-name>

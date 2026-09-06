@@ -1,0 +1,31 @@
+<task-notification>
+<task-id>aeac31ceab2012ebf</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/aeac31ceab2012ebf.output</output-file>
+<status>completed</status>
+<summary>Agent "Phase 2b: Implement import_map.rs" completed</summary>
+<result>All 9 tests pass, build is clean, and clippy reports no warnings.
+
+## Summary
+
+Implemented `/Users/gabe/Projects/oxc-react-codegen/crates/core/src/import_map.rs` from scratch (replacing the stub).
+
+### What was implemented
+
+**Public types:**
+- `ImportRef` — holds a specifier string, the original exported name (`CompactString`), and `is_type_only` flag
+- `ReExportStep` enum — `Named { source_specifier, source_name }` or `Wildcards(Vec&lt;String&gt;)`
+
+**`ImportResolutionMap` struct** with two `FxHashMap` fields:
+- `bindings: FxHashMap&lt;(Utf8PathBuf, CompactString), ImportRef&gt;` — keyed by `(consuming_file, local_name)`
+- `wildcard_sources: FxHashMap&lt;Utf8PathBuf, Vec&lt;String&gt;&gt;` — barrel file → wildcard-re-export specifiers
+
+**Methods:**
+- `build(global: &amp;GlobalSourceData) -&gt; Self` — iterates `global.import_map` to populate bindings and `global.re_export_map` for wildcard sources; pure data transformation, no I/O
+- `find_import(&amp;self, file, local_name) -&gt; Option&lt;&amp;ImportRef&gt;` — simple keyed lookup; returns `None` for locally-defined names
+- `resolve_reexport_chain(&amp;self, barrel_file, exported_name, global) -&gt; Option&lt;ReExportStep&gt;` — scans the barrel's `LexedExport` list; named matches take priority over wildcards, returns `Wildcards` only when no named match found
+- `wildcard_sources_for(&amp;self, barrel_file) -&gt; &amp;[String]` — slice view into `wildcard_sources`
+
+**9 tests**, all passing, covering: basic lookup, missing names, `as`-renamed imports, named re-export chain, no-match case, wildcard re-exports, named-over-wildcard priority, empty wildcard set, and multiple-file isolation.</result>
+<usage><subagent_tokens>37061</subagent_tokens><tool_uses>12</tool_uses><duration_ms>93040</duration_ms></usage>
+</task-notification>

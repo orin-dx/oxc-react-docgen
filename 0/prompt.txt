@@ -1,0 +1,11 @@
+<task-notification>
+<task-id>bixb7j3bu</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/bixb7j3bu.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+cargo clean -p oxc-react-docgen-core -p oxc-react-docgen -p oxc-react-docgen-napi 2&gt;&amp;1 | tail -3
+{ time pnpm run build 2&gt;&amp;1 | tee /tmp/fixed-build.log ; } 2&gt; /tmp/fixed-build-time.txt
+echo "=== TIME ===" &amp;&amp; cat /tmp/fixed-build-time.txt
+echo "=== LOCK WAIT EVIDENCE (should be empty) ===" &amp;&amp; grep -i "blocking waiting for file lock" /tmp/fixed-build.log || echo "none found — fix confirmed"" completed (exit code 0)</summary>
+</task-notification>

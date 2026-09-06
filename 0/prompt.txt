@@ -1,0 +1,1 @@
+Shall we use fable 5 and opus 5 in agent teams to analyze the work we've done and look for bugs, performance issues, improvements, etc? Consider the end-goal and what we're competing with.

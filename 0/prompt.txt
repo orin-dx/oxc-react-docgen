@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b0yiuhnd3</task-id>
+<tool-use-id>toolu_01YD1FjeTvtBnv8xtaDTnH6y</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/b0yiuhnd3.output</output-file>
+<status>failed</status>
+<summary>Background command "Build and test with recursion limit 1024" failed with exit code 1</summary>
+</task-notification>

@@ -1,0 +1,26 @@
+<task-notification>
+<task-id>a96915a92eaab1dd7</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a96915a92eaab1dd7.output</output-file>
+<status>completed</status>
+<summary>Agent "Build Storybook emotion Button fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Only the two intended files created, nothing else modified. Task complete.
+
+## Summary
+
+**Files created:**
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/storybook-emotion/Button.tsx` — adapted from `storybookjs/storybook`'s real `code/core/src/components/components/Button/Button.tsx` (MIT, 356 lines, verified via WebFetch/curl of raw.githubusercontent.com — line count matched task description exactly)
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/storybook-emotion/theming.ts` — stand-in for `code/core/src/theming/index.ts`, which really does `export { default as styled } from '@emotion/styled'` (verified)
+
+**Trimmed/stubbed:** internal `deprecate()` calls, Radix `Slot`/asChild composition wiring, tooltip/aria-description helper components, animation-timeout state, and the ~150-line theme-driven CSS body (collapsed to a trivial stub). Kept faithful: the real `ButtonProps extends Omit&lt;ComponentProps&lt;typeof StyledButton&gt;, 'as'&gt;` chain, the real `styled('button', { shouldForwardProp: isPropValid })&lt;{...}&gt;()` two-arg call with its full generic prop object, and all real JSDoc. `@emotion/styled` is already a real devDependency of this monorepo (used unstubbed by other fixtures too), so I let the re-export resolve to its actual installed types rather than hand-stubbing — `isPropValid` isn't hoisted, so that one got a trivial inlined stand-in (its logic is irrelevant to prop typing).
+
+**Detection results — genuine contrast with Zendesk Garden:**
+- Our binary (`oxc-react-docgen extract --format canonical`): exit 0, no crash, **detects `Button` as a component** with 7 props — but only the ones explicitly declared in the `ButtonProps` interface body (`ariaLabel`, `tooltip`, `disableAllTooltips`, `ariaDescription`, `shortcut`, `as`, `asChild`). It emits diagnostics (`OPAQUE_TYPE`, `INDEXED_ACCESS_OPAQUE`) showing it could not resolve `typeof StyledButton` or `ComponentProps&lt;typeof StyledButton&gt;`, so all native button attrs and the emotion-specific style props (`size`, `padding`, `appearance`, `variant`, `active`, `animation`, `readOnly`) are silently missing rather than crashing — a graceful degradation.
+- Real react-docgen-typescript: **fully resolves** the pattern via TypeScript's real type checker — 306 props total, correctly including `size`/`padding`/`appearance`/`variant` as enums with defaults, `as` as `ElementType&lt;...&gt;`, plus every native button/ARIA attribute.
+
+This is a materially different outcome than Zendesk Garden's styled-components `.attrs&lt;T&gt;()` case, where **both** tools found 0 components (shared blind spot). Here, our tool partially detects (finds the component, under-resolves its props) while RDT fully resolves — a genuine, one-sided gap worth having in the fixture corpus.
+
+**No problems encountered** — build wasn't needed (binary already present), RDT ran cleanly via a throwaway script in the scratchpad dir (deleted afterward), and no files outside `fixtures/storybook-emotion/` were touched (confirmed via `git status --porcelain`).</result>
+<usage><subagent_tokens>85720</subagent_tokens><tool_uses>38</tool_uses><duration_ms>433939</duration_ms></usage>
+</task-notification>

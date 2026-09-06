@@ -1,0 +1,1 @@
+We'll worry about ts-go last but go through our plans, review with the latest knowledge, critically analysize and look for issues, propose how to address.

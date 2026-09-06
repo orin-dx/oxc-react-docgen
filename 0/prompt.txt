@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bzrhmlu9k</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/bzrhmlu9k.output</output-file>
+<status>completed</status>
+<summary>Background command "Test CLI crate specifically" completed (exit code 0)</summary>
+</task-notification>

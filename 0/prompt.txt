@@ -1,0 +1,1 @@
+Let's think through all of this, along with what you mentioned before and make a comprehensive, semantic and something that follows rust best practices please

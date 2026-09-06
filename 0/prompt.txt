@@ -1,0 +1,3 @@
+<command-name>/config</command-name>
+            <command-message>config</command-message>
+            <command-args></command-args>

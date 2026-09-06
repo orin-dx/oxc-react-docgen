@@ -1,0 +1,9 @@
+<task-notification>
+<task-id>bbanp9510</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/bbanp9510.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+{ time cargo build -p oxc-react-docgen-core 2&gt;&amp;1 | tail -5 ; } 2&gt; /tmp/core-solo-time.txt
+cat /tmp/core-solo-time.txt" completed (exit code 0)</summary>
+</task-notification>

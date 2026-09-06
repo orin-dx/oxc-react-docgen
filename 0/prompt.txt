@@ -1,0 +1,1 @@
+Can we cleanup the plans? Anything that is not implemented we should keep right? should we adopt a pattern where we track ADRs? How should we best leverage GH support? Should we plan the work there too?

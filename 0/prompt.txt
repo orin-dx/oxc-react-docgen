@@ -1,0 +1,8 @@
+<task-notification>
+<task-id>bbsfw8gpw</task-id>
+<tool-use-id>toolu_01VdqVmtKguaB3tRbi6Lj3o3</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/bbsfw8gpw.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+just ci 2&gt;&amp;1 | tail -40" completed (exit code 0)</summary>
+</task-notification>

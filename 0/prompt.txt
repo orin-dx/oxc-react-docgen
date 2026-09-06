@@ -1,0 +1,3 @@
+<command-name>/compact</command-name>
+            <command-message>compact</command-message>
+            <command-args>keep what we need to wrap up this work and do another validation of the RDT output</command-args>

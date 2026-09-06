@@ -1,0 +1,1 @@
+Are we appropriately setup with mise, pnpm, just, oxcfmt, oxlint, clippy, etc?

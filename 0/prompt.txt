@@ -1,0 +1,9 @@
+<task-notification>
+<task-id>b32q80c3t</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/3d64c972-d79e-45b8-9278-9c4cbaa57669/tasks/b32q80c3t.output</output-file>
+<status>completed</status>
+<summary>Background command "cd /Users/gabe/Projects/oxc-react-codegen
+echo "=== pnpm lint ===" &amp;&amp; pnpm run lint 2&gt;&amp;1 | tail -10
+echo "=== pnpm test ===" &amp;&amp; pnpm run test 2&gt;&amp;1 | tail -20" completed (exit code 0)</summary>
+</task-notification>

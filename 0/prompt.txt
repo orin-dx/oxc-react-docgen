@@ -1,0 +1,3 @@
+<command-name>/compact</command-name>
+            <command-message>compact</command-message>
+            <command-args>let's focus on the quality part of the work please</command-args>

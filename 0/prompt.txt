@@ -1,0 +1,54 @@
+<task-notification>
+<task-id>ae7c60588fdba1521</task-id>
+<tool-use-id>toolu_01FnpA1DpcdTBNmC7zFC8Lpr</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/ae7c60588fdba1521.output</output-file>
+<status>completed</status>
+<summary>Agent "Phase 3a: Implement resolver.rs and cache.rs" completed</summary>
+<result>88/88 tests pass, zero clippy warnings, clean build.
+
+Here is a summary of what was implemented:
+
+---
+
+## What was implemented
+
+### `crates/core/src/cache.rs` (full implementation)
+
+- `DtsCache` struct backed by `DashMap&lt;CacheKey, SourceData&gt;`, keyed by `(path, size, mtime_ns)`.
+- `load_from_disk(cache_dir)` — reads a msgpack file + JSON manifest; silently returns empty cache on any error or schema mismatch.
+- `get(path)` — checks current file mtime+size against stored key; returns `None` on staleness.
+- `insert(path, data)` — stores data keyed by current file metadata.
+- `save_to_disk()` — atomic write via temp-file + rename; writes manifest.json with schema version.
+- `SerializableCacheKey` surrogate handles the `u128 → u64` truncation that msgpack-serde needs.
+- 7 tests covering: miss, insert/get, save/reload, schema mismatch, stale key, nonexistent dir, bad save path.
+
+### `crates/core/src/resolver.rs` (full implementation)
+
+- `PipelineOptions` struct (defined here since `pipeline.rs` is still a stub).
+- `ResolutionContext` — wraps `GlobalSourceData`, `ImportResolutionMap`, `oxc_resolver::Resolver`, and extra builtins.
+- `resolve_component` — entry point per component mapping; calls the chain resolver, builds `ComponentEntry` with `inheritance`, `notable_inherited`, `discriminant_prop`.
+- `resolve_collected_type` — central `CollectedType → PropType` dispatch (all variants handled, no `_` fallthrough).
+- **Key behaviors:**
+  - `(string &amp; {})` intersection → `PropType::String`
+  - `Union` with `undefined` filtered down to single type → unwrapped
+  - React builtins dispatched through `react_type_to_prop_type` (ReactNode, CSSProperties, Ref, EventHandler, ElementType, FC, ComponentPropsWithoutRef, etc.)
+  - Known patterns checked before import resolution (SxProps → `PropType::SxProps`, etc.)
+  - Indexed access lookup table for `CSSProperties[key]` and `HTMLAttributes[key]`
+  - Template literal cartesian-product expansion with graceful opaque fallback
+  - Discriminated union detection (`find_discriminant_prop`)
+  - Default value merging: code default wins over JSDoc `@default`; mismatch emits `JsDocDefaultMismatch` info diagnostic
+  - `ExtendsRef::Builtin` → `InheritedLayer` with `html_element` set
+  - `read_tsconfig_paths` + `strip_json_comments` for tsconfig path aliases → `oxc_resolver::AliasValue`
+- 18 resolver tests covering all the major behaviors listed in the spec.
+
+### `crates/core/src/react_types.rs`
+
+- Added `notable_html_attrs(element)` function returning curated prop name lists per HTML element (`button`, `input`, `a`, `textarea`, `select`, `form`, `img`, and a catch-all).
+
+### Issues noted vs spec
+
+- `OpaqueReason::IndexedAccess` and `OpaqueReason::TemplateLiteral` use the correct struct variants from `types.rs` (the spec showed slightly different variant names).
+- `ComponentEntry` no longer has `html_element`/`omitted_html_props` fields (as noted in the critical context) — these live in `InheritedLayer` instead. The `ResolvedChain` struct was redesigned accordingly.
+- `read_tsconfig_paths` returns `Vec&lt;(String, Vec&lt;AliasValue&gt;)&gt;` (not `Vec&lt;PathBuf&gt;`) as required by `oxc_resolver 11`.</result>
+<usage><subagent_tokens>125279</subagent_tokens><tool_uses>54</tool_uses><duration_ms>584612</duration_ms></usage>
+</task-notification>

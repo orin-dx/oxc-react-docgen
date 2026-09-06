@@ -1,0 +1,212 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   - Complete the adversarial-analysis fix wave (8 tasks) - DONE in prior context, not detailed here since it's before this excerpt but referenced as already complete and integrated to main.
+   - "Should we address the work that was scoped out?" → user directed: "Let's do the quick ones first and then the release engineering work"
+   - Quick fixes: exit-code documentation (done) and event-handler parameter names (done, turned into a real feature)
+   - Release engineering: fix README/add migration guide (done), NAPI publishing scaffolding (done, scaffold-only per user's explicit choice)
+   - User then asked: "Can we commit and do the full napi work along with the TS/JS CLI?" — clarified via questions that "full napi work" meant workflow validation (deferred) and "TS/JS CLI" meant "I want to have the TS package that wraps the crate and provides a full CLI of our functionality. Proper error, param parsing, pretty output, etc" with location as "npx-able wrapper"
+   - User interrupted: "So we have a proper vite plugin and a CLI now? You're rushing to make changes. Slow down" — explicit feedback to slow down and check in more
+   - User then gave critical architectural direction: "We should not be duplicating code in TS/JS. We should be calling out to it. What kind of CLI does react-docgen and RDT provides?" — this fundamentally changed the CLI architecture from a TS reimplementation to a thin binary wrapper
+   - User confirmed via AskUserQuestion: "Thin binary wrapper (Recommended)" — deleted the TS duplication, rebuilt as subprocess-exec wrapper
+   - Final compact instruction from user: "keep what we need to wrap up this work and do another validation of the RDT output" — this is the explicit pending task for continuation
+
+2. Key Technical Concepts:
+   - napi-rs CLI (`@napi-rs/cli`) — `napi build`, `napi artifacts`, `napi prepublish`, `napi create-npm-dirs` commands; real flags verified via `npx napi <cmd> --help` rather than assumed
+   - `--dts <file>` flag separates auto-generated NAPI type declarations from hand-maintained consumer types (critical fix — `napi build` without this flag overwrites hand-maintained PropType/ComponentEntry/etc. types every run)
+   - `napi::Result` type alias gotcha — aliasing to `NapiResult` breaks napi-rs's dts codegen (generates dangling undefined type reference `Promise<NapiResult<string>>` instead of correctly unwrapping to `Promise<string>`)
+   - Platform packaging convention: `@scope/pkg-<platform>-<arch>[-<abi>]` naming (e.g., `@oxc-react-docgen/napi-darwin-arm64`, `@oxc-react-docgen/cli-linux-x64-gnu`), `optionalDependencies` in the main package, `os`/`cpu` fields in platform package.json for npm's native platform filtering
+   - Thin native-binary-wrapper pattern (esbuild/swc/biome/turbo convention) — ship compiled binary per-platform, JS `bin` script just `spawnSync`s it with `stdio: 'inherit'`, forwarding exit code — zero duplicated CLI logic
+   - GitHub Actions `workflow_dispatch` with `dry_run` boolean input as a safety gate for irreversible publish actions
+   - Cross-compilation for `aarch64-unknown-linux-gnu` requires `gcc-aarch64-linux-gnu` + `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER`/`CC_aarch64_unknown_linux_gnu` env vars (unverified against real CI)
+   - `napi::Result<String>` return type on `#[napi]` async functions in `crates/binding/src/lib.rs` — must NOT be locally aliased for correct TS codegen
+   - RDT (react-docgen-typescript) and react-docgen are BOTH library-only packages with no `bin` field and no CLI — confirmed via `cat node_modules/react-docgen/package.json` and `node_modules/react-docgen-typescript/package.json` showing `bin: None` for both
+   - `serialize_rdt`/`serialize_storybook`/`raw_string()`/`is_literal_union()` — the Rust functions in `crates/cli/src/commands/extract.rs` and `crates/core/src/types/output.rs` that are the SINGLE SOURCE OF TRUTH for RDT-format output; must never be reimplemented elsewhere
+   - `require.resolve()` in Node can resolve non-JS files (raw binaries) via legacy resolution when no `exports` field restricts subpaths
+
+3. Files and Code Sections:
+
+   **`crates/cli/src/main.rs`** — MODIFIED (quick fix #1)
+   - Changed `/// Validate extraction — exits 2 if any errors. For CI.` to `/// Validate extraction — exits 2 if any errors, or 1 if --strict and there are warnings. For CI.`
+   - Changed `--strict` flag doc comment to `/// Fail on warnings in addition to errors (exits 1, distinct from the exit-2 error path)`
+   - Committed as `bc9b0fe`
+
+   **`crates/core/src/types/collected.rs`** — MODIFIED (event handler param names)
+   - `CollectedType::Function` gained `param_names: Vec<Option<CompactString>>` field, parallel to `params`
+   - Updated `to_raw_string()`, `to_json_value()` (uses `"names"` key, changed from initial `"pn"` due to a `typos` linter false-positive treating "pn" as typo for "on"), `from_json_value()`
+
+   **`crates/core/src/extractor/mod.rs`** — MODIFIED
+   - Added `binding_pattern_name(pattern: &BindingPattern) -> Option<CompactString>` helper matching `BindingPattern::BindingIdentifier(id) => Some(id.name.as_str().into())`
+   - Updated 3 call sites (TSFunctionType, TSMethodSignature in object literals, TSMethodSignature in interfaces) to also build `param_names` alongside `params`
+
+   **`crates/core/src/types/output.rs`** — MODIFIED
+   - `PropType::EventHandler` gained `param_name: Option<String>` field
+   - `raw_string()`: `format!("({}: {}) => void", param_name.as_deref().unwrap_or("e"), event_type)` — fixes the hardcoded "e" placeholder bug
+   - `to_tagged_value()`/`from_tagged_value()` updated for `paramName` field
+
+   **`crates/core/src/resolver/func.rs`** — MODIFIED
+   - `resolve_function_type` signature gained `param_names: &[Option<CompactString>]` parameter (7 args total, needed `#[allow(clippy::too_many_arguments)]` matching existing precedent)
+   - `first_param_name()` closure extracts `param_names.first().and_then(|n| n.as_ref()).map(|s| s.to_string())`
+
+   **`crates/core/src/resolver/html.rs`, `react.rs`** — MODIFIED
+   - Added `param_name: None` to all hardcoded `PropType::EventHandler` constructions (HTML-attribute-inferred handlers, React.*EventHandler type references have no real AST parameter)
+
+   **`crates/core/src/resolver/collected.rs`, `mod.rs`** — MODIFIED
+   - Updated `CollectedType::Function` pattern match to include `param_names`
+   - Test `test_function_type_single_param` updated to construct with `param_names: vec![Some("e".into())]` and assert `param_name.as_deref() == Some("e")`
+
+   **`packages/napi/index.d.ts`** — MODIFIED (napi types)
+   - Updated `PropType` union's `stringLiteral`/`numberLiteral`/`boolLiteral` to `value` field, `union`/`intersection` to `members`, `array` to `element`, `tuple` to `elements`, `object` to `fields`, `eventHandler` to include `paramName: string | null`
+   - Committed as `0924222`
+
+   **README.md** — MODIFIED (release engineering)
+   - Fixed Install section: removed false `npm install -D @oxc-react-docgen/vite-plugin @oxc-react-docgen/napi` instruction (verified 404 via `npm view`), replaced with `git clone https://github.com/castrog/oxc-react-codegen` (real repo URL from `git remote -v`) + `pnpm --filter @oxc-react-docgen/napi run build:napi` build-from-source instructions
+   - Fixed overstated claim "output shape is RDT-compatible, so existing Storybook configurations work without changes" → clarified RDT format is CLI-only via `--format rdt`, Vite plugin/NAPI binding expose canonical format only
+   - Added `@oxc-react-docgen/cli` to Install section and Repository listing: `packages/cli/         @oxc-react-docgen/cli (npx wrapper — execs crates/cli's binary, no reimplemented logic)`
+   - Updated CLI section to explain the thin-wrapper architecture
+   - Committed across `2b52c72` and `6229577`
+
+   **MIGRATING.md** — CREATED
+   - Field-by-field ComponentDoc/PropItem comparison table against real RDT
+   - Documented intentional omissions (ref/key), genuine compat gap (HTML attribute inheritance — notableInherited's ~15-20 curated attrs vs RDT's full ~250-300), tracked bugs (discriminated union edge cases, Pick/Omit with aliased K)
+   - All claims verified against actual `serialize_rdt`/`serialize_storybook` implementations, not assumed
+   - Committed as `2b52c72`
+
+   **`crates/binding/src/lib.rs`** — MODIFIED (real bug found and fixed)
+   - Removed `use napi::Result as NapiResult;` alias import
+   - Changed 3 function signatures from `-> NapiResult<String>` to `-> napi::Result<String>`
+   - This was necessary because napi-rs's dts codegen doesn't resolve local type aliases back to `napi::Result`'s special "unwrap into Promise<T>" handling, generating a broken `Promise<NapiResult<string>>` reference with `NapiResult` never defined
+   - Verified via actually running `napi build --platform` before/after: before showed broken type, after showed correct `Promise<string>`
+   - Committed as `a2d745c`
+
+   **`packages/napi/package.json`** — MODIFIED
+   - Added `"packageName": "@oxc-react-docgen/napi"` to napi config
+   - Added `optionalDependencies` for 5 platform packages (all version "0.1.0")
+   - Added `devDependencies: {"@napi-rs/cli": "^3.0.0"}`
+   - Scripts: `"build:napi": "napi build --platform --release --manifest-path ../../crates/binding/Cargo.toml --output-dir . --dts binding.d.ts"`, `"artifacts": "napi artifacts"`, `"prepublishOnly": "napi prepublish --tag-style npm"`
+   - `"files"` updated to include `binding.d.ts`
+
+   **`packages/napi/index.js`** — REGENERATED (auto-generated by napi-rs, replaces hand-rolled version)
+   - Now napi-rs's own comprehensive platform-detection loader (handles musl/glibc, ia32, android, darwin-universal — objectively more complete than the original hand-rolled dev-only loader)
+   - Checks `./oxc_react_docgen_napi.<platform>.node` (cwd-relative) first, falls back to platform optionalDependency package
+   - Does NOT have a `target/release` fallback anymore — local dev now requires `pnpm run build:napi`, not raw `cargo build`
+
+   **`packages/napi/binding.d.ts`** — CREATED
+   - Auto-generated by `napi build --dts binding.d.ts`, contains ONLY the NAPI function signatures (extractAll, closeSession, createSession, initializeSession, extractFileIncremental) and `JsExtractOptions` interface
+   - Regenerated fresh on every `pnpm run build:napi`
+
+   **`packages/napi/index.d.ts`** — RECONSTRUCTED (critical fix)
+   - Changed from auto-generated (which was destroying hand-maintained types) to stable hand-maintained file
+   - Starts with `export * from './binding'` then keeps all hand-written JSON-shape types: `InheritedLayer`, `PropParent`, `DefaultValue`, `OpaqueReason`, `ObjectField`, `PropType` (full discriminated union with corrected field names), `ParsedProp`, `ComponentEntry`, `EnumEntry`, `Diagnostic`, `ExtractionStats`, `ExtractionOutput`, `IncrementalUpdate`
+   - Verified via `tsc --noEmit --strict` using the real installed tsc at `apps/validate/node_modules/.bin/tsc` — zero errors
+
+   **`packages/napi/npm/{darwin-arm64,darwin-x64,linux-x64-gnu,linux-arm64-gnu,win32-x64-msvc}/package.json`** — CREATED
+   - Generated via actually running `napi create-npm-dirs` (real, local-only, safe operation)
+   - Example content for darwin-arm64: `{"name": "@oxc-react-docgen/napi-darwin-arm64", "version": "0.1.0", "cpu": ["arm64"], "main": "oxc_react_docgen_napi.darwin-arm64.node", "files": ["oxc_react_docgen_napi.darwin-arm64.node"], ...}`
+
+   **`.github/workflows/release-napi.yml`** — CREATED then RENAMED to `release.yml`
+   - `workflow_dispatch` only trigger, `dry_run` boolean input defaulting to `true`
+   - 5-platform build matrix (aarch64-apple-darwin/macos-14, x86_64-apple-darwin/macos-13, x86_64-unknown-linux-gnu/ubuntu-latest, aarch64-unknown-linux-gnu/ubuntu-latest+cross, x86_64-pc-windows-msvc/windows-latest)
+   - Extended to ALSO build the CLI binary (`cargo build --release --target ${{ matrix.target }} -p oxc-react-docgen`) in the same job, uploading as `cli-binary-${{ matrix.cli_platform }}` artifact
+   - Fixed 3 bugs discovered via testing that had NOT been fixed in the original workflow file (only in package.json): removed `--cargo-name` flag (doesn't exist), added `--dts binding.d.ts`, changed `napi prepublish -t npm` to `--tag-style npm`
+   - Publish job downloads both artifact sets, runs `napi artifacts`/`napi prepublish` for NAPI packages, and a manual loop (`for dir in packages/cli/npm/*/; do (cd "$dir" && npm publish ...); done`) for CLI platform packages plus the main `@oxc-react-docgen/cli` package
+   - Explicit header comment: "UNTESTED SCAFFOLDING — this workflow has never been run" with 3 numbered caveats about what to verify before trusting it
+   - Committed as `704be77` (original) then `6229577` (renamed + fixed)
+
+   **`packages/cli/`** — CREATED, then MAJOR REWRITE after user's "don't duplicate, call out to it" feedback
+   - FIRST VERSION (deleted): `src/format.ts` (ported serialize_rdt/serialize_storybook/raw_string/isLiteralUnion), `src/output.ts` (ported print_summary/print_diagnostics), `src/config.ts` (docgen.config.ts loading with tsx registration) — all deleted per user feedback about duplication
+   - FINAL VERSION (current, committed):
+     - `packages/cli/package.json`:
+       ```json
+       {
+         "name": "@oxc-react-docgen/cli",
+         "version": "0.1.0",
+         "description": "npm-installable oxc-react-docgen CLI — thin wrapper that execs the compiled Rust binary...",
+         "type": "commonjs",
+         "bin": {"oxc-react-docgen": "./bin/cli.js"},
+         "files": ["bin"],
+         "optionalDependencies": {
+           "@oxc-react-docgen/cli-darwin-arm64": "0.1.0",
+           "@oxc-react-docgen/cli-darwin-x64": "0.1.0",
+           "@oxc-react-docgen/cli-linux-x64-gnu": "0.1.0",
+           "@oxc-react-docgen/cli-win32-x64-msvc": "0.1.0",
+           "@oxc-react-docgen/cli-linux-arm64-gnu": "0.1.0"
+         },
+         "license": "MIT"
+       }
+       ```
+     - `packages/cli/bin/cli.js` (full content, CommonJS, ~65 lines):
+       ```javascript
+       #!/usr/bin/env node
+       'use strict'
+       const { existsSync } = require('node:fs')
+       const { join, dirname } = require('node:path')
+       const { spawnSync } = require('node:child_process')
+       const BINARY_NAME = process.platform === 'win32' ? 'oxc-react-docgen.exe' : 'oxc-react-docgen'
+       function platformPackageName() { /* platform/arch → @oxc-react-docgen/cli-<platform> mapping, musl detection via process.report */ }
+       function findBinary() {
+         // checks target/release, target/debug relative to repo root first (dev-local)
+         // then require.resolve(`${pkg}/${BINARY_NAME}`) for the platform optionalDependency
+       }
+       const binary = findBinary()
+       // error handling if not found
+       const result = spawnSync(binary, process.argv.slice(2), { stdio: 'inherit' })
+       process.exit(result.status ?? 1)
+       ```
+     - `packages/cli/npm/{5 platforms}/package.json` — minimal packages with `os`/`cpu`/`files` fields pointing to the raw binary (no napi-specific tooling used since these aren't NAPI addons)
+   - No tsconfig.json, no moon.yml (removed — nothing to compile)
+   - Verified end-to-end: built real Rust binary via `cargo build --release -p oxc-react-docgen`, tested `node packages/cli/bin/cli.js --help` (real Rust CLI help output forwarded correctly), tested `check --src /does/not/exist` (exit code 2, correct error message), tested `extract --src fixtures/rdt-compat` (stdout pure JSON, stderr has summary+diagnostics), tested `--format rdt` (correct enum serialization: `{"name": "enum", "value": [{"value": "\"single\""}, {"value": "\"multiple\""}]}`)
+   - Committed as `6229577`
+
+4. Errors and fixes:
+   - **`--cargo-name` flag doesn't exist on `napi build`**: Discovered by actually running `npx napi build --help` against the real installed CLI rather than assuming. Fixed by using `--manifest-path` alone (no `-p`/`--package` needed since manifest-path points directly at the binding crate's own Cargo.toml).
+   - **`-t npm` on `napi prepublish` means `--tag-style npm`, not a publish target**: Verified via `--help` output showing `--tag-style,--tagstyle,-t` = "git tag style, npm or lerna". Not actually wrong to use (npm-style git tags is reasonable for this project), just wrong assumption about what it did.
+   - **`napi::Result` aliased to `NapiResult` broke generated TypeScript types**: Confirmed by actually running `napi build --platform` and inspecting output before/after removing the alias in `crates/binding/src/lib.rs`.
+   - **`napi build --platform` completely overwrites `index.d.ts`, destroying hand-maintained consumer types**: Fixed by using `--dts binding.d.ts` to redirect auto-generated output to a separate file, then hand-reconstructing `index.d.ts` to `export * from './binding'` plus the preserved hand-written types. Verified via `tsc --noEmit --strict` with zero errors.
+   - **Auto-generated `index.js` loader has no `target/release` fallback** (unlike the original hand-rolled version): Fixed by updating README.md to tell developers to use `pnpm run build:napi` instead of raw `cargo build -p oxc-react-docgen-napi` for local dev — verified this exact documented command works end-to-end.
+   - **JSON key `"pn"` triggered a `typos` spell-checker false positive** ("`pn` should be `on`") in the pre-commit hook: Renamed to `"names"` in both the serializer and deserializer in `crates/core/src/types/collected.rs`.
+   - **`missing_src_dirs.len() == options.src_dirs.len()` vacuously true when both are 0** (empty src_dirs list treated as "all configured dirs missing"): Fixed with `!options.src_dirs.is_empty() && missing_src_dirs.len() == options.src_dirs.len()` guard in `crates/core/src/pipeline/mod.rs`. This was found during integration testing (unrelated to the current CLI work, from an earlier phase of this session).
+   - **USER FEEDBACK — "You're rushing to make changes. Slow down"**: I had written 7 files in rapid succession (package.json, tsconfig.json, moon.yml, bin/cli.js, format.ts, output.ts, config.ts) without pausing to check in. I stopped immediately, clarified pre-existing vs new work, and asked what pace/approach the user wanted.
+   - **USER FEEDBACK — "We should not be duplicating code in TS/JS. We should be calling out to it."**: This was the most significant architectural correction. I had built a TypeScript port of `serialize_rdt`/`serialize_storybook`/`raw_string()` that would inevitably drift from the Rust source of truth. I researched react-docgen/RDT's own CLI conventions (found neither has one), then proposed and (with user confirmation) implemented a complete architectural pivot to a thin subprocess-exec wrapper with zero duplicated logic.
+
+5. Problem Solving:
+   - Successfully identified and fixed a real napi-rs codegen bug (`NapiResult` alias) that would have shipped broken TypeScript types to any real consumer — found only because I actually ran the build rather than just writing scaffolding.
+   - Successfully identified and fixed a regeneration-safety bug (`napi build` clobbering hand-maintained `index.d.ts`) using the `--dts` flag to separate auto-generated from hand-maintained content — a sustainable fix, not a one-time patch.
+   - Successfully pivoted the CLI architecture mid-implementation based on direct user feedback, avoiding a maintenance liability (duplicate CLI logic in TS and Rust) before it was committed.
+   - Verified every non-trivial claim empirically rather than assuming: real `npm view` calls for package existence, real `--help` output for CLI flags, real `tsc --noEmit` for type-checking, real `cargo build` + binary execution for end-to-end behavior.
+
+6. All user messages:
+   - "Should we address the work that was scoped out?" (context: referring to items deferred from the adversarial-analysis fix wave)
+   - "Let's do the quick ones first and then the release engineering work"
+   - "All done?" (mid-check-in, addressed with full status)
+   - "Can we commit and do the full napi work along with the TS/JS CLI?"
+   - Answers to clarifying questions: "I want to have the TS package that wraps the crate and provides a full CLI of our functionality. Proper error, param parsing, pretty output, etc" and "npx-able wrapper (Recommended)"
+   - "So we have a proper vite plugin and a CLI now? You're rushing to make changes. Slow down"
+   - "We should not be duplicating code in TS/JS. We should be calling out to it. What kind of CLI does react-docgen and RDT provides?"
+   - Answer to architecture question: "Thin binary wrapper (Recommended)"
+   - Final message (this compaction request) with explicit instruction: "keep what we need to wrap up this work and do another validation of the RDT output"
+
+   No security-relevant constraints or sensitive-file handling instructions were given by the user in this conversation beyond the standard system-level git safety protocols already in effect (never force-push, never skip hooks, etc., which were followed throughout — e.g., the pre-commit hook's `cargo fmt`/`cargo deny` reformatting was always accepted rather than bypassed with `--no-verify`).
+
+7. Pending Tasks:
+   - **Explicitly requested in the final compact instruction**: "do another validation of the RDT output" — need to re-verify the RDT-format output is still correct after all the changes in this session (event-handler param names, the napi/cli scaffolding, etc.), likely via the `apps/validate` comparison harness (`pnpm --filter @oxc-react-docgen/validate compare:all`) and/or manual spot-checks against the real `oxc-react-docgen extract --format rdt` output on the rdt-compat fixtures.
+   - No other explicitly pending tasks remain from the user — the napi/cli scaffolding work was completed and committed to the user's specified scope (workflow_dispatch-only, no actual publish, no CI trigger).
+
+8. Current Work:
+   Immediately before this summary request, I had just completed and committed the CLI package rewrite:
+   - Final commit `6229577`: "build(cli): add @oxc-react-docgen/cli as a thin exec wrapper, not a reimplementation" — 11 files changed, deleted `.github/workflows/release-napi.yml`, created `.github/workflows/release.yml`, created `packages/cli/bin/cli.js` and 6 package.json files, modified README.md and pnpm-lock.yaml.
+   - Ran final verification: `git status --short` showed only 2 pre-existing untracked plan docs remaining (`docs/superpowers/plans/2026-06-25-phase6-integration-tests.md` and `docs/superpowers/plans/2026-07-07-adversarial-analysis-fixes.md`), confirming a clean working tree.
+   - Ran `git log --oneline -5` showing the commit history ending at `6229577`.
+   - This was the last tool call before the user's compaction request arrived. No response text had yet been given to the user about this final commit — the conversation was cut off exactly at the point of confirming the commit succeeded and checking git log.
+
+9. Optional Next Step:
+   The explicit, most recent instruction from the user (in the compaction request itself) is: "keep what we need to wrap up this work and do another validation of the RDT output." The direct next step is to perform a fresh validation of the RDT-format output now that all changes are committed — this should include:
+   - Building the release binary fresh (`cargo build --release`) if not already current
+   - Running RDT-format extraction against the `fixtures/rdt-compat/` fixtures (and ideally the other library fixtures — shadcn, mui, chakra, mantine, radix, react-aria, panda) via either the direct binary (`./target/release/oxc-react-docgen extract --src <fixture> --format rdt`) or the new `packages/cli/bin/cli.js` wrapper (to also confirm the wrapper forwards correctly)
+   - Cross-checking against the `apps/validate` harness's real RDT baseline if available/regenerable (`pnpm --filter @oxc-react-docgen/validate compare:all`, noting from earlier session context that baselines can go stale and may need regeneration via `run-react-docgen-typescript.ts` first)
+   - Confirming no regressions were introduced by the event-handler-param-name changes, the JSON field renames (`pn`→`names`), or any other change made since the last full RDT validation earlier in the session
+   No further scope expansion (e.g., actually triggering the release workflow or publishing) should be attempted without new explicit user direction, since the user's original scope choices ("scaffold only," "workflow_dispatch only," dry_run defaults) remain in effect.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

@@ -1,0 +1,1 @@
+If we think of the best way to guide our work in this repo with agents, skills and CLAUDE.md making sure we stay focused on goal and outcomes along with the anthropic best practices how do we improve our setup as well as our token efficiency/cost?

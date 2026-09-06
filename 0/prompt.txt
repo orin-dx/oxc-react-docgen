@@ -1,0 +1,128 @@
+<task-notification>
+<task-id>a8c14a4b93a7d7c71</task-id>
+<tool-use-id>toolu_019tXfrvJY1PWvpZ8JP7AZg9</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0602cae8-9776-4cab-baaa-67ad00aaf7d1/tasks/a8c14a4b93a7d7c71.output</output-file>
+<status>completed</status>
+<summary>Agent "Search angle 5: Rolldown 1.0 release status and JS plugin vs NAPI comparison" came to rest</summary>
+<note>A task-notification fires each time this agent comes to rest with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Here is the full synthesized report with all findings:
+
+---
+
+## Rolldown 1.0 Release Status &amp; Plugin Architecture: Research Report
+
+### 1. Release Status
+
+Rolldown 1.0 is released and stable. The full release timeline:
+
+- **May 7, 2026** — v1.0.0 stable shipped ([VoidZero announcement](https://voidzero.dev/posts/announcing-rolldown-1-0))
+- **June 11, 2026** — v1.1.1 is the current latest as of this writing ([GitHub releases](https://github.com/rolldown/rolldown/releases))
+- **January 2026** — 1.0 RC landed, marking API stability ([RC announcement](https://voidzero.dev/posts/announcing-rolldown-rc))
+- **March 2026** — Vite 8 stable shipped with Rolldown as the default bundler
+
+The project follows semver from 1.0 onward: `^1.0.0` option names, types, and plugin hook signatures are guaranteed backward-compatible.
+
+**Stable features:**
+- Core bundling API
+- Rollup-compatible plugin API (all standard hook names)
+- Hook filter system
+- Built-in plugins: `builtin:replace`, `builtin:esm-external-require`, `builtin:bundle-analyzer`
+- Dead code elimination, chunking, tree-shaking
+- Vite 8 integration via `build.rolldownOptions`
+
+**Experimental (explicitly not semver-stable):**
+- Watch mode (rebuilt with native fs watcher)
+- Native MagicString implementation
+- Anything under the `experimental` input option namespace ([reference](https://rolldown.rs/reference/inputoptions.experimental))
+- Several output options that graduated from experimental in the RC (e.g. `output.strictExecutionOrder`, `output.codeSplitting`)
+
+**Performance headline:** 10–30x faster than Rollup, comparable to esbuild. Real-world: Ramp −57%, Mercedes-Benz.io −38%, Beehiiv −64% build time reduction.
+
+---
+
+### 2. Plugin Architecture: JS vs. Native Rust
+
+#### How the JS plugin bridge works
+
+Rolldown is built in three layers: TypeScript API → NAPI-RS bridge → Rust core. JS plugins cross this bridge at hook invocation time:
+
+1. Rolldown's Rust `PluginDriver` orchestrates hook dispatch
+2. JS plugins are wrapped in a `JsPlugin` Rust struct implementing the `Plugin` trait
+3. At each hook boundary, execution crosses the FFI (Rust → NAPI → Node.js event loop → back)
+4. The JS callback runs on the Node.js thread (not a tokio worker — NAPI callbacks must run on the Node.js thread); the Rust workers park while waiting
+
+This serialization is the key bottleneck: even though Rolldown parallelizes module processing in Rust, JS plugin hooks serialize every module through the single-threaded Node.js event loop.
+
+#### The hook filter mitigation
+
+Rolldown's hook filter system ([docs](https://rolldown.rs/in-depth/why-plugin-hook-filter)) pre-compiles regex/string matchers in Rust per plugin, evaluated before crossing the NAPI bridge:
+
+| Setup | 10 plugins |
+|---|---|
+| No filters | 2,792ms (3.74x slower than baseline) |
+| With filters | ~740ms (same as 0 plugins) |
+
+Filters are declared on `resolveId`, `load`, `transform`, and `renderChunk`. A hook-usage bitmask additionally lets PluginDriver skip plugins that don't implement a given hook at all.
+
+#### Option A: JS plugin calling a Rust NAPI module
+
+This is the standard pattern for users today. You write a normal Rollup-compatible JS plugin, and inside a hook you call into your own NAPI `.node` addon:
+
+```js
+// my-plugin.js
+import { myNativeTransform } from './my-addon.node'; // your NAPI module
+
+export default {
+  name: 'my-rust-transform',
+  transform: {
+    filter: { id: /\.myext$/ },  // filter evaluated in Rolldown's Rust before crossing to JS
+    handler(code, id) {
+      return myNativeTransform(code, id); // second NAPI hop into your addon
+    }
+  }
+}
+```
+
+**Characteristics:**
+- Fully supported and documented path
+- Two FFI crossings per matching module: Rolldown Rust → Node.js (for your plugin) → your NAPI addon → Node.js → Rolldown Rust
+- Hook filters eliminate the first crossing for non-matching files, so they are essential
+- You control your NAPI module independently; it can use tokio, rayon, etc. internally
+- Works with any `napi-rs` crate you publish to npm
+
+#### Option B: Native Rust plugin compiled into Rolldown
+
+This is **not a public API**. Built-in Rust plugins (`Replace`, `BundleAnalyzer`, `IsolatedDeclaration`, `ViteAlias`, `ViteManifest`, `ViteImportGlob`, `ViteImportAnalysis`) are implemented in `crates/rolldown_plugin_*` inside the Rolldown monorepo and compiled into the native binding. There is no published `rolldown_plugin` crate or stable external plugin trait for third-party Rust authors.
+
+**Characteristics:**
+- Zero FFI overhead — runs entirely in Rust alongside the bundler core
+- The only way to do this is to contribute the plugin upstream to the Rolldown repo
+- VoidZero has not announced any plans for a stable external Rust plugin API
+- Source locations (internal): `crates/rolldown_plugin/` (trait definition), `crates/rolldown_binding/src/options/plugin/binding_builtin_plugin.rs` (NAPI exposure)
+
+---
+
+### 3. Practical Comparison for Your Use Case
+
+Given this is an `oxc-react-docgen` project (already a Rust crate with NAPI bindings), the path of least resistance is **Option A**: write a thin JS Rolldown plugin that calls your existing NAPI module. Hook filters make this approach nearly as fast as a native plugin for the common case (only matching files cross the bridge). The only scenario where a native plugin would be strictly faster is if you need to transform *every* module with no filtering possible, which is rare.
+
+There is no available path to writing an external native Rust plugin for Rolldown 1.x today. That would require either upstreaming or waiting for an external plugin API (not announced).
+
+---
+
+### Sources
+
+- [Announcing Rolldown 1.0 | VoidZero](https://voidzero.dev/posts/announcing-rolldown-1-0)
+- [Announcing Rolldown 1.0 RC | VoidZero](https://voidzero.dev/posts/announcing-rolldown-rc)
+- [GitHub Releases — rolldown/rolldown](https://github.com/rolldown/rolldown/releases)
+- [Why Plugin Hook Filters | Rolldown](https://rolldown.rs/in-depth/why-plugin-hook-filter)
+- [Plugin API | Rolldown](https://rolldown.rs/apis/plugin-api)
+- [Plugin Hook Filters | Rolldown](https://rolldown.rs/apis/plugin-api/hook-filters)
+- [JavaScript-Rust Bridge | DeepWiki](https://deepwiki.com/rolldown/rolldown/2.1-bundling-pipeline)
+- [Plugin Architecture | DeepWiki](https://deepwiki.com/rolldown/rolldown/4.1-plugin-architecture)
+- [Rolldown Bindings Explorer — topheman](https://topheman.github.io/toolchain-notes/rolldown/explore-rolldown-bindings.html)
+- [Rolldown CHANGELOG-2025 | GitHub](https://github.com/rolldown/rolldown/blob/main/CHANGELOG-2025.md)
+- [Vite 8 + Rolldown Guide (2026)](https://usama.codes/blog/vite-8-beta-rolldown-rust-bundler-guide)
+- [VoidZero May 2026 Recap](https://voidzero.dev/posts/whats-new-may-2026)</result>
+<usage><subagent_tokens>31952</subagent_tokens><tool_uses>8</tool_uses><duration_ms>116088</duration_ms></usage>
+</task-notification>

@@ -1,0 +1,28 @@
+<task-notification>
+<task-id>a175c1651d952307a</task-id>
+<tool-use-id>toolu_016WhvWwzZcBxi9jQtX14LtX</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a175c1651d952307a.output</output-file>
+<status>completed</status>
+<summary>Agent "Build react-final-form fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>No changes outside `fixtures/react-final-form/`. Task complete.
+
+## Summary
+
+**Files created:**
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/react-final-form/Field.tsx` (169 lines) — real source: https://github.com/final-form/react-final-form/blob/main/src/Field.tsx
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/react-final-form/types.ts` (142 lines) — real source: https://github.com/final-form/react-final-form/blob/main/src/types.ts
+
+**Verified real content first** via GitHub API (default branch is `main`, not `master`) — `Field.tsx` matched the expected 2490 bytes / 111 lines exactly.
+
+**What's kept verbatim:** the entire `FieldComponent` function body (byte-identical diff from `import` line down), the real `children as (props: FieldRenderProps&lt;FieldValue, T&gt; &amp; typeof rest) =&gt; React.ReactNode` cast, and the `React.forwardRef(FieldComponent as any) as &lt;...&gt;(...) =&gt; React.ReactElement | null` export pattern. In `types.ts`: `FieldInputProps`, `FieldRenderProps`, `RenderableProps`, `UseFieldAutoConfig`, `UseFieldConfig`, `FieldProps` (including its real `[key: string]: any` index signature) are verbatim.
+
+**What's stubbed and why:** `./renderComponent` and `./useField` imports (~60 and ~370 real lines of runtime plumbing) became local same-signature stand-ins since they don't affect prop types. `FieldSubscription`/`FieldValidator` (normally from the `final-form` core package, not installed) are inlined verbatim from `final-form/final-form`'s `src/types.ts`. Unrelated types (`FormProps`, `FormSpyProps`, `ReactContext`, etc., not reachable from `Field`'s props) were dropped.
+
+**Extraction results (exit 0, no crash):** our binary extracts `FieldComponent` with 20 props. `children` resolves as `kind: "opaque"` with `reason: indexedAccess` on `RenderableProps&lt;FieldRenderProps&lt;FieldValue, T&gt;&gt;["children"]`, correctly emitting an `INDEXED_ACCESS_OPAQUE` info diagnostic (not a silent failure) — it does not currently resolve the function/ReactNode union because it can't statically evaluate the indexed-access lookup into `RenderableProps`.
+
+**RDT comparison (unexpected but genuine finding):** real `react-docgen-typescript` returns **zero components** for this file — confirmed via a throwaway script (`node_modules/.bin/tsx` + `react-docgen-typescript`'s `parse()`/`withCustomConfig`) and isolated with minimal repros (deleted after use). The culprit is the `React.forwardRef(X as any) as &lt;T&gt;(...) =&gt; ReactElement` generic-cast export idiom itself (independent of our trimming) — RDT silently produces `[]` rather than erroring. This makes the fixture doubly valuable: it exercises both the indexed-access `children` degradation in our tool AND a real RDT blind spot on generic forwardRef casts.
+
+No problems left unresolved.</result>
+<usage><subagent_tokens>94351</subagent_tokens><tool_uses>52</tool_uses><duration_ms>385103</duration_ms></usage>
+</task-notification>

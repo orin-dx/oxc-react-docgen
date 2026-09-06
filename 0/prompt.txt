@@ -1,0 +1,145 @@
+<task-notification>
+<task-id>a2a6c557d38058d4d</task-id>
+<tool-use-id>toolu_017dYYFuficfvyVZG3wmAfv2</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0602cae8-9776-4cab-baaa-67ad00aaf7d1/tasks/a2a6c557d38058d4d.output</output-file>
+<status>completed</status>
+<summary>Agent "Search angle 2: Platform-specific optionalDependencies for NAPI binaries" came to rest</summary>
+<note>A task-notification fires each time this agent comes to rest with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I now have all the information needed. Here is the complete picture of the NAPI-RS optionalDependencies publishing pattern:
+
+---
+
+## NAPI-RS Platform Binary Distribution Pattern
+
+### Overview
+
+NAPI-RS splits a native addon into N+1 npm packages: one **main package** (pure JS loader) and one **platform-specific binary package** per target triple. npm/yarn/pnpm install only the binary package that matches the current machine, using two mechanisms: `optionalDependencies` (so a missing platform package is not a fatal install error) and `os`/`cpu` fields on the platform package (so the package manager skips packages that don't match the current OS/arch).
+
+---
+
+### Main Package `package.json`
+
+```json
+{
+  "name": "@cool/core",
+  "version": "1.0.0",
+  "main": "index.js",
+  "optionalDependencies": {
+    "@cool/core-darwin-x64":       "^1.0.0",
+    "@cool/core-darwin-arm64":     "^1.0.0",
+    "@cool/core-win32-x64-msvc":   "^1.0.0",
+    "@cool/core-win32-arm64-msvc": "^1.0.0",
+    "@cool/core-linux-x64-gnu":    "^1.0.0",
+    "@cool/core-linux-x64-musl":   "^1.0.0",
+    "@cool/core-linux-arm64-gnu":  "^1.0.0",
+    "@cool/core-linux-arm64-musl": "^1.0.0",
+    "@cool/core-linux-arm-gnueabihf": "^1.0.0",
+    "@cool/core-android-arm64":    "^1.0.0"
+  }
+}
+```
+
+Real example from `@napi-rs/canvas@1.0.0` (verbatim from npm registry):
+```json
+"optionalDependencies": {
+  "@napi-rs/canvas-linux-x64-gnu":       "1.0.0",
+  "@napi-rs/canvas-darwin-x64":          "1.0.0",
+  "@napi-rs/canvas-win32-x64-msvc":      "1.0.0",
+  "@napi-rs/canvas-win32-arm64-msvc":    "1.0.0",
+  "@napi-rs/canvas-linux-arm-gnueabihf": "1.0.0",
+  "@napi-rs/canvas-linux-x64-musl":      "1.0.0",
+  "@napi-rs/canvas-linux-arm64-gnu":     "1.0.0",
+  "@napi-rs/canvas-linux-arm64-musl":    "1.0.0",
+  "@napi-rs/canvas-darwin-arm64":        "1.0.0",
+  "@napi-rs/canvas-android-arm64":       "1.0.0",
+  "@napi-rs/canvas-linux-riscv64-gnu":   "1.0.0"
+}
+```
+
+---
+
+### Naming Convention
+
+```
+@scope/pkg-{os}-{arch}[-{libc}]
+```
+
+| Segment | Values |
+|---|---|
+| `{os}` | `darwin`, `linux`, `win32`, `android`, `freebsd` |
+| `{arch}` | `x64`, `arm64`, `arm` |
+| `{libc}` | `gnu`, `musl`, `msvc`, `gnueabihf` — omitted on macOS/Windows |
+
+Examples: `darwin-x64`, `darwin-arm64`, `linux-x64-gnu`, `linux-x64-musl`, `win32-x64-msvc`, `linux-arm-gnueabihf`
+
+---
+
+### Platform-Specific Package `package.json`
+
+Each platform package is minimal — it just delivers the `.node` binary:
+
+```json
+{
+  "name": "@cool/core-darwin-arm64",
+  "version": "1.0.0",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "main": "core.darwin-arm64.node",
+  "files": ["core.darwin-arm64.node"]
+}
+```
+
+From the real `@napi-rs/canvas-darwin-arm64@1.0.0` registry entry (verbatim):
+- `"os": ["darwin"]`
+- `"cpu": ["arm64"]`
+- `"main": "skia.darwin-arm64.node"`
+- Contains only the precompiled `.node` binary (~26 MB unpacked)
+
+No source code, no build toolchain, no `node-gyp` invocation.
+
+---
+
+### Runtime Loader `index.js` (Main Package)
+
+The NAPI-RS CLI auto-generates this. The logic:
+
+1. Detect `process.platform` + `process.arch`
+2. On Linux, additionally detect musl vs. glibc (by reading `/usr/bin/ldd` or running `ldd --version`)
+3. Build the platform package name string (e.g., `@cool/core-linux-x64-gnu`)
+4. `require()` that package — which resolves to the `.node` file via the platform package's `main` field
+5. Fall back to a local `.node` file for development builds (when `node_modules` doesn't have it yet)
+6. Optionally fall back to a WASI build as a last resort
+7. If everything fails, throw a descriptive error explaining that `optionalDependencies` may not have been installed
+
+Simplified pseudocode:
+```js
+function requireNative() {
+  const platform = process.platform   // 'darwin', 'linux', 'win32'
+  const arch = process.arch           // 'x64', 'arm64', 'arm'
+  const libc = detectLibc()           // 'gnu' or 'musl' on linux; '' elsewhere
+  const suffix = libc ? `${platform}-${arch}-${libc}` : `${platform}-${arch}`
+  return require(`@cool/core-${suffix}`)  // resolves to the .node binary
+}
+```
+
+---
+
+### Why `optionalDependencies` (not `dependencies`)
+
+- `optionalDependencies` tells npm: "if this package can't be installed (wrong platform, not found), keep going anyway." This prevents install failures on platforms you haven't built for yet.
+- The `os`/`cpu` fields on each platform package tell the package manager "skip me if I'm not applicable" — so npm/yarn/pnpm won't even try to install `win32-x64-msvc` on a Mac.
+- Together: **npm downloads only the one binary that matches the current machine**, and any that don't match are silently skipped.
+
+---
+
+### Publishing Workflow
+
+The `@napi-rs/cli` `napi publish` command handles this automatically:
+1. Builds each target triple in CI (GitHub Actions matrix)
+2. Publishes each binary as `@scope/pkg-{platform}` independently
+3. Updates `optionalDependencies` in the main `package.json` with all platform packages at the new version
+4. Publishes the main package
+
+Source: [Release native packages – NAPI-RS](https://napi.rs/docs/deep-dive/release), [Getting started – NAPI-RS](https://napi.rs/docs/introduction/getting-started), [napi-rs/package-template](https://github.com/napi-rs/package-template), npm registry for [@napi-rs/canvas](https://registry.npmjs.org/@napi-rs/canvas/1.0.0) and [@napi-rs/canvas-darwin-arm64](https://registry.npmjs.org/@napi-rs/canvas-darwin-arm64/1.0.0)</result>
+<usage><subagent_tokens>20192</subagent_tokens><tool_uses>2</tool_uses><duration_ms>44886</duration_ms></usage>
+</task-notification>

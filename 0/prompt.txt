@@ -1,0 +1,19 @@
+<task-notification>
+<task-id>ab4ac17d5ee8dea99</task-id>
+<tool-use-id>toolu_01APeAK3ZU1G1ZA56ZfE17zL</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0ae3953f-9438-46c4-a76a-88fce9eed529/tasks/ab4ac17d5ee8dea99.output</output-file>
+<status>completed</status>
+<summary>Agent "Draft spec@1 for pipeline orchestration" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The fourth-pass (final) revision of SPEC-PIPELINE-001 is complete (full JSON above) and relayed to `canon-draft-pipeline`, applying all six mechanical fixes:
+
+1. **AC-008** — corrected to match AC-016a's already-correct "stub present, not absent" framing, verified against `pipeline/mod.rs`'s Phase-4 stub-build and Phase-5 insert.
+2. **AC-010** — fixed the worked example to three duplicate declarations (two duplicates can't collide under the count-based disambiguation rule), verified against the in-repo test comment.
+3. **AC-001** — corrected the gitignore exception scope (node_modules disables only `.gitignore`-file rules, not global/exclude/`.ignore` rules) and added the git-work-tree precondition.
+4. **AC-002/AC-003** — dropped unverifiable literal-message quoting and the false "exactly one diagnostic" claim; both now use severity+code+substring matching.
+5. **AC-024** — corrected "empty updated_components" to "no entry for the changed file itself," since transitive importers legitimately still appear.
+6. **AC-016a** — tightened the test citation to what's actually covered vs. correct-but-untested.
+
+One item flagged back to the peer: their message contained an internal contradiction (item 4 explicitly modifies AC-003, but the closing "do not touch" list also names AC-003). I resolved it in favor of the specific instruction and noted the conflict in both the `revision_note` and my reply, so it can be corrected if my reading was wrong.</result>
+<usage><subagent_tokens>132301</subagent_tokens><tool_uses>4</tool_uses><duration_ms>116075</duration_ms></usage>
+</task-notification>

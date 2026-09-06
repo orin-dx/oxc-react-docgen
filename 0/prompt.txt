@@ -1,0 +1,3 @@
+<command-name>/reload-skills</command-name>
+            <command-message>reload-skills</command-message>
+            <command-args></command-args>

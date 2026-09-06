@@ -1,0 +1,202 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+
+The session covered two distinct arcs. The first fixed bugs (0 components from .d.ts files, memo(forwardRef) detection). The second — which the user wants this summary to focus on — was a deep architectural critique and planning exercise:
+
+- User identified that the generated codebase has "ridiculously complex, long and disorganized files" and is worried about open-source scrutiny
+- User asked what Clippy can enforce vs. what requires other approaches
+- User explicitly rejected the idea of one-off tools for file length enforcement ("that sounds insane")
+- User called out that suggested Rust tools don't actually solve the problems in THIS codebase ("you seem to be rushing to an answer vs really thinking through the problem")
+- User confirmed behavioral changes should be made alongside structural ones ("we want high quality, not just working code")
+- User asked for a comprehensive, semantic plan following Rust best practices
+- User asked to write the plan and context to docs so it survives the next compaction
+
+2. Key Technical Concepts:
+
+- **Module organization**: Rust idiom — cohesive, focused files. The module split IS the enforcement mechanism, not a tool on top of it.
+- **`ResolveState` struct**: Replaces `visited: &mut FxHashSet<String>`, `depth: u8`, `diagnostics: &mut Vec<Diagnostic>` threaded through every resolver function. Drops 8-param functions to 4-param. Also carries `needed_specifiers: Vec<NeededSpecifier>` for cross-package resolution.
+- **`ScopedKey` newtype**: Wraps the `format!("{}:{}", path, name)` raw string pattern used as `GlobalSourceData` map keys. Single canonical constructor, type-checked.
+- **`FxHashSet<CompactString>` for visited**: `CompactString` is already in workspace; most type names fit inline (≤24 bytes). Eliminates heap alloc per visited type.
+- **`PropType` serde**: Hand-rolled via `serde_json::Value` intermediary to avoid 19-minute serde derive compile. Root cause was serde 1.x recursion bug, now fixed in recent versions. `Array(Box<PropType>)` already done; `Vec<PropType>` doesn't recurse the macro. Attempt `#[derive(Serialize, Deserialize)]` — if it works, remove 200-line hand-roll.
+- **IO error propagation**: `fs::read_to_string(path).unwrap_or_default()` silently drops permission errors. Must emit `Diagnostic::io_error` instead.
+- **Silent IO = quality failure**: A file permission error produces 0 components with no diagnostic — unacceptable.
+- **Visibility model**: All 8 modules currently `pub mod`. Real public API is only `pipeline`, output types, `react_types`. Everything else should be `pub(crate)`.
+- **Cross-package resolution**: Import-guided, demand-driven, multi-pass. `ResolveState.needed_specifiers` feeds a loop in `pipeline/resolve.rs`. All machinery (oxc_resolver, DtsCache, parse_file, GlobalSourceData::merge) already exists — ~40 lines of wiring.
+- **LLVM match vs phf**: For <150 arms, LLVM jump-table optimization on string matches is faster than phf. `known.rs` match is idiomatic and should stay.
+- **`cargo-semver-checks`**: The one tool that actually matters — after visibility cleanup, prevents accidental API surface expansion in releases.
+- **`cargo-deny`**: License policy + OXC version skew prevention (all OXC crates must be 0.135.x).
+- **`proptest`**: Property-based testing for the parser. Assert `parse_file` never panics on arbitrary input. Table stakes for an open-source parser.
+- **`insta` snapshot tests**: Must be added BEFORE refactor starts. Safety net locking output format.
+- **`divan` benchmarks**: Baseline before behavioral changes to catch perf regressions.
+
+3. Files and Code Sections:
+
+- **`crates/core/src/extractor.rs`** (1,867 lines, 62 functions):
+  - Fixed: `is_tsx = source_type.is_jsx() || source_type.is_typescript_definition()` — enables .d.ts files to go through React component detection
+  - Fixed: `memo(forwardRef(...))` — added `Argument::CallExpression` arm in `try_hoc_wrapped` that detects inner forwardRef call and extracts props type from its second type parameter
+  - Added test: `test_memo_forward_ref_detected`
+  - Problem: One 1,867-line `impl SourceDataCollector` block doing component detection, interface collection, JSDoc, type alias classification, enum handling, CVA detection, AST visiting
+
+- **`crates/core/src/pipeline.rs`** (678 lines):
+  - Fixed: `node_modules` filter now checks `dir_is_in_node_modules` — when user explicitly points `--src` at a node_modules path, the filter is skipped
+  - Before fix: `if path_str.contains("node_modules") { continue; }` — unconditionally blocked all node_modules paths
+  - After fix: `(!dir_is_in_node_modules && path_str.contains("node_modules"))` — only filters node_modules subdirs when not intentionally targeting node_modules
+
+- **`crates/core/src/resolver.rs`** (2,482 lines, 55 functions):
+  - THE biggest problem. Contains: chain resolution, type-level resolution, import resolution, HTML inference, template literal expansion, tsconfig parsing, JSON comment stripping
+  - `resolve_props_chain` has 8 parameters: `(type_name, type_args, consuming_file, mapping, ctx, visited, depth, diagnostics)`
+  - `visited: &mut FxHashSet<String>` — uses String not CompactString
+
+- **`crates/core/src/types.rs`** (1,305 lines):
+  - Mixes: `CollectedType` (raw AST), `PropType` (semantic output), `SourceData`, `ComponentEntry`, `Diagnostic`, `GlobalSourceData`, `ImportBinding`
+  - Two completely different abstraction layers in one file
+
+- **`crates/cli/src/main.rs`** (760 lines):
+  - Five command implementations + config loading + output formatting + serializers all in main.rs
+
+- **`docs/10-QUALITY-AND-ARCHITECTURE.md`** (NEW — created this session):
+  - Comprehensive refactor plan
+  - Honest diagnosis table (file sizes, function counts, specific problems)
+  - Target module structure for types/, extractor/, resolver/, pipeline/, cli/
+  - Full `ResolveState` struct design with code example
+  - `ScopedKey` newtype with constructor code
+  - IO error propagation pattern
+  - Visibility model
+  - Cross-package resolution design
+  - Tooling decisions (what matters, what doesn't)
+  - Implementation sequence R1-R11
+
+- **`memory/architecture_refactor.md`** (NEW — created this session):
+  - Condensed memory entry for future context recovery
+  - Links to docs/10-QUALITY-AND-ARCHITECTURE.md
+
+- **`memory/project_overview.md`** (UPDATED):
+  - Added R1-R11 refactor phase to phase status
+  - Updated test count to 90
+
+- **`memory/MEMORY.md`** (UPDATED):
+  - Added architecture_refactor.md to index
+
+- **`docs/09-STATUS.md`** (UPDATED):
+  - "Immediate Next Steps" now shows refactor sequence R1-R11 before Phase 5+
+
+4. Errors and Fixes:
+
+- **0 components from Radix .d.ts files (two separate root causes)**:
+  1. `is_tsx = source_type.is_jsx()` — false for .d.ts files, so `try_fc_annotation` (handling `React.FC<Props>`) was never called. Fix: `is_tsx = source_type.is_jsx() || source_type.is_typescript_definition()`
+  2. `discover_files` had `path_str.contains("node_modules") → continue` which blocked even explicitly-targeted node_modules paths. Fix: only apply filter when the src dir itself is not inside node_modules.
+
+- **`memo(forwardRef(...))` not detected**:
+  - `try_hoc_wrapped` matched `FunctionExpression` and `ArrowFunctionExpression` as HOC first args, but not `CallExpression` (the forwardRef() call).
+  - Fix: Added `Argument::CallExpression(inner)` arm that checks if callee is `forwardRef`/`React.forwardRef`, extracts second type parameter as props type.
+
+- **User caught me rushing on Rust tools**:
+  - I listed `cargo-deny`, `cargo-audit`, `cargo-machete`, `cargo-modules`, `cargo-bloat` as relevant tools
+  - User: "Some of the rust tools you suggest don't solve the problems of the codebase you generated though, right?"
+  - Corrected answer: None of those tools fix the structural problems. Real solutions are code changes (module split, ResolveState, ScopedKey, error propagation). Only tools that matter for THIS codebase: clippy config, insta, divan, proptest, cargo-semver-checks, cargo-deny.
+
+- **User rejected custom file-length scripts**:
+  - I suggested a justfile/shell script for file length enforcement
+  - User: "We don't want to invent one-off tools to validate things like file length, that sounds insane"
+  - Corrected answer: The module split IS the enforcement. Once resolver.rs is a directory of focused files, you cannot recreate the 2,500-line file without fighting the structure.
+
+5. Problem Solving:
+
+**Solved this session:**
+- .d.ts file scanning (two fixes: is_tsx flag, node_modules filter)
+- memo(forwardRef(...)) pattern detection — 90 tests passing
+- 77 Radix components now found across 5 packages
+- Comprehensive architecture plan written and persisted to docs + memory
+
+**Core architectural problems diagnosed and planned (not yet implemented):**
+- resolver.rs: 2,482 lines doing 6 unrelated things → resolver/ module with 13 files
+- extractor.rs: 1,867 lines in one impl block → extractor/ module with 7 files
+- types.rs: two abstraction layers mixed → types/ module with 4 files
+- cli/main.rs: 5 commands in one file → commands/ submodules
+- 8-parameter functions → ResolveState
+- Raw string map keys → ScopedKey newtype
+- Silent IO failures → Diagnostic::io_error
+- Leaked internal API (everything pub mod) → pub(crate) for internals
+- Hand-rolled PropType serde → attempt derive
+
+**Cross-package resolution designed (not yet implemented):**
+- `ResolveState.needed_specifiers` collects packages needed during resolution
+- Pipeline drain loop: use existing oxc_resolver → parse → merge → re-resolve
+- Depth limit: 3 hops, 20 packages max
+- Config: `followDeps: true/false/["@radix-ui/*"]`
+
+6. All User Messages:
+
+- "continue our work" (session start — resuming from prior compaction)
+- "Do we have samples of design systems implemented using them? How should we best test our codebase against representative samples? Should we make an extensive list? We want to avoid future breakage but also not be brittle and completely dependent on outside codebases right? But on the opposite end how do we know about emerging patterns?? What's a good balance?"
+- "Think of all the recommended, industry best practice patterns for React 18 and 19. Research if necessary to understand what gaps we might have"
+- "We need to figure out a good way to deal with cross package boundaries in a way that is flexible, sane and performant. Think through the possibilities. What if a design system build on radix and uses floating-ui and react-aria? These would be cross package dependencies but might be meaningful paths to follow. Where do we stop fetching info to avoid blowing up our scope?"
+- "Also consider what might happen to components when we use react-compiler. Does anything change in terms for react-docgen?"
+- "Could we leverage our package dependencies? Explicit dependencies in our package.json should be documented perhaps. Is that a good way to think through this? is that enough? Might not be. React-aria might depend on other spectrum packages that we don't explicitly add as dependencies? What of direct imports of related to direct imports?? Do you understand what I mean?"
+- "What are the rust best practices to implement what we need for this to work? What can we leverage from the existing architecture? Anything we should consider changing? What other rust tools do something similar that we can learn from? What crates should we use?"
+- "Let's not write things that already exist if we can leverage them, right?"
+- "I think we need to rethink some of our architecture for maintainability and rust best practices no? You're writing some ridiculously complex, long and disorganized files. Other AIs have failed at this and I'm worried about your ability to deliver a codebase that will stand the test of time and the scrutiny of open source reviews"
+- "How can we enforce some of these things? Can we do a lot of that with clippy?"
+- "We should not restrict ourselves to just structural changes if behavioral changes result in better, faster or more maintainable code right? All of these are equally important. We want high quality, not just working code."
+- "What rust tool can help with what clippy can't?"
+- "We don't want to invent one-off tools to validate things like file length, that sounds insane"
+- "Some of the rust tools you suggest don't solve the problems of the codebase you generated though, right? You seem to be rushing to an answer vs really thinking through the problem."
+- "Let's think through all of this, along with what you mentioned before and make a comprehensive, semantic and something that follows rust best practices please"
+- "Let's write the plan and context so we don't lose it on the next compact?"
+- "Pick it back up" (after date change — continued writing docs)
+- "CRITICAL: Respond with TEXT ONLY..." (this summary request, with instruction: "let's focus on the quality part of the work please")
+
+7. Pending Tasks:
+
+**Refactor sequence (R1-R11) — none started yet:**
+- R1: Add `insta` snapshot tests across all fixtures BEFORE touching any code
+- R2: Split `types.rs` → `types/collected.rs`, `types/output.rs`, `types/diagnostic.rs`, `types/global.rs`; introduce `ScopedKey` newtype
+- R3: Introduce `resolver/state.rs` with `ResolveState`; replace `visited/depth/diagnostics` param threading in all resolver functions
+- R4: Split `resolver.rs` → `resolver/` module (13 files: mod.rs, state.rs, chain.rs, extends.rs, alias.rs, primitives.rs, collected.rs, named.rs, template.rs, func.rs, import.rs, html.rs, react.rs)
+- R5: Split `extractor.rs` → `extractor/` module (7 files: mod.rs, component.rs, interface.rs, alias.rs, jsdoc.rs, visit.rs, defaults.rs)
+- R6: Split `pipeline.rs` → `pipeline/` module; fix `unwrap_or_default()` IO failures
+- R7: Split `cli/main.rs` → `main.rs` + `config.rs` + `output.rs` + `commands/{extract,watch,inspect,check,completions}.rs`
+- R8: Visibility cleanup — `pub(crate)` for all internal modules; add `cargo-semver-checks` to CI
+- R9: Attempt `#[derive(Serialize, Deserialize)]` for `PropType`; remove 200-line hand-roll if it compiles cleanly
+- R10: Implement cross-package resolution in `pipeline/resolve.rs` using `ResolveState.needed_specifiers`
+- R11: `.clippy.toml` with `too-many-arguments-threshold = 5`, `too-many-lines-threshold = 80`; add `cargo-deny`, `proptest`
+
+**After refactor:** Phase 5a (Vite plugin), Phase 5b (Rolldown plugin), Phase 6 (integration tests), config file loading, preset system.
+
+8. Current Work:
+
+Immediately before the summary request, we were writing and persisting the plan documents:
+
+1. Created `docs/10-QUALITY-AND-ARCHITECTURE.md` — the comprehensive refactor plan covering:
+   - Honest diagnosis table (resolver.rs=2,482 lines, extractor.rs=1,867, types.rs=1,305, cli/main.rs=760)
+   - 7 specific code-level problems (8-param fns, FxHashSet<String>, silent IO, hand-rolled serde, strip_json_comments in wrong file, raw scoped_key strings, everything pub mod)
+   - Principles (module split is the enforcement, structural+behavioral together, tests are safety net, clippy catches regressions)
+   - Target module structure for all affected crates
+   - Behavioral changes with code examples (ResolveState struct, ScopedKey constructor, IO error propagation pattern)
+   - Visibility model
+   - Cross-package resolution design
+   - Tooling that matters vs. doesn't
+   - Implementation sequence R1-R11 with time estimates
+
+2. Created `memory/architecture_refactor.md` — condensed memory entry with all key decisions
+
+3. Updated `memory/project_overview.md` — added R1-R11 refactor phase to phase status, updated test count to 90
+
+4. Updated `memory/MEMORY.md` — added architecture_refactor.md entry
+
+5. Updated `docs/09-STATUS.md` — replaced "Immediate Next Steps" with refactor sequence R1-R11
+
+9. Optional Next Step:
+
+The next step directly in line with the user's most recent work is to begin implementation starting with R1 — adding `insta` snapshot tests as the safety net before any refactoring begins. This was explicitly established as the first step in the sequence:
+
+From `docs/10-QUALITY-AND-ARCHITECTURE.md`: "R1 — Add snapshot tests (before touching anything). Add `insta` snapshot tests for every fixture's extraction output. These are the safety net for the entire refactor. ~1 day."
+
+From `docs/09-STATUS.md`: "1. R1 — Add `insta` snapshot tests across all fixtures (safety net)"
+
+The `insta` crate is already in the workspace. Snapshot tests would run `extract()` against every file in `fixtures/` and store the canonical JSON output. Any refactor step that accidentally changes behavior will immediately show a diff.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

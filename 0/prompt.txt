@@ -1,0 +1,1 @@
+What about code quality, maintainability, DX and performance. Let’s do a round of adversarial analysis on our code using agent teams and workflows with the most appropriate model and effort please.

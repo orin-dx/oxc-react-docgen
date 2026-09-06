@@ -1,0 +1,207 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   Building `oxc-react-docgen`, a Rust-powered React prop extraction tool replacing `react-docgen-typescript`. Uses OXC (no TypeScript compiler) for 10-100x speed improvement. Delivered as: Rust core library, NAPI Node.js bindings, CLI, Vite plugin, Rolldown plugin. The user asked to follow a phased multi-agent implementation plan documented in `docs/`, validate against real library fixtures (shadcn, Radix, MUI, Chakra, Mantine, React Aria), run adversarial analysis, and keep status tracked in docs. Config file name decided: `docgen.config.ts`. Styled-components: skipped (deprecated). Emotion: post-v1.
+
+2. Key Technical Concepts:
+   - OXC 0.135 (oxc_parser, oxc_ast, oxc_ast_visit, oxc_resolver 11.x) for Rust-native TS/TSX parsing
+   - `CollectedType` enum — structured AST type representation replacing `raw_type: String`
+   - `PropType` enum — resolved semantic output type with manual serde (to_tagged_value/from_tagged_value)
+   - Two-phase extraction: parallel OXC parse → parallel resolve (rayon)
+   - `GlobalSourceData` — shared read-only context during resolution (ArcSwap for watch mode)
+   - `InheritedLayer` — inheritance chain entry replacing `html_element`/`omitted_html_props`
+   - `notable_inherited` — curated HTML attrs synthesized from `notable_html_attrs()` table
+   - `discriminant_prop` — discriminated union detection (MUI TextField `variant`)
+   - NAPI 3.x with session management (pid-based IDs)
+   - DTS cache: mtime+size invalidation, msgpack+atomic rename, `node_modules/.cache/` default
+   - Watchexec 8.x (sync `new()` not async), crossterm for terminal input, comfy-table for inspect
+   - cva() variant extraction into `global.enums` for VariantProps resolution
+   - Manual Serialize/Deserialize for both CollectedType and PropType (avoids 19min compile)
+
+3. Files and Code Sections:
+
+   - **`crates/core/src/lib.rs`**
+     - `#![recursion_limit = "2048"]` — needed for serde on remaining recursive types
+     - Declares all modules: cache, extractor, import_map, known, pipeline, react_types, resolver, types
+
+   - **`crates/core/src/types.rs`**
+     - `CollectedType` enum with manual Serialize via `to_json_value()`/`from_json_value()` — avoids compile-time monomorphization explosion
+     - `PropType` enum with manual Serialize via `to_tagged_value()`/`from_tagged_value()` — produces `{"kind":"union","0":[...]}` format
+     - `ComponentEntry` has `inheritance: Vec<InheritedLayer>`, `notable_inherited: BTreeMap<String, ParsedProp>`, `discriminant_prop: Option<String>`
+     - `ComponentMapping` has `param_defaults: FxHashMap<String, RawDefault>`
+     - `RawDefault`, `DefaultSource` enums for default value extraction
+     - `InheritedLayer` struct: `{type_name, file_name, omitted, html_element, total_props}`
+     - `GlobalSourceData::remove_file()` for watch mode invalidation
+     - `GlobalSourceData::merge()` does declaration merging for interfaces
+
+   - **`crates/core/src/extractor.rs`**
+     - `ts_type_to_collected()` replaces `ts_type_to_string()` — produces structured `CollectedType` not raw strings
+     - `try_forward_ref_exotic_decl()` — detects `declare const X: React.ForwardRefExoticComponent<P & RefAttributes<E>>` pattern (critical for all .d.ts library fixtures)
+     - `try_collect_cva_call()` — detects `const buttonVariants = cva(base, {variants: {...}})`, stores in `data.enums`
+     - `extract_param_defaults()` + `eval_expr_as_default()` — extracts defaults from destructuring
+     - `collect_extends` / `expression_to_ident_name` — produces `ExtendsRef::Builtin { element: None }` for `React.ComponentPropsWithoutRef<'button'>`
+
+   - **`crates/core/src/resolver.rs`** (most actively modified)
+     - `resolve_props_chain()` — key resolution function with fixed step ordering:
+       - Step 1: TypeScript utility types (Omit/Pick/Partial etc.) → silent `default()` (no warning)
+       - Step 2: `resolve_known(type_name_bare, resolved_args, ...)` — must run BEFORE is_react_builtin
+       - Step 2.5: `is_react_builtin(type_name_bare)` → `empty_with_compose`
+       - Steps 3-6: import resolution, alias, interface lookup, unresolvable warning
+     - `resolve_extends_ref()` for `ExtendsRef::Builtin { element: None }` — direct handler for ComponentPropsWithoutRef:
+       ```rust
+       let bare = name.as_str().strip_prefix("React.").unwrap_or(name.as_str());
+       if matches!(bare, "ComponentPropsWithoutRef" | "ComponentPropsWithRef" | "ComponentProps") {
+           if let Some(raw_arg) = type_args.first() {
+               let inner = raw_arg.trim().trim_matches('"').trim_matches('\'');
+               if !inner.is_empty() {
+                   let layer = InheritedLayer { html_element: Some(inner.to_lowercase()), ... };
+                   return (ResolvedChain { inheritance: vec![layer.clone()], ..Default::default() }, Some(layer));
+               }
+           }
+       }
+       ```
+     - `CollectedType::Raw` handler: detects `"typeof X"` → `Named{name:X}`, quoted strings `"\"button\""` → `StringLiteral("button")`
+     - `react_type_to_prop_type()` handles `React.*` qualified names via `strip_prefix("React.")`
+     - `resolve_named()` reordered: import resolution BEFORE known patterns (source types win)
+     - `infer_html_attr_prop_type()` and `capitalize_element()` for synthesizing notable_inherited
+
+   - **`crates/core/src/react_types.rs`**
+     - `is_react_builtin(name, extra)` — includes ComponentPropsWithoutRef, ComponentProps, ComponentPropsWithRef
+     - `notable_html_attrs(element)` — curated list per element (button: onClick/disabled/type/aria-*, input: onChange/value/disabled/etc.)
+
+   - **`crates/core/src/known.rs`**
+     - `resolve_known()` — match function covering: VariantProps/RecipeVariantProps/RecipeVariants, SxProps, HTMLChakraProps/HTMLArkProps, ThemingProps, StylesApiProps, PropsWithChildren, ComponentPropsWithoutRef, OverridableStringUnion, RenderProps, SlotProps, ElementRef
+     - `resolve_cva_variant_props()` — looks up `global.enums` by name suffix for `typeof buttonVariants`
+
+   - **`crates/core/src/pipeline.rs`**
+     - `PipelineOptions` — full set of fields including tsconfig_path, extra_paths, known_type_overrides, extra_builtins, vanilla_extract, cache_dir, resolve_complex_types
+     - `extract()` — DTS cache now wired: Arc wraps cache, `.d.ts` files check `cache_ref.get()` first, insert on miss
+     - `WatchSession::update_file()` — BFS reverse deps, re-resolve affected components
+     - `IncrementalUpdate` derives Serialize
+
+   - **`crates/core/src/cache.rs`**
+     - `DtsCache` — DashMap keyed by (path, size, mtime_ns); atomic write via tmp+rename; manifest.json schema version; defaults to `node_modules/.cache/oxc-react-docgen/`
+
+   - **`crates/napi/src/lib.rs`**
+     - Functions: `extract_all`, `create_session`, `initialize_session` (new), `extract_file_incremental`, `close_session`
+     - `JsExtractOptions` with all 15 fields including `extra_paths_json`, `known_type_overrides_json`
+     - Session IDs: `(pid & 0xFFFF) << 16 | counter` as u32
+
+   - **`packages/napi/index.d.ts`**
+     - Fixed field names: `eventType` (not `event_type`), `hasDefault` (not `has_default`), `functionName` (not `function_name`)
+     - Added `initializeSession` declaration
+     - PropType as tagged union with `kind` discriminant
+
+   - **`crates/cli/src/main.rs`**
+     - 5 subcommands: extract (indicatif spinner, 3 formats), inspect (comfy-table), watch (watchexec 8.x sync API + crossterm), check, completions
+     - Command injection fix: `__DOCGEN_CONFIG_PATH` env var instead of path interpolated in JS script
+     - Config loading stubbed (returns None — JSON→PipelineOptions mapping not implemented)
+
+   - **`docs/09-STATUS.md`** — comprehensive project status snapshot (just created and committed)
+
+4. Errors and fixes:
+   - **19-minute compile time from serde recursion**: `CollectedType` and `PropType` are recursive enums; serde derive creates exponential monomorphization chain. Fixed by implementing manual `Serialize`/`Deserialize` via `to_json_value()`/`from_json_value()` for CollectedType and `to_tagged_value()`/`from_tagged_value()` for PropType. Compile time: 19min → 1.6s.
+   - **`React.*` qualified names not resolving (152 diagnostics)**: `is_react_builtin` checks bare names but `resolve_props_chain` was passing full "React.ComponentPropsWithoutRef". Fixed by adding `type_name_bare = type_name.strip_prefix("React.").unwrap_or(type_name)` and checking the bare name in Steps 1/2/2.5.
+   - **TypeScript utility types emitting false warnings**: `Omit`, `Pick`, `Partial` etc. were reaching Step 6 (unresolvable). Fixed by adding Step 1 in `resolve_props_chain` that returns `default()` silently for these types.
+   - **`notable_inherited` always empty**: HTML attr layers set `html_element` but `inherited_by_name` was empty (HTML attrs come from baked-in table not parsed files). Fixed by synthesizing `ParsedProp` entries directly from `notable_html_attrs()` table with `infer_html_attr_prop_type()`.
+   - **cva() variants not extracting**: `buttonVariants = cva(...)` wasn't being parsed. Fixed by adding `try_collect_cva_call()` to extractor.
+   - **`VariantProps<typeof buttonVariants>` not resolving**: `"typeof buttonVariants"` as a raw string contained space → became `PropType::Opaque`. Fixed by detecting `"typeof X"` prefix in `CollectedType::Raw` handler → `Named{name:X}`.
+   - **Quoted string args `"\"button\""` not recognized**: `'"button"'` raw arg didn't produce `StringLiteral`. Fixed by adding quoted-string detection in `CollectedType::Raw` handler.
+   - **DTS cache dead code**: Cache was loaded and saved but `get()`/`insert()` never called. Fixed by wrapping in `Arc` and checking cache in the `par_iter` parse loop.
+   - **NAPI session returns empty results**: `WatchSession::new()` creates empty global/reverse_deps; `extract_file_incremental` always returns empty. Fixed by adding `initialize_session` NAPI function.
+   - **Command injection in CLI**: Config path interpolated directly into JS string. Fixed to pass via env var.
+   - **Wrong TypeScript field names in index.d.ts**: `event_type` → `eventType`, `has_default` → `hasDefault`, `function_name` → `functionName`.
+   - **LiteralUnion raw_string missing quotes**: `"default" | "destructive"` → now `'"default"' | '"destructive"'`.
+   - **OXC 0.135 API differences**: Visit in oxc_ast_visit, OxcBox alias needed, TSMappedType.constraint direct field, TSTupleElement is enum, type_arguments not type_parameters — all handled in extractor.
+   - **`ExtendsRef::Builtin { element: None }` returning empty chain**: Was returning `(ResolvedChain::default(), None)` for non-HTML builtins. Added direct handler for ComponentPropsWithoutRef → creates InheritedLayer. Bug still partially open (see below).
+
+5. Problem Solving:
+   **Solved**: All Phase 0-4 implementation complete with 88 tests passing. Key validation wins: shadcn Button shows `variant/size/asChild`, MUI TextField discriminant union working, cva extraction working, notable HTML attrs populated.
+
+   **Open: Radix Button 0 props** — `ComponentPropsWithoutRef<'button'>` still not expanding despite direct handler. The warning "Cannot resolve type 'React.ComponentPropsWithoutRef'" with scoped key format indicates Step 6 of `resolve_props_chain` is being reached. All expected code paths should short-circuit before this. The direct handler in `resolve_extends_ref` for `ExtendsRef::Builtin { element: None }` was added and appears correct in code, but the warning still fires. Next step: add `eprintln!` to trace which call site generates it — could be `resolve_type_alias_chain` or `CollectedTypeAlias::Passthrough` calling `resolve_props_chain` internally.
+
+   **Secondary open**: When `resolve_known` returns `KnownPatternResult::Type(HtmlAttributes { element })` inside `resolve_props_chain`, it's treated as `empty_with_compose` instead of creating an `InheritedLayer`. This is the correct fix for the Radix case even if reached through `resolve_props_chain`.
+
+6. All user messages:
+   - "resume"
+   - "Can we pick a shorter config file name???" → decided: `docgen.config.ts`
+   - "We can skip styled-component, it's deprecated. Maybe wayt for emotion since it's high complexity"
+   - "We do want to spec out inheritance (not just HTML inheritance) and notable"
+   - "The intersection, pick, exclude, etc are also very important things for us to consider. We should look at the example codebases for example of complex types we need to account for and how"
+   - "How can we leverage typescript go for the cases we need help with?"
+   - "We'll worry about ts-go last but go through our plans, review with the latest knowledge, critically analysize and look for issues, propose how to address."
+   - "Let's do that and then tackle phase 3"
+   - "Run both in parallel" (Phase 1a and 1b)
+   - "Let's kick then off in parallel" (Phase 2a/b/c)
+   - "What are the open questions we should address?"
+   - "Let's also consider the design of the plugins for vite and rolldown as well as the standalone CLI using the best possible crates for a create CLI DX"
+   - "What are the presets? What are the values they bring?"
+   - "How can we make the plugin DX/config world class? Opinionated so we can run out of the box with good defaults but configurable to allow for complciated setups. Consider monorepos, the possible CSS libraries that are common, component libraries a design system might use, etc. THings liek react-aria types, etc"
+   - "We can configure the plugins via the plugin file or inline in the vite config (for example)"
+   - "Can we look at the roadmap for oxc, vite and rolldown to see if there are things we should consider? are there issues in react-docgen and typescript-react-docgen that are not an issue on our archtecture or that we can pre-emptively solve?"
+   - "We also not lose track of what our architecture is, react best practices, performance considerations, the DX and the accuracy of the resulting docgen"
+   - "Let's also not lose track of what our architecture is..." (restatement)
+   - "Let's also add MUI, Chakra, Mantine to fixtures" (inferred from context)
+   - "Let's make sure we're using the latest versions of the required creates and tools please"
+   - "go ahead" (start implementation)
+   - "Please setup moon, proto, just"
+   - "We should use the latest stable node version 26 right?"
+   - "Installed proto and moon for you"
+   - "Let's kick off in parallel" (Phase 3a/b)
+   - "Launch Phase 4a and 4b in parallel"
+   - "What happened to that?" (asking about the manual PropType serde agent)
+   - "Once we have a CLI we should validate out outputs against the codebases we chose and decide on what we accomplished and identify bugs or misses"
+   - "But is RDT more accurate?" (about react-docgen-typescript)
+   - "Is there a meaninful way to record the HTML attributes and where they came from without being overwhelming? Is it possible in the react-docgen format?"
+   - "What are some of the react component libraries and design systems that have react-docgen already that we can validate against? Radix might be a good choice, what else?"
+   - "After testing against the codebases and fixing the issues you find, run an adversarial analysis with a focus on architecture, performance, security and rust best practices. Also consider the DX and UX of the codebase and the quality of the output."
+   - "save the current status to docs/ in the repo to keep track of the project"
+   - "CRITICAL: Respond with TEXT ONLY..." (current summary request)
+
+7. Pending Tasks:
+   - **Fix Radix Button 0 props** (CRITICAL, in-progress): `ComponentPropsWithoutRef<'button'>` not expanding. Need eprintln to trace which call site generates "Cannot resolve type 'React.ComponentPropsWithoutRef'" warning at Step 6 of resolve_props_chain. The direct handler in resolve_extends_ref exists but the warning still fires.
+   - **Fix `KnownPatternResult::Type(HtmlAttributes)` → InheritedLayer**: In `resolve_props_chain`, when resolve_known returns `Type(HtmlAttributes { element })`, create InheritedLayer instead of calling `empty_with_compose`. This is the secondary fix for the Radix case.
+   - **Phase 5a: Vite plugin** — returns `Plugin[]`, uses `hotUpdate` not `handleHotUpdate`, `moduleType:'js'` in transform returns, `this.environment?.name === 'ssr'` guard, hook filter `{ id: /\.tsx?$/ }` for Rolldown perf, async extraction non-blocking, auto-detection (react version, monorepo, panda), preset system
+   - **Phase 5b: Rolldown plugin** — native Rust (Rolldown 1.0 stable)
+   - **Phase 6: Integration tests** — `run-ours.ts` in packages/validate, fixture snapshot tests
+   - **Wire config file** — `try_load_config` currently stubs (returns None); needs JSON→PipelineOptions mapping
+   - **Fix watch mode --out** — writes placeholder `{}` instead of extraction output
+   - **Fix WatchSession race condition** — ArcSwap load-modify-store not atomic; use `rcu` or Mutex
+   - **Add preset system** — `presets.shadcn()`, `presets.mui()`, `presets.chakra()`, `presets.reactAria()`, `presets.panda()`
+
+8. Current Work:
+   Immediately before the summary request, we committed `docs/09-STATUS.md` (comprehensive project status). Before that, we were actively debugging why Radix Button has 0 props.
+
+   The bug trace so far:
+   - `ButtonProps extends React.ComponentPropsWithoutRef<'button'>` in `fixtures/radix/button.d.ts`
+   - Extractor produces `ExtendsRef::Builtin { name: "React.ComponentPropsWithoutRef", element: None, type_args: ["\"button\""] }` (confirmed correct via code reading)
+   - `resolve_extends_ref` has a direct handler for ComponentPropsWithoutRef that should create InheritedLayer and return early
+   - BUT: warning "Cannot resolve type 'React.ComponentPropsWithoutRef'" still appears, meaning Step 6 of `resolve_props_chain` is still being reached
+   - Hypothesis: there is ANOTHER call path to `resolve_props_chain("React.ComponentPropsWithoutRef", ...)` that is NOT going through `resolve_extends_ref::Builtin` branch — possibly through `resolve_type_alias_chain` or `CollectedTypeAlias::Passthrough`
+
+   Last committed state (0f3a772): all adversarial fixes applied plus status doc. 88 tests passing. Radix Button still 0 props.
+
+9. Optional Next Step:
+   The immediate next step is to fix the Radix Button 0 props issue. The investigation was interrupted by the summary request.
+
+   The approach: add a temporary `eprintln!` in `resolve_props_chain` at Step 6 to print a stack trace or caller information when the warning fires for "React.ComponentPropsWithoutRef", to determine which call path is reaching Step 6 despite the direct handler in `resolve_extends_ref`. Then remove the debug print and fix the actual root cause.
+
+   Additionally, fix `KnownPatternResult::Type(PropType::HtmlAttributes { element, omitted })` in `resolve_props_chain` to create an InheritedLayer instead of calling `empty_with_compose(pt.raw_string())` — this is the correct fix regardless of which path reaches it:
+   ```rust
+   // In resolve_props_chain, Step 2 result handling:
+   KnownPatternResult::Type(PropType::HtmlAttributes { element, omitted }) => {
+       let layer = InheritedLayer {
+           type_name: type_name.to_owned(),
+           file_name: resolve_react_types_file(consuming_file, ctx),
+           omitted: omitted.clone(),
+           html_element: Some(element.clone()),
+           total_props: 0,
+       };
+       ResolvedChain { inheritance: vec![layer], ..Default::default() }
+   }
+   ```
+   This would fix Radix Button regardless of whether the path is through `resolve_extends_ref` or `resolve_props_chain` directly.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

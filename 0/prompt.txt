@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bdl3hf138</task-id>
+<tool-use-id>toolu_01Uo2ysSsspwtAskKWCka8a9</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/bdl3hf138.output</output-file>
+<status>completed</status>
+<summary>Background command "Check build status after serde fix" completed (exit code 0)</summary>
+</task-notification>

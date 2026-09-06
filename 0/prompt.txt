@@ -1,0 +1,24 @@
+<task-notification>
+<task-id>a993c3f7dccec1151</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/8659ece6-b660-4616-9f1d-5c547b9c57c2/tasks/a993c3f7dccec1151.output</output-file>
+<status>completed</status>
+<summary>Agent "Team A: Fix TSMethodSignature param extraction in extractor/mod.rs" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Done. Here's a summary of what was done:
+
+**Fix applied** to `/crates/core/src/extractor/mod.rs` at two sites in the `TSMethodSignature` arms:
+
+1. `ts_signature_to_object_field` (around line 359) — was `params: vec![CollectedType::Raw("...".into())]`, now maps `sig.params.items` to actual `CollectedType` values via `ts_type_to_collected`, with `return_type` mapped from `sig.return_type` (Option) via `.unwrap_or(CollectedType::Void)`.
+
+2. `collect_property_signature` (around line 476) — same fix for `ms.params.items` and `ms.return_type`.
+
+**Verification:**
+- Build: clean, zero errors or warnings
+- Unit tests: 93 passed, 0 failed (as expected)
+- Snapshot tests: 7 failed (expected — they now show real param types instead of `"..."`, and regeneration is a separate step)
+
+**Side fix:** The pre-commit hook (via `cargo deny`) blocked the commit due to `RUSTSEC-2026-0190` — a pre-existing unsound advisory in `anyhow v1.0.102`. Resolved by running `cargo update -p anyhow` (upgraded to 1.0.103 per the advisory's recommendation), which is included in the commit alongside the extractor fix.</result>
+<usage><subagent_tokens>44783</subagent_tokens><tool_uses>32</tool_uses><duration_ms>288347</duration_ms></usage>
+<worktree><worktreePath>/Users/gabe/Projects/oxc-react-codegen/.claude/worktrees/agent-a993c3f7dccec1151</worktreePath><worktreeBranch>worktree-agent-a993c3f7dccec1151</worktreeBranch></worktree>
+</task-notification>

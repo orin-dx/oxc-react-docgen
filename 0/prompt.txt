@@ -1,0 +1,1 @@
+Also do BINDING, EXTRACTOR, and SERIALIZATION with the same rigor

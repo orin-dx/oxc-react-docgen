@@ -1,0 +1,29 @@
+<task-notification>
+<task-id>a73c0747723570489</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a73c0747723570489.output</output-file>
+<status>completed</status>
+<summary>Agent "Scout third batch of design system repos" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All key facts verified. Here is the research report.
+
+## Ranked Shortlist — Third-Round Validation Fixtures
+
+**1. TanStack Table — multi-parameter generics flowing through a real multi-file tree**
+`TanStack/table`, MIT (Tanner Linsley), active, not archived. `ColumnDef&lt;TData extends RowData, TValue = unknown&gt;` is defined in `packages/table-core/src/types.ts` and the *same* `&lt;TData, TValue&gt;` pair is threaded through separate files — `core/column.ts` (`CoreColumn&lt;TData, TValue&gt;`, 169 lines), `core/cell.ts`, `core/row.ts`, `core/headers.ts` — down into the React adapter `packages/react-table/src/index.tsx` (94 lines), where `useReactTable&lt;TData extends RowData&gt;()` and `flexRender&lt;TProps extends object&gt;()` consume/re-bind the params. Genuinely different from Ark UI's `Assign&lt;T,U&gt;` alias case: here the generics propagate through real cross-file component/hook composition, not a single type-alias substitution. Note: repo's default branch is now `beta` (v9 restructure, `constructCell.ts`/`coreCellsFeature.ts`); the stable, citation-worthy structure above is on `main` (v8, latest release 8.21.4).
+
+**2. react-final-form — children-as-a-function as the primary API**
+`final-form/react-final-form`, MIT, active (last commit 2026-05-30), not archived. `src/Field.tsx` (111 lines, real TSX — not a type-only file) implements `children` typed as `(props: FieldRenderProps&lt;FieldValue, T&gt; &amp; typeof rest) =&gt; ReactNode` and branches on `typeof children === "function"`. Picked over Downshift: Downshift's classic `&lt;Downshift&gt;` render-prop component is still real and MIT (`downshift-js/downshift`), but its implementation lives in plain JS (`src/downshift.js`, 1296 lines) with types split into a separate hand-written `src/downshift.types.ts` — a JS/TS split that weakens it as a pure TSX prop-extraction fixture. react-final-form's version is native TypeScript end to end.
+
+**3. react-resizable-panels — useImperativeHandle exposing a custom method API**
+`bvaughn/react-resizable-panels`, MIT, active, not archived (note: repo dropped its old `packages/` monorepo layout — source now lives directly under `lib/`). `lib/components/panel/usePanelImperativeHandle.ts` (~35 lines) calls `useImperativeHandle(panelRef, () =&gt; imperativePanelRef.current, [])` to expose `collapse/expand/getSize/isCollapsed/resize` (typed via `PanelImperativeHandle` in adjacent `types.ts`), wired from `Panel.tsx` (226 lines). This is a pattern none of the forwardRef fixtures already tested — the ref value is a hand-authored method object, not a DOM node.
+
+**4. Storybook — real `@emotion/styled` usage, not styled-components**
+`storybookjs/storybook`, MIT, active, not archived. `code/core/src/components/components/Button/Button.tsx` (356 lines) calls `styled('button', { shouldForwardProp: isPropValid })` — `styled` is re-exported verbatim from `@emotion/styled` in `code/core/src/theming/index.ts` (`export { default as styled } from '@emotion/styled'`). The `styled(tag, options)` two-argument overload with `shouldForwardProp` is Emotion-specific type plumbing (different overload shape than styled-components), so this is a meaningfully distinct case from Zendesk Garden.
+
+**5. Ariakit — 4+ level compound/context family, deeper than Radix/Headless UI**
+`ariakit/ariakit`, MIT (confirmed via `packages/ariakit-react-components/package.json`), active, not archived. Note: package structure has moved from the old `ariakit-react-core` name to `packages/ariakit-react-components/src/menu/` — 20 separate files (`menu-provider.tsx` 42 lines → `menu-context.tsx` 84 lines → `menu.tsx` 284 → `menu-button.tsx` 341 → `menu-list.tsx` 245 → `menu-item.tsx` 243, plus checkbox/radio/group/heading/description/dismiss/bar variants) all sharing one scoped context, each with distinct prop shapes. The `combobox/` family (17 files: provider/context/list/row/group/item/value/popover) is comparably deep. This is a larger, more granular compound tree than anything in the current fixture set.
+
+**Category 5 (Zod-derived props via `z.infer`) — no good candidate.** The only real, substantial example found is Remotion, which genuinely attaches `z.infer&lt;typeof schema&gt;` as component prop types — but its license is a restrictive dual-tier "Remotion License" (free only for individuals/orgs ≤3 employees; GitHub reports it as `NOASSERTION`, not MIT/Apache), disqualifying it under your criteria. Everything else surfaced is blog-tutorial-level, not a real maintained library. Confirms the prior finding: this pattern doesn't have a legitimate permissively-licensed exemplar right now.</result>
+<usage><subagent_tokens>61316</subagent_tokens><tool_uses>45</tool_uses><duration_ms>373575</duration_ms></usage>
+</task-notification>

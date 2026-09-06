@@ -1,0 +1,28 @@
+<task-notification>
+<task-id>adf23abde8d4286a3</task-id>
+<tool-use-id>toolu_012EFGLfUDwRSfjazDvaUXaV</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/adf23abde8d4286a3.output</output-file>
+<status>completed</status>
+<summary>Agent "Build Ant Design Button fixture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All verification complete. Summary of the work:
+
+**Files created:**
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/antd/Button.tsx` — adapted from `components/button/Button.tsx` (https://github.com/ant-design/ant-design/blob/master/components/button/Button.tsx)
+- `/Users/gabe/Projects/oxc-react-codegen/fixtures/antd/buttonHelpers.tsx` — adapted from `components/button/buttonHelpers.tsx` (https://github.com/ant-design/ant-design/blob/master/components/button/buttonHelpers.tsx)
+
+Both fetched live via `raw.githubusercontent.com` off `master` (confirmed current default branch via `gh api`), not reconstructed from memory. I also pulled `semanticType.ts`, `SizeContext.tsx`, `ButtonGroup.tsx`, and `presetColors.ts` to source the real `GenerateSemantic` generic, `SizeType`, and `PresetColors` verbatim.
+
+**Trimmed/stubbed:** imports for `@rc-component/util`, `@ant-design/icons`, `clsx` (replaced with a 12-line local `cx` helper), config-provider context, CSS-in-JS `useStyle`/`Compact`, and the sibling `Wave`/`IconWrapper`/`DefaultLoadingIcon`/`ButtonGroup` components (the last replaced with a minimal inline `Group`). Render logic for two-CN-character spacing was reduced to a passthrough. **Preserved verbatim:** `BaseButtonProps`/`ButtonProps` including the `@deprecated iconPosition` and `@private _skipSemantic` JSDoc tags, the `[key: \`data-${string}\`]: string` template-literal index signature, the full `GenerateSemantic&lt;T, Props&gt;` generic machinery, and `ButtonType`/`ButtonShape`/`ButtonHTMLType`/`ButtonVariantType`/`ButtonColorType`.
+
+**Both tools verified working (exit 0):**
+- `oxc-react-docgen`: 2 components, 0 errors, 30 warnings (graceful degradation — reports `ButtonType`/`ButtonColorType`/etc. as opaque since they're `(typeof arr)[number]` derived unions imported from a sibling file, and can't statically resolve `T['classNames']` indexed-access types). `InternalCompoundedButton` gets 23 own props.
+- `react-docgen-typescript`: 1 component ("Button"), 313 props (fully flattens all HTML/ARIA attributes via the real TS checker).
+
+**Problem hit and resolved:** real upstream's `const Button = InternalCompoundedButton as CompoundedComponent; export default Button;` pattern makes RDT silently extract **zero** components — confirmed via a 6-variant minimal repro that an `as &lt;intersection-type&gt;` cast on the exported binding itself defeats RDT's forwardRef detection, regardless of default/named export. Fixed by keeping the `CompoundedComponent` type (with its `@deprecated Group` JSDoc) but mutating the original forwardRef binding in place (`(Button as unknown as CompoundedComponent).Group = Group`) instead of casting the exported identifier — documented inline in the fixture.
+
+**Bonus finding:** the fixture exposed a real oxc-react-docgen bug — the `@deprecated` tag on `iconPosition` bleeds onto several unrelated sibling properties (confirmed `iconPlacement`, `shape`, `size`, `disabled` all incorrectly inherit it; isolated with a minimal repro outside the fixture). RDT does not have this bug (verified `shape`'s description is correctly empty). Not fixed — out of scope for a fixture task, but worth a follow-up ticket.
+
+No repo files outside `fixtures/antd/` were modified; all throwaway repro/check scripts were deleted from `apps/validate/src/`. Nothing was staged or committed.</result>
+<usage><subagent_tokens>149317</subagent_tokens><tool_uses>84</tool_uses><duration_ms>894864</duration_ms></usage>
+</task-notification>

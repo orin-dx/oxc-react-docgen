@@ -1,0 +1,1 @@
+How can we make the plugin DX/config world class? Opinionated so we can run out of the box with good defaults but configurable to allow for complciated setups. Consider monorepos, the possible CSS libraries that are common, component libraries a design system might use, etc. THings liek react-aria types, etc

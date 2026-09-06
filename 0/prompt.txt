@@ -1,0 +1,19 @@
+<task-notification>
+<task-id>ab4ac17d5ee8dea99</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0ae3953f-9438-46c4-a76a-88fce9eed529/tasks/ab4ac17d5ee8dea99.output</output-file>
+<status>completed</status>
+<summary>Agent "Draft spec@1 for pipeline orchestration" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The corrected spec@1 for SPEC-PIPELINE-001 is complete (shown above) and has been relayed to `canon-draft-pipeline`.
+
+Key corrections made, with two notable cases where I overrode the requested fix direction after re-checking source (not blindly following the audit's suggestion):
+
+- **AC-010** — the auditor suggested "lowest byte-offset/first wins" as the deterministic tie-break, but reading `crates/core/src/pipeline/mod.rs`'s Phase-5 collect loop shows `components.insert(key, entry)` always keeps the *current* (later-iterated) entry. I wrote the criterion to match reality: later-declared duplicate wins.
+- **AC-022** — the auditor asked for a "malformed glob" error case, but `discover.rs` shows `exclude_patterns` is matched via plain substring `.contains()`, not glob syntax. I replaced it with a criterion documenting the actual always-valid-input contract instead of inventing glob validation that doesn't exist.
+- **AC-019** (new) — verified `WatchSession::component_cache` is never pruned when a file is deleted; wrote the criterion around the real (stale) behavior rather than asserting removal, and extended `non_goals` to cover it as a documented gap parallel to the existing ReverseDeps staleness note.
+- **AC-021** (new) — grounded directly in the existing test `initialize_recovers_from_a_poisoned_lock_instead_of_panicking` in `crates/core/src/pipeline/watch.rs`.
+
+All other requested fixes (AC-014 timing→counter proxy, AC-012 field-level grounding, AC-018 exact `DiagnosticSeverity::Info`, PipelineOptions fields in `api_surface`, AC-020 pre-initialize behavior) were applied as requested and verified against source. AC-009 and AC-011 were kept unchanged since both have direct source grounding (plugin.rs's diagnostic label format, and Invariant 2's pre-mapping dedup mechanism).</result>
+<usage><subagent_tokens>86746</subagent_tokens><tool_uses>13</tool_uses><duration_ms>217365</duration_ms></usage>
+</task-notification>

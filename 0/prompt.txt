@@ -1,0 +1,1 @@
+We'll be building a tool to manage the changesets (callisto in ~/Projects), let's tackle the rest

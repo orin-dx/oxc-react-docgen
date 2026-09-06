@@ -1,0 +1,1 @@
+Let's also consider the design of the plugins for vite and rolldown as well as the standalone CLI using the best possible crates for a create CLI DX

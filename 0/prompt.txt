@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bypp942he</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/bypp942he.output</output-file>
+<status>completed</status>
+<summary>Background command "Check if PropType manual serde landed and core builds" completed (exit code 0)</summary>
+</task-notification>

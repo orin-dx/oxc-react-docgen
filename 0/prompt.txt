@@ -1,0 +1,57 @@
+<task-notification>
+<task-id>a2bca83eb259b6d9b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7/tasks/a2bca83eb259b6d9b.output</output-file>
+<status>completed</status>
+<summary>Agent "Upgrade extractor to produce real CollectedType + fix known.rs" completed</summary>
+<result>53/53 tests pass, clippy clean, build succeeds. Here is a summary of what was done and the OXC API differences encountered.
+
+---
+
+## Summary
+
+### Changes made
+
+**`crates/core/src/extractor.rs`**
+
+1. **Replaced `ts_type_to_string` with `ts_type_to_collected`** — a new method returning `CollectedType` instead of `String`. Handles all TSType variants structurally: primitives, literals, unions, intersections, arrays, tuples, function types, conditional types, mapped types, template literals, indexed access types, `typeof`, inline object types, and a raw-text fallback.
+
+2. **Added `ts_tuple_element_to_collected`** — `TSTupleElement` in OXC 0.135 is a superset enum of `TSType` (adding `TSOptionalType` and `TSRestType` at discriminants 64/65). The spec called `.element_type()` which doesn't exist; instead we match the two extra variants and fall back to raw-text for the inherited TSType variants (a clean re-parse would require unsafe).
+
+3. **Added `ts_type_query_name`** and **`ts_signature_to_object_field`** helpers.
+
+4. **Updated `collect_property_signature`** — now produces real `CollectedType` values (not `CollectedType::Raw` shims). `TSMethodSignature` now emits `CollectedType::Function` instead of a raw string.
+
+5. **Updated `classify_type_alias`** — union/intersection arms now use `ts_type_to_collected` and produce typed members.
+
+6. **Updated `extract_type_args`** — delegates to `ts_type_to_collected(...).to_raw_string()`.
+
+7. **Added `try_forward_ref_exotic_decl`** — detects `declare const X: React.ForwardRefExoticComponent&lt;P &amp; RefAttributes&lt;E&gt;&gt;` pattern common in `.d.ts` files. Wired into `visit_variable_declaration` as Pattern 5.
+
+8. **Added `extract_param_defaults` and `eval_expr_as_default`** — extract defaults from destructured first-param patterns. Called in `try_hoc_wrapped` and `visit_function`.
+
+9. **Updated `is_react_builtin` call site** to pass `&amp;FxHashSet::default()` for the new `extra` parameter.
+
+**`crates/core/src/known.rs`**
+
+Added `"RecipeVariants"` to the `VariantProps`/`RecipeVariantProps` match arm (vanilla-extract support).
+
+**`crates/core/src/react_types.rs`**
+
+Updated `is_react_builtin` signature to accept `extra: &amp;rustc_hash::FxHashSet&lt;compact_str::CompactString&gt;` — checked first before the built-in list. Resolver can pass `PipelineOptions.extra_builtins` in a future phase.
+
+### OXC 0.135 API differences from the spec
+
+| Spec assumption | Actual OXC 0.135 |
+|---|---|
+| `TSReadonlyKeyword` as a TSType variant | Does not exist; `readonly` is `TSTypeOperatorType` |
+| `TSMappedType.type_parameter.constraint` | Direct field: `TSMappedType.constraint: TSType` |
+| `TSMappedType.type_annotation` as `Box&lt;TSTypeAnnotation&gt;` | Direct: `type_annotation: Option&lt;TSType&gt;` |
+| `TSFunctionType.return_type` as `Option&lt;Box&lt;TSTypeAnnotation&gt;&gt;` | `return_type: Box&lt;TSTypeAnnotation&gt;` (not Option) |
+| `el.element_type()` on TSTupleElement | Method doesn't exist; TSTupleElement is an enum inheriting TSType variants |
+| `BindingPattern` as struct with `.kind` | `BindingPattern` is an enum directly |
+| `decl.id.type_annotation` | `decl.type_annotation` (on VariableDeclarator directly) |
+| `FormalParameter.pattern.type_annotation` | `FormalParameter.type_annotation` (separate field) |
+| `BindingProperty.value.default` | No `.default`; defaults are `BindingPattern::AssignmentPattern { left, right }` |</result>
+<usage><subagent_tokens>99850</subagent_tokens><tool_uses>67</tool_uses><duration_ms>400025</duration_ms></usage>
+</task-notification>

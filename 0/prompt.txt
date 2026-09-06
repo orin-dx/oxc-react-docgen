@@ -1,0 +1,1 @@
+I like the recommendation for validatin please. We also want to compare to react-docgen and typescript-react-docgen

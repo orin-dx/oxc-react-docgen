@@ -1,0 +1,283 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+
+The session continues a prior context building an RDT (react-docgen-typescript) compatibility spec coverage matrix for `oxc-react-codegen` — a 10-100x faster, OXC-based drop-in replacement for react-docgen-typescript. The session focused on:
+
+- Identifying and fixing real-world library type pattern gaps
+- Finding the `interface.rs` arg-index bug affecting all non-CVA recipe libraries (fixed)
+- Adding three new rdt-compat fixtures (controlled, pick-source, discriminated-union) which revealed 4 additional bugs
+- Conducting systematic gap audits to answer: "Are we confident we cover all common/edge case types in popular React libraries?"
+- Researching tsgo (TypeScript 7.0) API maturity to understand which gaps require a type checker
+- Collapsing 12 individual gaps into 6 fundamental patterns
+- **Current task (interrupted)**: Use `superpowers:writing-plans` to (a) document future Corsa API work, and (b) create an implementation plan for the 5 structurally fixable gaps
+
+---
+
+2. Key Technical Concepts:
+
+- **RDT output shape**: `ExtractionOutput { components, enums, diagnostics, stats }` → `ComponentEntry { displayName, filePath, description, props, inheritance, notableInherited, discriminantProp, composes, tags, methods }` → `ParsedProp { name, type, required, defaultValue, description, tags, parent, declarations }`
+- **PropType tagged union**: 21 kinds — string, number, boolean, null, unknown, undefined, never, void, any, reactNode, cssProperties, elementType, sxProps, stringLiteral, numberLiteral, boolLiteral, union, intersection, array, tuple, object, named, eventHandler, ref, htmlAttributes, literalUnion, opaque
+- **CollectedType → PropType**: AST extractor produces CollectedType; resolver pattern-matches to produce PropType
+- **arg-index bug (FIXED)**: `interface.rs:77` always used `call.arguments.get(1)` for all recipe callees; only `cva(base, config)` puts config at index 1; `defineRecipe({config})`, `recipe({config})`, `tv({config})`, `defineSlotRecipe({config})` all put config at index 0
+- **TSMethodSignature vs TSPropertySignature**: Two different AST member forms; only TSPropertySignature gives full type; TSMethodSignature hardcodes params as `vec![CollectedType::Raw("...")]`
+- **Six fundamental gap patterns** (collapsed from 12 symptoms):
+  1. Interface member form completeness (method sig, index sig, call sig)
+  2. React namespace recognition (SVGAttributes, ComponentRef, HTMLProps, JSXElementConstructor, AriaAttributes)
+  3. Transparent wrapper completeness (Readonly<T> → zero props)
+  4. `typeof` expression resolution depth (`typeof Primitive.button` not resolved)
+  5. Inline utility types in extends position (`extends Pick<T, K>` vs named `type X = Pick<T, K>; extends X`)
+  6. Generic parameter substitution (_type_args always ignored)
+- **TypeScript 7.0 / tsgo / Corsa API**:
+  - TypeScript 7.0 RC landed June 18, 2026 (this week)
+  - TypeScript 6.0 = final JavaScript-based tsc
+  - Strada API (ts.createProgram, checker.getTypeAtLocation, etc.) COMPLETELY DROPPED in TS 7.0
+  - react-docgen-typescript is broken under TS 7.0
+  - Corsa API (replacement) targets TypeScript 7.1 — late 2026 or early 2027
+  - OXC built `tsgolint` (subprocess IPC with typescript-go shims) as precedent
+  - oxc-react-docgen is UNAFFECTED by TS 7.0 (uses OXC for parsing, not tsc)
+- **What truly requires a type checker**: Only conditional types (already opaque), mapped types (already opaque), and multi-level generic propagation. The 6 fixable gaps are all structural.
+- **DTS cache**: `node_modules/.cache/oxc-react-docgen/` using msgpack + atomic write, mtime+size keyed
+- **recipe callee arg index**: CVA = index 1; everything else = index 0
+
+---
+
+3. Files and Code Sections:
+
+- **`crates/core/src/extractor/interface.rs:77` (MODIFIED — COMMITTED)**
+  - Fixed arg-index bug for recipe callees
+  ```rust
+  // Before:
+  let Some(second_arg) = call.arguments.get(1) else { return };
+  // After:
+  let arg_index = usize::from(callee_name == "cva");
+  let Some(second_arg) = call.arguments.get(arg_index) else { return };
+  ```
+
+- **`crates/core/src/extractor/mod.rs` (TWO SITES TO FIX — NOT YET DONE)**
+  - `ts_signature_to_object_field` lines 359-374 (TSMethodSignature hardcodes `"..."`)
+  - `collect_property_signature` lines 476-492 (same hardcoding)
+  - The correct pattern is TSFunctionType at lines 220-236:
+  ```rust
+  let params: Vec<CollectedType> = f.params.items.iter()
+      .map(|p| p.type_annotation.as_ref()
+          .map(|ta| self.ts_type_to_collected(&ta.type_annotation))
+          .unwrap_or(CollectedType::Any))
+      .collect();
+  // TSFunctionType: return_type is Box<TSTypeAnnotation> (not Option)
+  let return_type = self.ts_type_to_collected(&f.return_type.type_annotation);
+  // TSMethodSignature: return_type is Option<Box<TSTypeAnnotation>>
+  let return_type = ms.return_type.as_ref()
+      .map(|rt| self.ts_type_to_collected(&rt.type_annotation))
+      .unwrap_or(CollectedType::Void);
+  ```
+  - Also: `classify_extends` at lines 107-126 produces `ExtendsRef::SameFile { name: "Pick", type_args: [...] }` for inline Pick — the type_args are serialized via `extract_type_args` (lines 142-149)
+
+- **`crates/core/src/react_types.rs` (TO MODIFY)**
+  - `html_element_for()` — current entries: ButtonHTMLAttributes→"button", InputHTMLAttributes→"input", etc., AriaAttributes→None
+  - Need to add: `"SVGAttributes" => None`, `"HTMLProps" => Some("div")`
+  - `is_react_builtin()` — current list includes FC, ComponentType, ElementRef, etc.
+  - Need to add: `"ComponentRef"`, `"JSXElementConstructor"`, `"SVGAttributes"`, `"SVGProps"`, `"HTMLProps"`
+
+- **`crates/core/src/extractor/alias.rs` (TO MODIFY)**
+  - `classify_type_alias` has arms for Omit (line 18), Pick (line 31), Partial (line 44), Required (line 53), then `_ =>` wildcard (line 62)
+  - Need to add `"Readonly"` arm before `_ =>`:
+  ```rust
+  "Readonly" => {
+      let tp = tr.type_arguments.as_ref()?;
+      let (base_name, base_args) = self.extract_type_name_from_type(tp.params.first()?)?;
+      let base = CollectedType::Named {
+          name: base_name,
+          args: base_args.into_iter().map(CollectedType::Raw).collect(),
+      };
+      Some(CollectedTypeAlias::Passthrough { target: base, file_path: fp })
+  }
+  ```
+
+- **`crates/core/src/resolver/chain.rs` (TO MODIFY)**
+  - `resolve_props_chain` step 1 (lines 51-71) silently returns empty for "Pick" | "Omit" | "Partial" | "Required" | "Readonly" regardless of type_args — this is the root cause of inline Pick/Omit in extends not working
+  - Need to add step 0.5 BEFORE step 1 that intercepts utility types when type_args is non-empty:
+  ```rust
+  // Step 0.5: Inline utility type in extends position
+  if !type_args.is_empty() {
+      if let Some(synthetic) = try_build_synthetic_utility_alias(type_name_bare, type_args, consuming_file) {
+          return resolve_type_alias_chain(&synthetic, consuming_file, mapping, ctx, state, depth);
+      }
+  }
+  ```
+  - Also needs helper: `parse_string_union_keys_from_raw(raw: &str) -> Vec<String>` to parse `"'disabled' | 'type' | 'form'"` → `["disabled", "type", "form"]`
+  - `resolve_interface_chain` (lines 152-218) takes `_type_args: &[String]` (underscore-prefixed, never used) — generic param substitution gap (future work)
+  - `find_discriminant_prop` exists at line 221 — works for CollectedTypeAlias::Union members but NOT for union-at-root-props-type level
+
+- **`crates/core/src/resolver/alias.rs` (READ — not modified)**
+  - `resolve_type_alias_chain` — Passthrough calls `resolve_props_chain(target.name, ...)` (lines 25-31)
+  - Pick (lines 49-54): `resolve_base_as_chain(base, ...)` then `.retain(|p| picked_set.contains(&p.name))`
+  - Omit (lines 33-46): similar with retain for !omitted_set
+  - Union (lines 74-77): calls `resolve_union_alias` which handles discriminant detection
+  - `resolve_union_alias` (lines 141-219): DOES handle discriminated unions for CollectedTypeAlias::Union but the Accordion fixture has union AT THE COMPONENT PROPS LEVEL, not as a CollectedTypeAlias::Union
+
+- **`crates/core/src/resolver/named.rs:95-111` (TO MODIFY)**
+  - Step 6 silent list at line 96-108 handles known harmless types
+  - Line 108: `|| bare.ends_with("HTMLAttributes")` suffix check
+  - Missing: SVGAttributes, SVGProps, HTMLProps, JSXElementConstructor, ComponentRef
+  - Need to add these to prevent spurious UnresolvableImport warnings
+
+- **`docs/rdt-coverage.md` (MODIFIED — COMMITTED 95d2667)**
+  - Coverage matrix with PropType kinds, ComponentEntry fields, ParsedProp fields, component patterns
+  - Added four new bugs: method-shorthand param loss, Pick<T> not resolved, union-of-interfaces silent skip, component description leak
+  - Added slot-recipe partial support note
+  - Added new pattern rows for controlled/uncontrolled, Pick, discriminated union
+
+- **`fixtures/rdt-compat/controlled.tsx` (CREATED — COMMITTED)**
+  ```tsx
+  export interface SelectProps {
+    value?: string;
+    defaultValue?: string;
+    onValueChange?(value: string): void;  // method-shorthand → eventType: "..." (BUG)
+    open?: boolean;
+    defaultOpen?: boolean;
+    onOpenChange?: (open: boolean) => void;  // arrow → eventType: "boolean" (CORRECT)
+    disabled?: boolean;
+    children?: React.ReactNode;
+  }
+  export const Select = React.forwardRef<HTMLDivElement, SelectProps>(...)
+  ```
+
+- **`fixtures/rdt-compat/pick-source.tsx` (CREATED — COMMITTED)**
+  ```tsx
+  export interface ButtonBaseProps { disabled?, type?, form?, name?, value? }
+  // Only disabled, type, form should appear — NOT name or value
+  export interface IconButtonProps extends Pick<ButtonBaseProps, 'disabled' | 'type' | 'form'> {
+    icon: React.ReactNode;
+    label: string;
+  }
+  ```
+  - Snapshot shows only `icon` and `label` — `disabled`, `type`, `form` are absent (BUG: inline Pick not resolved)
+
+- **`fixtures/rdt-compat/discriminated-union.tsx` (CREATED — COMMITTED)**
+  ```tsx
+  interface AccordionSingleProps { type: 'single'; value?: string; onValueChange?(value: string): void; collapsible?: boolean; }
+  interface AccordionMultipleProps { type: 'multiple'; value?: string[]; onValueChange?(value: string[]): void; }
+  export const Accordion = React.forwardRef<HTMLDivElement, AccordionSingleProps | AccordionMultipleProps>(...);
+  ```
+  - Accordion is completely absent from snapshot (BUG: union-of-interfaces root props silently drops component)
+
+- **`crates/core/tests/snapshots/snapshots__snapshot_rdt_compat.snap` (UPDATED)**
+  - Shows correct output for controlled.tsx and pick-source.tsx (with documented gaps)
+  - onValueChange has `eventType: "..."` (bug), onOpenChange has `eventType: "boolean"` (correct)
+  - IconButton has only icon/label (Pick bug), no disabled/type/form
+  - No Accordion entry (discriminated union bug)
+  - Also: `Select.description = "Whether the select is disabled."` and `IconButton.description = "Accessible label for screen readers."` — component description leaks from last prop's JSDoc (another bug)
+
+- **`crates/core/tests/snapshots/snapshots__snapshot_panda.snap` (UPDATED — COMMITTED)**
+  - After arg-index fix: `visual` prop now shows `literalUnion: [solid, outline, ghost]`
+  - `size` prop now shows `literalUnion: [sm, md, lg]`
+  - `enums.buttonRecipe` populated with all 6 variant entries
+  - `composes` is now empty (was `["VariantProps<typeof buttonRecipe>"]`)
+
+---
+
+4. Errors and Fixes:
+
+- **`interface.rs` arg-index bug**: All recipe callees (defineRecipe, recipe, tv, defineSlotRecipe) were using `call.arguments.get(1)` but config is at index 0 for non-CVA callees. Fixed with `let arg_index = usize::from(callee_name == "cva");`. Panda snapshot now shows expanded variant props.
+
+- **Avatar component description bug**: `Avatar.description = "Avatar diameter in pixels. @default 40"` — this is the `size` prop's description, not the component's. Root cause: `find_jsdoc` proximity scan finds the nearest preceding block comment (120-byte threshold). When no component-level JSDoc exists, it finds the last prop's JSDoc. Documented in coverage matrix but NOT yet fixed.
+
+- **Pick<SourceInterface> in extends clause**: `interface X extends Pick<T, K>` goes through `classify_extends` → `ExtendsRef::SameFile { name: "Pick", type_args: [...] }` → `resolve_props_chain("Pick", type_args, ...)` → step 1 returns empty. The alias.rs Pick handler is never reached because it's only reachable from type_aliases map (top-level `type X = Pick<T, K>` form). Needs step 0.5 in chain.rs.
+
+- **Accordion union-of-interfaces silent skip**: Component with `ForwardRefExoticComponent<InterfaceA | InterfaceB>` props is completely absent from output with no diagnostic. The resolver's component detection path doesn't handle union at root props level. Documented, not yet fixed.
+
+---
+
+5. Problem Solving:
+
+**Completed:**
+- Identified and fixed arg-index bug affecting Panda CSS / defineRecipe / recipe / tv / defineSlotRecipe
+- Added controlled, pick-source, discriminated-union fixtures that document actual resolver behavior
+- Conducted systematic gap audit finding 12 specific gaps
+- Collapsed 12 gaps into 6 fundamental patterns
+- Researched TypeScript 7.0 (tsgo) and determined it doesn't block current work
+- Determined that most gaps do NOT require a type checker
+- Identified competitive window: oxc-react-docgen survives TS 7.0 transition; react-docgen-typescript doesn't
+
+**Ongoing / In Progress:**
+- Writing implementation plan for 5 structural gap fixes (interrupted)
+- Creating Corsa API future-work documentation
+
+**Root cause analysis for key gaps:**
+- Method-shorthand params: `mod.rs:483` hardcodes `vec![CollectedType::Raw("...")]` instead of reading `ms.params.items`
+- Readonly<T>: `alias.rs` missing `"Readonly"` arm before `_ =>` wildcard; `_ =>` creates `Passthrough { target: Named("Readonly") }` which `resolve_props_chain` silences at step 1
+- Inline Pick/Omit: `resolve_props_chain` step 1 returns empty for all utility names regardless of type_args; step 0.5 needed before step 1
+- SVGAttributes etc.: not in `html_element_for`, not in `is_react_builtin`, not in `named.rs` step-6 silent list → falls to step 7 → UnresolvableImport warning
+
+---
+
+6. All User Messages:
+
+- (Session resumed from prior context — user's first visible message:) "Let's add that jsdoc/tsdoc fixture right?" [from prior session summary]
+- "What other patterns did you learn from the popular libraries, component libraries and design systems?? Any others we should consider? How do we best use Panda CSS or other other CSS alternatives that are popular these days?" [the message that started the current session after compaction]
+- "Fix all of these. Use agent teams if possible" [after seeing priority table of 6 items]
+- "[Request interrupted by user]" followed by "/model" command then "Fix all of these. Use agent teams if possible" [repeat after model switch to Sonnet 4.6]
+- "Are we confident we cover all of the common and edge case types in popular react libraries?"
+- "Looking at that figure out the genetic patterns vs very specific examples, right? Think deeply in terms or TS types and RDT" [asking to collapse 12 gaps into fundamental patterns]
+- "I think some of these require the upcoming tsgo API, right? Think deeply and research. Use agent teams as possible."
+- "Let's appropriately document what we'll do later when the API is available. And let's plan out what we can do now, how we'll document and test it."
+
+**Security/Non-negotiable constraints from CLAUDE.md (preserved verbatim):**
+1. No `unwrap()` outside `#[cfg(test)]` — use `?`
+2. `FxHashMap` for internal maps; `BTreeMap` for JSON-output maps
+3. `CompactString` for type/prop names in hot paths
+4. No AST refs escape `parse_file()` — allocator is local per call
+5. No terminal/display code in `crates/core`
+6. Always emit `Diagnostic` when degrading — never fail silently
+
+**Commit message style (from memory file):** No Co-Authored-By lines; succinct, engineering-focused, no AI slop; no line wrapping.
+
+---
+
+7. Pending Tasks:
+
+1. **Create `docs/type-checker-integration.md`** — document what genuinely requires a type checker vs structural analysis, Corsa API status, tsgolint precedent, when to integrate (TS 7.1), specific operations that will become available
+2. **Fix TSMethodSignature param extraction (Gap 1)** — two sites in `crates/core/src/extractor/mod.rs` (lines 359-374 and 476-492): replace hardcoded `vec![CollectedType::Raw("...")]` with actual `ms.params.items` iteration (same pattern as TSFunctionType at lines 220-236)
+3. **Add React namespace recognitions (Gap 2)** — add SVGAttributes, HTMLProps, ComponentRef, JSXElementConstructor to `react_types.rs` (html_element_for + is_react_builtin) and `named.rs` (step-6 silent list); add SVG icon fixture
+4. **Add Readonly<T> transparent wrapper (Gap 3)** — one new arm in `crates/core/src/extractor/alias.rs` before `_ =>` wildcard
+5. **Fix inline Pick/Omit in extends position (Gap 5)** — add step 0.5 in `crates/core/src/resolver/chain.rs::resolve_props_chain` to detect utility types with non-empty type_args and construct synthetic CollectedTypeAlias; add `parse_string_union_keys_from_raw` helper
+6. **Regenerate snapshots** — after all fixes, run `INSTA_UPDATE=always cargo test -p oxc-react-docgen-core --test snapshots`; controlled.tsx onValueChange should show `eventType: "string"`; pick-source.tsx IconButton should gain disabled/type/form props
+7. **Update `docs/rdt-coverage.md`** — mark new items as covered, update gap status
+
+---
+
+8. Current Work:
+
+The writing-plans skill was invoked to create a comprehensive implementation plan. All necessary code was read:
+
+- `extractor/mod.rs:330-496` — TSMethodSignature sites confirmed at lines 359-374 and 476-492; TSFunctionType pattern at lines 220-236 confirmed as the template to follow
+- `react_types.rs:1-175` — full file read; confirmed missing entries in html_element_for and is_react_builtin
+- `extractor/alias.rs:1-111` — confirmed Readonly is NOT handled (falls to _ wildcard)
+- `resolver/chain.rs:1-259` — confirmed step 1 silences Pick/Omit/Readonly/etc. regardless of type_args; confirmed `resolve_interface_chain` ignores _type_args
+- `resolver/alias.rs:1-255` — confirmed Passthrough resolves by calling resolve_props_chain(target.name); confirmed Pick/Omit work via resolve_base_as_chain when properly reached
+- `collected.rs:1-80` — CollectedType variants confirmed
+- `mod.rs:107-126` — classify_extends confirmed: produces ExtendsRef::SameFile{name:"Pick", type_args:[...]} for inline Pick
+
+The plan has NOT been written yet. The session was interrupted at this point.
+
+---
+
+9. Optional Next Step:
+
+The user's most recent explicit request: "Let's appropriately document what we'll do later when the API is available. And let's plan out what we can do now, how we'll document and test it."
+
+The writing-plans skill was invoked and all code was read, but the actual plan files have not been created yet. The next step is to:
+
+1. Create `docs/type-checker-integration.md` documenting the Corsa API future work (what operations need a type checker, timeline, tsgolint precedent, integration architecture)
+2. Write `docs/superpowers/plans/2026-06-28-structural-gap-fixes.md` with full implementation plan covering:
+   - Task 1: Create Corsa API future-work doc + update rdt-coverage.md reference
+   - Task 2: Fix TSMethodSignature params (Gap 1) — 2 sites in extractor/mod.rs
+   - Task 3: Add React namespace recognitions (Gap 2) — react_types.rs + named.rs + svg-icon fixture
+   - Task 4: Add Readonly<T> wrapper (Gap 3) — alias.rs
+   - Task 5: Fix inline Pick/Omit in extends position (Gap 5) — chain.rs step 0.5
+   - Task 6: Regenerate all snapshots + update coverage matrix
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

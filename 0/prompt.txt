@@ -1,0 +1,1 @@
+We can configure the plugins via the plugin file or inline in the vite config (for example)

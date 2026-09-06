@@ -1,0 +1,1 @@
+Can we fully leverage our agents and skills to research and validate our plan for the plugins and how we are adjusting our repo? Consider this should be a monorepo with our crates and packages right? What would this look like?

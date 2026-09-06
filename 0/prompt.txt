@@ -1,0 +1,254 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   The overarching task, which evolved through multiple explicit user directives across this long session, was to conduct and then act on a rigorous "spec-drift" quality audit of a prior SDD (spec-driven-development) initiative in the `oxc-react-docgen` Rust codebase, and then continue closing every gap found until the codebase's test coverage and correctness were exhaustively solid. In order, the explicit user requests were:
+   1. Read `docs/superpowers/session-handoff-2026-08-12.md` for context, then run `canon-drift-checker` against each of the 7 gated `spec@1` documents in `.claude/specs/`, specifically scrutinizing whether newly-added tests actually assert what their spec criteria require (not just that they pass). **"Report findings before fixing anything — I want to review what it finds before you touch code."**
+   2. When subagent delegation stalled overnight with no results: **"You are losing track of the work somehow, check on it because it ran overnight so we should have had results. WTF"** — demanding I actively investigate rather than passively wait.
+   3. **"Don't wait for the rest, run those checks yourself anyway"** — do the remaining drift-checks manually instead of continuing to rely on unreliable subagent delegation.
+   4. **"Do BINDING, EXTRACTOR, and SERIALIZATION with the same rigor"** — apply the same deep, full-spec-criterion scrutiny to specs I'd under-scoped in my first manual pass.
+   5. **"Start with the AC-017 severe finding first"** then (mid-turn) **"Then process the other findings"** — fix the most severe finding first, then work through every other finding from the entire review.
+   6. **"Commit and go to the next highest priority/reward case"** — commit completed work, then autonomously identify and pursue the next-highest-value remaining item.
+   7. **"Do we have all of the happy path covered by tests? Corner and error cases well covered?"** — an assessment question about overall test coverage completeness across the whole codebase, not just the reviewed specs.
+   8. **"Look into it, leave no leaf untouched"** — in response to my finding that `react_types.rs` had thin test coverage, exhaustively test every code path/match-arm in that module.
+   9. **"Continue with all the open items"** — after I listed remaining known gaps (P0-2 cache staleness, `resolve_named` cycle detection, `component_cache` staleness, 8 component-shape detection gaps, PTY-limited paths), continue closing them.
+   10. Via `AskUserQuestion`, when I flagged that P0-2 (deliberately deferred by a past session) and the 8 component-shape gaps (new feature work, not bug fixes) needed an explicit decision before I touched them: user chose **"Fix it now"** for P0-2, and **"Implement all 8"** for the component-shape detection gaps.
+
+   Throughout, the user's implicit standard (established via their corrections and my own adopted discipline) was: every fix must be verified via genuine fail-then-pass testing (deliberately break the fix, confirm the test catches it, restore the fix), `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all -- --check` must be clean after each change, the full `cargo test --workspace` suite must pass, `docs/STATUS.md`'s test count must be kept current, and `docs/edge-cases.md`/`docs/root-cause-analysis.md` must be updated to reflect fixes (strikethrough + **FIXED**, preserving audit trail per that doc's own stated convention). Commits should be made per logical unit of work, with no line wrapping, succinct and engineering-focused, ending with the `Claude-Session:` footer and explicitly NOT a `Co-Authored-By` line (per the user's persistent global memory preference).
+
+2. Key Technical Concepts:
+   - Rust workspace with 3 crates: `crates/core` (pure extraction/resolution logic, no I/O/terminal code), `crates/cli` (clap-based CLI, delegates to core), `crates/binding` (NAPI wrapper for Node.js/Vite).
+   - SDD (spec-driven-development) pipeline: `canon-drafter` → `canon-verifier` → `canon-auditor` → `canon-exit-gate` for spec authoring; `canon-drift-checker` for post-implementation re-verification (classifies each acceptance criterion as covered/uncovered/drifted).
+   - 7 gated `spec@1` documents in `.claude/specs/`: `SPEC-PIPELINE-001`, `SPEC-EXTRACTOR-001`, `SPEC-RESOLVER-001`, `SPEC-TYPES-001`, `SPEC-SERIALIZATION-001`, `SPEC-BINDING-001`, and `SPEC-CLI-001a/b/c/d` (4 sub-specs for exit codes, atomic writes, LSP framing, config loading).
+   - "Assert content, not presence" testing discipline (project CLAUDE.md non-negotiable): prefer `assert_eq!` against exact expected values over `contains()`/`is_some()` liveness checks.
+   - "Sibling-path parity" testing discipline: a function mirroring an already-tested one needs its own equivalent test.
+   - Fail-then-pass verification: for every fix, temporarily revert/disable it, confirm the new test fails, then restore and confirm it passes — used extensively and consistently throughout.
+   - `ResolveState` (in `crates/core/src/types/global.rs`): shared mutable state threaded through resolver functions, containing `visited` (chain.rs's permanent cycle-detection set, cloned per-branch to avoid diamond-inheritance false positives), the newly-added `named_in_progress` (resolve_named's own DFS-stack cycle-detection set, insert-on-entry/remove-on-exit), `diagnostics`, `in_scope_type_params`.
+   - Diamond-inheritance false-positive bug class: sharing one permanent "visited" set across sibling branches or independent call sites incorrectly flags legitimate repeated/shared references as cycles. This exact bug class was found and fixed TWICE this session (once in `chain.rs`'s `resolve_interface_chain`, once avoided-by-design in the NEW `resolve_named` fix).
+   - `rustc_hash::FxHasher` — fast, non-cryptographic hasher, already a dependency (via `rustc-hash` crate), used both for `FxHashMap`/`FxHashSet` throughout the codebase and now directly for `cache.rs`'s content-hashing.
+   - `write_atomic` pattern (temp-file-then-rename) for crash-safe file writes, shared between `extract --out` and `watch --out` via `crates/cli/src/output.rs`.
+   - `DashMap` (from the `dashmap` crate) used for `WatchSession::component_cache`, `DtsCache::store`.
+   - `rstest` crate's `#[rstest]` + `#[case(...)]` parameterized test macro — IMPORTANT GOTCHA: `grep -c "#\[test\]"` does NOT count `#[rstest]`-annotated tests, since rstest generates the actual test functions via macro expansion. I made this exact mistake once (undercounted `react_types.rs`'s existing coverage) and had to self-correct.
+   - `Arc::ptr_eq` — used to prove object IDENTITY (same underlying allocation) rather than just value equality, critical for BINDING's AC-9 "reuse not reconstruct" test.
+   - MessagePack (`rmp_serde`) positional (not named-map) struct encoding for `DtsCache`'s on-disk persistence — field order/shape changes require a `CACHE_SCHEMA_VERSION` bump to invalidate old caches.
+   - `ignore` crate (`WalkBuilder`) — its `git_ignore(bool)` builder method controls `.gitignore` respect; `.git/info/exclude` and `.ignore`-file support remain at crate DEFAULTS (`true`) unless explicitly overridden — this distinction was key to correctly testing `SPEC-PIPELINE-001` AC-001's gitignore matrix.
+   - Pre-canonicalization vs. post-canonicalization path matching: `discover.rs`'s built-in exclusion substring checks (`.stories.`, `node_modules`, etc.) match against the WALKER's raw reported path (pre-canonicalization), while the final `file_path` stored in output is canonicalized AFTER the exclusion check — verified via a symlink-based test fixture.
+   - Content-hash-based cache invalidation replacing mtime+size, eliminating same-tick/same-size false-positive cache hits at the root rather than mitigating them.
+
+3. Files and Code Sections:
+
+   - **`crates/core/src/pipeline/watch.rs`** (extensively modified across multiple phases)
+     - AC-017 fix: rewrote `update_file_with_a_non_canonical_path_still_finds_the_canonical_entry` to add a `Consumer.tsx` file that imports from the symlinked `Button.tsx`, proving the transitive-dependent case (since `affected()` trivially includes the changed file itself via BFS self-seeding, the original test couldn't distinguish canonicalized from non-canonicalized behavior).
+     - Added 4 new tests: `snapshot_and_update_file_on_an_uninitialized_session_do_not_panic` (AC-020), `update_file_after_an_atomic_replace_reflects_the_new_content_not_a_deletion` (AC-015), `deleting_a_file_surfaces_io_error_and_a_dependent_stops_resolving_against_it` (AC-019), `update_file_with_non_utf8_content_surfaces_io_error_and_skips_that_files_own_component` (AC-024).
+     - Strengthened `session_recovers_after_a_contained_panic_and_serves_unrelated_files_normally` to check prop content (`x.props.contains_key("y")`) not just presence.
+     - `component_cache` staleness fix — key code:
+     ```rust
+     // A failed read (deletion, permission error, non-UTF8 content) must
+     // NOT evict this file's cache entries — SPEC-PIPELINE-001's AC-019
+     // deliberately specifies that a deleted file's previously-resolved
+     // component stays in component_cache/snapshot() until a new
+     // WatchSession is constructed...
+     let file_read_failed = io_diagnostic.is_some();
+
+     let mut updated_components = Vec::new();
+     let mut diagnostics: Vec<Diagnostic> = io_diagnostic.into_iter().collect();
+
+     if !file_read_failed {
+         let stale_keys: Vec<String> = self
+             .component_cache
+             .iter()
+             .filter(|r| r.value().file_path == changed)
+             .map(|r| r.key().clone())
+             .collect();
+         for key in stale_keys {
+             self.component_cache.remove(&key);
+         }
+     }
+
+     for (entry, diags) in results {
+         let key = if self.component_cache.iter().any(|r| r.value().display_name == entry.display_name) {
+             format!("{} ({})", entry.display_name, entry.file_path)
+         } else {
+             entry.display_name.clone()
+         };
+         self.component_cache.insert(key, entry.clone());
+         updated_components.push(entry);
+         diagnostics.extend(diags);
+     }
+     ```
+     - Added tests `renaming_a_component_between_edits_evicts_its_old_cache_key` and `editing_a_disambiguated_component_updates_its_own_key_not_the_bare_one` (the latter proved actual cross-file data corruption in the old code; needed a `.canonicalize_utf8()` fix for macOS `/var` vs `/private/var` symlink mismatch in the test itself).
+
+   - **`crates/core/src/pipeline/mod.rs`**
+     - AC-010 (3rd-occurrence-wins) test strengthened with exact prop-content and disambiguated-key checks.
+     - Added ~6 new tests for `SPEC-PIPELINE-001` AC-001's gitignore/`.ignore`/`.git` work-tree matrix: `gitignore_excludes_a_matching_file_inside_a_real_git_work_tree`, `gitignore_has_no_effect_when_the_src_dir_string_contains_node_modules`, `ignore_file_excludes_a_matching_file_with_no_exception`, `gitignore_has_no_effect_outside_any_git_work_tree_but_ignore_still_does`, `a_src_dir_physically_under_node_modules_but_not_named_that_way_is_not_exempt` (uses a real symlink to prove both the negative-pair non-exemption AND the pre-canonicalization substring-matching claim in one fixture).
+     - For P0-2: updated `merge_cached_dts_file` to read content once and pass to both `cache.get`/`cache.insert`; updated the Phase 2 parallel parse loop to read the file BEFORE checking cache (previously checked cache first via stat-only, now must read for hashing) while preserving `io_diag` semantics correctly on both hit/miss paths.
+
+   - **`crates/core/src/resolver/chain.rs`**
+     - Diamond-inheritance fix: `resolve_interface_chain`'s extends loop now clones `state.visited` per branch:
+     ```rust
+     for extends_ref in &iface.extends {
+         let mut branch_state = ResolveState {
+             visited: state.visited.clone(),
+             named_in_progress: state.named_in_progress.clone(),
+             diagnostics: vec![],
+             in_scope_type_params: state.in_scope_type_params.clone(),
+         };
+         let (parent_chain, maybe_layer) =
+             resolve_extends_ref(extends_ref, &iface.file_path, mapping, ctx, &mut branch_state, depth + 1);
+         state.diagnostics.extend(branch_state.diagnostics);
+         ...
+     }
+     ```
+
+   - **`crates/core/src/resolver/named.rs`**
+     - `resolve_named` rewritten as a cycle-detecting wrapper delegating to a new private `resolve_named_uncycled`:
+     ```rust
+     pub(super) fn resolve_named(
+         name: &CompactString, args: &[CollectedType], consuming_file: &Utf8Path,
+         ctx: &ResolutionContext, state: &mut ResolveState, depth: u8,
+     ) -> PropType {
+         let visit_key: CompactString = format!(
+             "{}:{}<{}>", consuming_file, name,
+             args.iter().map(|a| a.to_raw_string()).collect::<Vec<_>>().join(",")
+         ).into();
+
+         if !state.named_in_progress.insert(visit_key.clone()) {
+             state.diagnostics.push(Diagnostic {
+                 severity: DiagnosticSeverity::Info,
+                 message: format!("Circular type reference detected resolving '{}' in '{}' — stopping here to avoid infinite recursion", name, consuming_file),
+                 ...
+                 code: DiagnosticCode::MaxDepthExceeded,
+             });
+             return OpaqueDetail::new(name.to_string(), OpaqueReason::DepthExceeded);
+         }
+
+         let result = resolve_named_uncycled(name, args, consuming_file, ctx, state, depth);
+         state.named_in_progress.remove(&visit_key);
+         result
+     }
+     ```
+
+   - **`crates/core/src/resolver/alias.rs`**
+     - Two `branch_state` construction sites updated to include `named_in_progress: state.named_in_progress.clone()`.
+
+   - **`crates/core/src/types/global.rs`**
+     - Added `named_in_progress: FxHashSet<CompactString>` field to `ResolveState`, with an extensive doc comment explaining why it's separate from `visited` (avoiding the false-positive class).
+
+   - **`crates/core/src/resolver/mod.rs`** — extensively edited across multiple phases:
+     - Strengthened AC-2 test (exact severity/code/message + composes check), AC-2b test (added composes assertion), AC-3/AC-4/AC-6 exact-message tests, diamond-inheritance regression test `diamond_inheritance_does_not_falsely_report_a_cycle`.
+     - Added `self_referential_type_alias_used_directly_as_a_field_type_is_caught_immediately` and `two_unrelated_fields_sharing_the_same_type_are_not_falsely_flagged_as_a_cycle` for the resolve_named fix.
+
+   - **`crates/core/src/resolver/substitute.rs`** — strengthened `build_substitution_diagnoses_unfilled_trailing_type_params` (checks `!subst.contains_key("U")` and `DiagnosticCode::GenericArgumentMismatch` instead of just length/char-search).
+
+   - **`crates/core/src/resolver/template.rs`** — strengthened `test_template_literal_expansion_caps_and_degrades_to_opaque` (checks severity + exact message substring).
+
+   - **`crates/core/src/extractor/mod.rs`** — multiple test strengthenings/additions for AC-014, AC-022/026 (severity checks), AC-024 (5 shapes instead of 3), AC-009 (two new end-to-end tests `malformed_omit_type_alias_is_skipped_end_to_end`, `omit_with_unresolvable_base_type_is_skipped_end_to_end`), AC-021/027 (content checks via `props_type_name` assertions).
+
+   - **`.claude/specs/SPEC-TYPES-001.json`** — amended AC-005's criterion text to add a `#[cfg(test)]` carve-out, resolving the self-contradiction drift-types2 found (the criterion's own proving test necessarily violates its literal wording).
+
+   - **`crates/core/src/types/output.rs`** — strengthened AC-013 test to full `Diagnostic` equality (`diagnostic.clone()` then `assert_eq!(state.diagnostics[0], diagnostic)`), added nested-NaN round-trip test covering all 6 enumerated positions (Union/Intersection/Array/Tuple/Object/Named-args).
+
+   - **`crates/core/src/types/collected.rs`** — extended `from_json_value_recognized_strings_map_to_unit_variants` to cover all 11 string tags instead of 5.
+
+   - **`crates/binding/src/lib.rs`** — extracted `compute_session_id(pid: u64, counter: u64) -> u32` as a pure seam from `next_session_id()`, added `compute_session_id_never_duplicates_across_the_full_65536_counter_range` test (tests the full claimed bound without touching the shared global `AtomicU64` counter, avoiding test-parallelism flakiness). Strengthened AC-9 tests using `Arc::ptr_eq` to prove reuse vs reconstruction.
+
+   - **`crates/cli/src/commands/extract.rs`** — added AC-001 clean-run test, and AC-002/003/004 `extract --out` tests including `extract_out_through_a_symlink_replaces_the_link_not_its_target` (the genuinely-distinguishing symlink-based atomic-write test, after my first attempt at these tests turned out NOT to distinguish atomic from non-atomic writes — self-caught and corrected).
+
+   - **`crates/cli/src/commands/check.rs`** — added `clean_run_returns_exit_code_zero` (AC-003), `strict_mode_with_warning_only_diagnostics_returns_exit_code_one` (AC-005), `non_strict_mode_with_warning_only_diagnostics_returns_exit_code_zero` (AC-006), `error_takes_precedence_over_warning_even_with_strict_and_both_present` (AC-004).
+
+   - **`crates/cli/src/commands/inspect.rs`** — added `clean_run_returns_exit_code_zero` (AC-011), `missing_component_errors_naming_the_request_and_available_components` (AC-013).
+
+   - **`crates/cli/src/commands/completions.rs`** — added first-ever tests: `generates_a_non_empty_completion_script_for_every_recognized_shell`, `cmd_completions_itself_succeeds` (AC-014).
+
+   - **`crates/cli/src/config.rs`** — added `build_options_propagates_a_config_load_failure_as_err` (AC-018), `build_options_rejects_an_unrecognized_react_version_value` (AC-021), `config_path_containing_quotes_and_an_exit_payload_is_not_interpreted_as_javascript` (AC-001, injection safety — verified genuine by temporarily reverting to naive string concatenation and confirming a real `SyntaxError`).
+
+   - **`crates/cli/src/commands/lsp.rs`** — added `test_connection_closed_mid_header_before_blank_line_is_treated_as_eof` (AC-005b), `test_non_utf8_header_bytes_are_treated_as_eof` (AC-005d).
+
+   - **`crates/cli/tests/lsp_process.rs`** — added `exactly_16mib_content_length_is_read_and_dispatched_normally` (AC-002 full dispatch), `truncated_body_exits_0_with_empty_stdout` (AC-005c), `malformed_json_body_produces_no_response_but_does_not_desync_the_stream` (AC-006), `missing_method_field_produces_no_response_but_does_not_desync_the_stream` (AC-007).
+
+   - **`crates/cli/tests/cli_exit_codes.rs`** (NEW FILE) — created for AC-015/AC-020 clap-level rejection tests via real subprocess invocation: `completions_with_an_unrecognized_shell_exits_2`, `inspect_with_no_component_positional_exits_2`, `extract_with_an_unrecognized_flag_exits_2`, `extract_with_a_bad_format_value_exits_2`, `extract_with_a_bad_html_attributes_value_exits_2`.
+
+   - **`crates/core/src/react_types.rs`** — extended `test_html_element_for_table` (7→18 cases) and `test_html_element_from_type_arg_table` (4→26 cases); added `is_react_builtin_recognizes_every_hardcoded_name` (66 rstest cases), `is_react_builtin_rejects_a_name_in_neither_the_hardcoded_list_nor_extra`, `is_react_builtin_recognizes_a_name_present_only_in_extra`, `is_react_builtin_recognizes_a_hardcoded_name_even_with_an_unrelated_extra_set`; added 9 `notable_html_attrs_*` tests with exact array-content assertions.
+
+   - **`crates/core/src/cache.rs`** — full P0-2 redesign:
+     ```rust
+     #[derive(Hash, Eq, PartialEq, Clone)]
+     struct CacheKey {
+         path: Utf8PathBuf,
+         content_hash: u64,
+     }
+
+     fn hash_content(content: &str) -> u64 {
+         let mut hasher = rustc_hash::FxHasher::default();
+         hasher.write(content.as_bytes());
+         hasher.finish()
+     }
+     ```
+     `get`/`insert`/`key_for` all changed to take `content: &str`. `CACHE_SCHEMA_VERSION` bumped 2→3. `SerializableCacheKey` simplified to `{path: String, content_hash: u64}`. Test module rewritten: fixed ~7 call sites, rewrote `test_stale_key_after_content_change` to actually prove same-length-different-content misses, added `test_identical_content_still_hits_even_with_a_different_mtime` guard test.
+
+   - **`docs/STATUS.md`** — updated test count repeatedly: 211→377→393→398→508→512→513, and date 2026-07-27→2026-08-13.
+
+   - **`docs/edge-cases.md`** — updated repeatedly with strikethrough+FIXED entries for: diamond-inheritance bug, `resolve_named` cycle detection, `component_cache` staleness (both manifestations), P0-2 cache staleness (including the top-of-doc status-update line).
+
+   - **`docs/root-cause-analysis.md`** — updated the P0-2 table row to strikethrough+FIXED.
+
+4. Errors and fixes:
+   - **Subagent delegation completely unreliable**: 6 of 7 `canon-drift-checker` agents went idle without ever transmitting results; retried "-2" versions also failed for some. User feedback: **"You are losing track of the work somehow... WTF"**. Fix: switched to fully manual investigation per user's explicit instruction "Don't wait for the rest, run those checks yourself anyway." Some agents DID eventually deliver late (out of the normal flow), and their findings corrected real errors in my manual work — I explicitly acknowledged and corrected these to the user rather than hiding the discrepancy.
+   - **My own manual review contained an error**: I had marked RESOLVER's AC-2 as "Covered (exact)" when it was actually a weak `.contains("circular")` check — caught by the late `drift-resolver2` report, which I then explicitly corrected to the user.
+   - **My own manual review missed TYPES AC-005's actual drift status**: reported "0 drifted" for TYPES when AC-005 was genuinely self-contradictory (its own proving test violates its literal wording) — caught by `drift-types2`, corrected via a spec-text amendment.
+   - **First attempt at CLI-001b's `extract --out` atomic-write tests was NOT actually distinguishing**: I initially wrote 3 tests that all passed even after I deliberately reverted `write_atomic` to bare `fs::write` — I caught this myself by doing the fail-then-pass check, then designed a genuinely-distinguishing symlink-based test (`write_atomic`'s rename replaces the symlink; naive `fs::write` follows it and corrupts the target) which correctly failed against the reverted code.
+   - **Miette's pretty-printer word-wraps long paths mid-string** in error messages (inserting `\n  │ ` continuations), which broke exact-substring assertions in two CLI-001b tests. Fixed by checking load-bearing substring pieces separately (`"Writing to"`, the distinctive path segment, the OS error text) instead of one contiguous concatenated string.
+   - **macOS `/var` vs `/private/var` symlink resolution mismatch** broke path-equality assertions in two different tests this session (the negative-pair gitignore test, and the `editing_a_disambiguated_component_updates_its_own_key_not_the_bare_one` test). Fixed both by calling `.canonicalize_utf8()` on the paths before comparison.
+   - **Blanket `component_cache` eviction broke an already-gated spec criterion (AC-019)**: my first eviction implementation evicted stale entries unconditionally, which broke `deleting_a_file_surfaces_io_error_and_a_dependent_stops_resolving_against_it` (a test I'd written earlier this session for AC-019, which explicitly specifies a deleted file's stale component should PERSIST). Caught immediately by running the test suite; fixed by gating eviction on `!file_read_failed` (only evict on a SUCCESSFUL re-read, not a deletion/permission-error/non-UTF8 failure).
+   - **`ScheduleWakeup` tool misuse**: attempted to use it outside `/loop` context; got an error (`prompt` is required when `stop` is not true) and correctly recognized this tool is only for `/loop` sessions, abandoned the approach.
+   - **`grep -c "#\[test\]"` undercounted `react_types.rs`'s existing test coverage**: missed `#[rstest]`-parameterized tests entirely. I initially told the user `html_element_for`/`html_element_from_type_arg` had ZERO tests when they actually had 7 and 4 rstest cases respectively. Caught by actually reading the file fully before writing new tests; corrected the user's understanding proactively ("I was WRONG in my earlier assessment").
+   - **Bash `tail -N` truncation caused misreading of test output** at least twice — once made me briefly think a passing test set had "0 passed" when the truncated output was actually showing an unrelated subsequent test binary's summary. Fixed by re-running with `head` or without truncation to see the actual result line.
+   - **P0-2 cache fix required updating 2 call sites, not 1**: initially only fixed `merge_cached_dts_file`; a second call site in the Phase 2 parallel parse loop (`pipeline/mod.rs` around line 289-318) also needed restructuring (previously checked cache BEFORE reading file; now must read first since hashing needs content) — found via compile errors, not missed silently.
+
+5. Problem Solving:
+   Throughout, the dominant pattern was: (a) identify a claimed gap/finding, (b) verify against CURRENT source rather than trusting docs/memory (explicitly caught 2+ stale doc claims this way), (c) design a fix that avoids introducing the SAME bug class being fixed elsewhere (diamond-inheritance false-positives recurred as a design hazard twice), (d) implement, (e) verify via deliberate fail-then-pass testing, (f) run full workspace test/clippy/fmt checks, (g) update tracking docs, (h) commit with a clear "why" message. This methodology was applied consistently and the user never had to re-explain it after it was established. The session's final open thread is verifying which of the "8" component-shape detection gaps are genuinely still open before implementing — this investigation is now complete (via the Explore agent) and found only 5 are genuinely full new-feature gaps, 1 needs a narrow refinement, 1 is already fully resolved, and 1 is already correct-by-design.
+
+6. All user messages (non-tool-result):
+   - "Read docs/superpowers/session-handoff-2026-08-12.md for full context on the prior session's SDD initiative... Run canon-drift-checker against each of the 7 specs in .claude/specs/ again, specifically scrutinizing whether the newly-added tests... actually assert what their spec criteria require... Report findings before fixing anything — I want to review what it finds before you touch code."
+   - `/rename oxc-rd-impl` (slash command)
+   - `/color purple` (slash command)
+   - Multiple `<teammate-message>` relay events showing subagent idle notifications and reports (not direct user messages, but system-relayed).
+   - "What's next?" (asked mid-session, before the WTF moment — actually this was near the very end after gitignore work)
+   - "You are losing track of the work somehow, check on it because it ran overnight so we should have had results. WTF"
+   - "what's the status on the drift checks"
+   - `/rename oxc-rd` (slash command)
+   - "Do we have all of the happy path covered by tests? Corner and error cases well covered?" — wait, let me recheck ordering; this occurred AFTER "commit and go to next highest priority" not right after WTF. Re-ordering corrected below.
+   - "Don't wait for the rest, run those checks yourself anyway"
+   - "Do BINDING, EXTRACTOR, and SERIALIZATION with the same rigor"
+   - "Start with the AC-017 severe finding first"
+   - "Then process the other findings" (delivered as a mid-turn injected message alongside a tool result)
+   - "Commit and go to the next highest priority/reward case"
+   - "Do we have all of the happy path covered by tests? Corner and error cases well covered?"
+   - "Look into it, leave no leaf untouched"
+   - "Continue with all the open items"
+   - Response to `AskUserQuestion` about P0-2 and the 8 gaps: **"Fix it now"** (P0-2) and **"Implement all 8"** (component-shape gaps).
+   - Final instruction (system-injected, not from the user directly): a directive to produce this summary in text-only form, no tool calls.
+
+   No security-relevant instructions or sensitive-file/credential constraints were given by the user in this session beyond the standing global memory preferences (no Co-Authored-By attribution in commits; commit messages must not be line-wrapped and should be succinct/engineering-focused/no AI slop) and the pre-existing session note (not from this user turn, but carried context) that `.entire/`, `.gemini/`, and `.moon/hooks/*` untracked files are NOT from this session and should not be touched/assumed-owned without checking with the user first.
+
+7. Pending Tasks:
+   - Implement the genuinely-still-open component-shape detection features identified by the Explore agent's verification report:
+     1. Anonymous default-exported function components (`export default function(props: Props) {}`) — needs a `visit_export_default_declaration` override in `crates/core/src/extractor/visit.rs`, reusing Pattern-4's extraction logic; open design question is what `component_name` to use since there's no identifier (agent suggested PascalCased file stem).
+     2. Class components (`class Button extends React.Component<Props>`) — needs a new `try_class_component` detector in `crates/core/src/extractor/component.rs`, checking `super_class` resolves to `Component`/`React.Component`/`PureComponent`/`React.PureComponent` and reading the first `super_type_parameters` entry as props type.
+     3. `Object.assign(Component, { Sub: ... })` compound-component sub-property attachment — needs detection of `Object.assign` callee with a 2nd-arg object literal, cloning already-collected mappings under new names for each sub-property; open design question is the naming convention for sub-components.
+     4. Class-expression components (`const Button = class extends React.Component<Props> {}`) — reuses fix #2's detection logic, hooked into `visit_variable_declaration`'s detector chain matching `Expression::ClassExpression`.
+     5. `satisfies`-wrapped expressions — minimal fix: add a `Expression::TSSatisfiesExpression` match arm to `unwrap_as_expression` in `component.rs:16-22` (the shared cast-peeling helper used by `try_forward_ref`/`try_hoc_wrapped`/`try_rename_identifier_wrapped_component`).
+     - A narrower refinement to #6 (exotic `TSType` variants): extend the fallback diagnostic guard to also fire for no-initializer FC-family-annotated declarations with exotic type arguments (currently gated on `declarator.init.is_some()`, missing this one sub-case).
+     - #7 and #8 require NO further work (already fully handled / already correct-by-design per the newer gated `SPEC-EXTRACTOR-001`); worth noting to the user that `docs/edge-cases.md`'s entries for these two should be updated/marked resolved-or-superseded rather than left as "still open," since the doc is currently stale on these two points.
+   - The PTY-harness-limited paths (watch keyboard-quit test, LSP SIGINT/CriticalError automated coverage) remain explicitly out of scope per the spec's own non_goals — not something the user has asked me to pursue.
+
+8. Current Work:
+   Immediately before this summary request, I had just launched (and received back) a read-only `Explore` subagent to verify all 8 of `docs/edge-cases.md`'s claimed "still open" component-shape detection gaps against CURRENT source code, before beginning implementation (per my established discipline of not trusting potentially-stale docs without verification, having already caught 2 stale claims earlier in the session). The agent's full report is captured above in the "Phase 12" analysis section and the summary's point 3. The report concluded: gaps 1, 2, 3, 4, 5 are genuinely still open and need new detection code; gap 6 is mostly resolved but has one narrow remaining silent sub-case; gap 7 is fully already-handled (doc is stale); gap 8 is already correct-by-design per the later-gated `SPEC-EXTRACTOR-001` AC-018 (doc is stale, with one minor adjacent inconsistency for type-alias-shaped props objects). This investigation was explicitly RESEARCH ONLY — the agent was instructed "do not write or edit any code" — so no source files have been modified as part of this investigation, and the git working tree remains clean (aside from the pre-existing, not-mine `.entire/`/`.gemini/` untracked directories) as of the last commit `7f495a4`.
+
+   I have NOT yet reported this investigation's findings back to the user, nor started implementing any of the 5 confirmed-open detection features. The user's most recent actionable instruction relevant to this thread was, via `AskUserQuestion`: **"Implement all 8"** (for the component-shape detection gaps), which — now that the investigation is complete — actually maps to implementing 5 new detection features plus one narrow refinement, since 2 of the original "8" turn out to already be resolved.
+
+9. Optional Next Step:
+   Report the Explore agent's verification findings to the user (specifically that of the original "8," only 5 are genuinely open new-feature work, 1 needs a narrow refinement, and 2 — the "no signal when detection fails" and "computed/numeric/symbol keys" gaps — are already fully resolved by the later-gated `SPEC-EXTRACTOR-001` spec and should have `docs/edge-cases.md` updated to reflect that rather than being implemented), then proceed to implement the confirmed-open items one at a time using the same TDD/fail-then-pass discipline established throughout this session (starting most likely with #5, the `satisfies`-expression fix, since the agent's report frames it as the single smallest, most surgical fix — "a minimal, single-choke-point fix" adding one match arm to `unwrap_as_expression` — making it a reasonable, low-risk starting point before the larger #1/#2/#3/#4 detection-pattern additions). This directly continues the user's explicit "Implement all 8" instruction now that the actual scope has been precisely determined, consistent with how I've handled every other phase of this session (verify precisely, report any discrepancy from assumption, then execute).
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/c2e627b7-dced-422f-8477-6a94b0b84862.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

@@ -1,0 +1,1 @@
+Let's think deeply about this, considering rust best practices, useful crates, examples from notable codebases, examples relevant to oxc and RDT. Consider our architecture, performance and quality of the results

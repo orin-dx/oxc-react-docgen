@@ -1,0 +1,345 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+
+   This is a very long session covering multiple phases of work on the `oxc-react-docgen` project (a Rust/TypeScript tool that's a 10-100x faster drop-in replacement for `react-docgen-typescript`, parsing with OXC instead of the TypeScript compiler). In chronological order, the user's explicit requests were:
+
+   a) **Tooling audit** — "Should we setup a GH project in the repo and milestones?" then "Are we appropriately setup with mise, pnpm, just, oxcfmt, oxlint, clippy, etc?" then "Also tsdown and vitest? publishing coverage and test results, CI workflows, etc?" — asking for a comprehensive audit of dev tooling, which I performed, finding real gaps (no oxlint, a broken/unpinned prettier reference, no tsdown, no dependency-update bot, `release.yml` marked "UNTESTED SCAFFOLDING").
+
+   b) **Moon/proto vs mise debate** — "Let's move from proto to mise and avoid moon since it's not a monorepo right?" — I corrected the factual premise (it IS a monorepo: 6 projects, 2 languages, real cross-project deps) but initially recommended dropping moon anyway since CI didn't use it. The user then asked "If this is a monorepo should we use moon and proto?" and I gave a recommendation to keep mise but drop moon. The user then pushed back correctly: "We haven't setup the CI though so you're just assuming. Wouldn't moon be perfect for this?" — I acknowledged I'd conflated "CI doesn't use moon today" with "moon isn't valuable," and reversed my recommendation to KEEP both moon and proto, since CI runs the full matrix unconditionally on every push and moon's affected-detection could fix that. The user then asked "Would this be simplified with just and moon?" — I investigated the actual moon.yml files and found real bugs (empty moon.yml for core/binding, wrong build command for napi, no test/lint tasks anywhere except vite-plugin).
+
+   c) **Prettier → oxfmt, oxlint setup with specific strictness ask** — "We should not use prettier, instead use oxfmt rsfmt, oxlint and clippy" followed by mid-turn message "wrap at 120 char and adopt the absolute best practices. For oxlint we should be pretty pedantic right? more flexible for the tests than the code though" — explicit direction on tooling choice and exact strictness policy (pedantic for source, relaxed for tests).
+
+   d) **Changesets question** — "How do we propose doing versioning with changesets?" — I proposed a plan, but this was later superseded.
+
+   e) **"Let's tackle the rest"** and later **"We'll be building a tool to manage the changesets (callisto in ~/Projects), let's tackle the rest"** — explicit go-ahead to execute all remaining tooling tasks, with changesets EXPLICITLY taken out of scope (handled by a separate tool called "callisto").
+
+   f) **Repo move** — "moved repo to https://github.com/orin-dx/oxc-react-docgen" — needed remote update and reference fixes.
+
+   g) **"Make sure we do['n]t have codegen anywhere in the code or docs. It was a typo somewhere"** — comprehensive sweep requested.
+
+   h) **"Any cleanup we should do in git history before pushing to main?"** — led to discovering the new remote isn't a history transfer but a fresh repo with a real AGPLv3 LICENSE file conflicting with the project's MIT claims.
+
+   i) **"AGPL3 is the intended license"** — explicit license decision, triggering a full migration.
+
+   j) **"Do we need to set license in the NPM packages and crates?"** — audit request.
+
+   k) **"What's next?"** — status check-in (asked twice, at different points).
+
+   l) **Adversarial review request** — "Shall we use fable 5 and opus 5 in agent teams to analyze the work we've done and look for bugs, performance issues, improvements, etc? Consider the end-goal and what we're competing with." Then after a `/model` local command (kept Sonnet 5), the user stated **"You should have access to opus 5 too"** — correcting my earlier factual error that Opus 5 didn't exist (I had wrongly said this; the user was right, Opus 5 = 'claude-opus-5' is listed in my own model info). Finally **"Let's do it"** — clear go-ahead to launch the multi-model workflow.
+
+   m) **[Background task notification, not a user message]** — the workflow completed with 54 agents, 23 candidate findings, 13 confirmed. I am now in the process of fixing the confirmed findings, starting with the most severe (P0 performance regression), without an explicit new user instruction beyond the original "Let's do it" — I am exercising judgment that fixing real, verified findings from the review the user commissioned is the natural continuation of that request.
+
+2. Key Technical Concepts:
+   - **moon** (moonrepo) task/project graph: `.moon/workspace.yml` (project registry + vcs config), per-project `moon.yml` (task definitions), `moon query projects --affected` (affected-project detection), `MOON_BASE` env var (moon 2.3.3 has NO `--base`/`--head` CLI flags — confirmed via `--help`; reads base from `MOON_BASE` env var; **`MOON_HEAD` is silently ignored** — moon always diffs against whatever's actually on disk, which is correct for CI since `actions/checkout` puts the tree at `github.sha` already).
+   - **proto** (moonrepo's toolchain manager) — pins node/pnpm/rust/moon via `.prototools`; kept alongside moon since `moon setup` natively reads it.
+   - **oxfmt** — OXC's formatter, confirmed beta but real (v0.60.0 installed), Prettier-compatible config via `.oxfmtrc.json`, config keys include `printWidth`, `semi`, `singleQuote`, `ignorePatterns`. CLI flags: `--check`, `--write` (default), `--init`.
+   - **oxlint** — OXC's linter, config via `.oxlintrc.json` (ESLint-v8-like format), categories: `correctness`, `suspicious`, `pedantic`, `perf`, `style`, `restriction`, `nursery`. **Critical limitation discovered: `overrides` in the config file only support `files`/`excludeFiles`/`env`/`globals`/`plugins`/`jsPlugins`/`rules` — NOT `categories`** — per-glob category relaxation must happen via separate CLI invocations with `-A <category>` flags, not config overrides. CLI flags: `-D`/`-W`/`-A` for deny/warn/allow categories or specific rules (e.g. `-A pedantic`, `-A unicorn/consistent-function-scoping`), `--vitest-plugin`, `--fix`. Inline disable comments: `// oxlint-disable-next-line <rule>` and block-scoped `/* oxlint-disable <rule1>, <rule2> */` ... `/* oxlint-enable ... */`.
+   - **AGPL-3.0-or-later** — the project's confirmed license (SPDX identifier chosen to match the license text's own "or later version" option clause).
+   - **cargo-deny** (`deny.toml`) — `[licenses] allow` list needed `AGPL-3.0-or-later` added or `cargo deny check licenses` fails (verified empirically: confirmed failure before the fix, "licenses ok" after).
+   - **Workflow tool** (multi-agent orchestration) — used for the adversarial review; script structure: `export const meta = {...}` (pure literal), `phase()`/`agent()`/`pipeline()` calls, `FINDINGS_SCHEMA`/`VERDICT_SCHEMA` for structured output, `model: 'opus'`/`model: 'fable'` overrides, `effort: 'high'` for synthesis. Ran 54 agents total (7 finders + verification pairs + synthesis).
+   - **FxHashSet/FxHashMap** (rustc_hash) — internal maps convention per project non-negotiables; used for the new `visited` set in the barrel-resolution fix.
+   - **CompactString** — hot-path string type convention; used for the visited-set's name component.
+   - **`#[cfg(test)]` atomic counters** — a pattern I introduced for deterministic performance-regression testing when wall-clock timing is unreliable (oxc_resolver's internal path caching absorbs redundant filesystem work, making synthetic exponential-blowup reproductions appear fast even when genuinely exponential in call count).
+   - **TDD discipline** — RED (confirm test fails for the right reason, verified via `if false && ...` trick to disable just the fix without reverting the whole diff) → GREEN → full suite + clippy → real-fixture verification → commit, applied rigorously throughout.
+   - **git stash for isolated verification** — used repeatedly to get "before" vs "after" comparisons (e.g., stashing `apps/validate/src/` changes to prove the low RDT-coverage number pre-existed; stashing `.moon/workspace.yml` changes to get uncontaminated `moon query --affected` test results, since `.moon/*.yml` is a global input for every task).
+   - **Explanatory output style** — active throughout; all responses should include the specified insight blocks and educational framing (though the more recent, execution-heavy turns have been more terse/action-focused per the ongoing task).
+
+3. Files and Code Sections:
+
+   **`.moon/workspace.yml`** (modified, staged not committed):
+   ```yaml
+   projects:
+     core: "crates/core"
+     cli: "crates/cli"
+     cli-npm: "packages/cli"          # NEW — packages/cli had zero moon registration before
+     crates-binding: "crates/binding"
+     napi: "packages/napi"
+     validate: "apps/validate"
+     vite-plugin: "packages/vite-plugin"
+
+   vcs:
+     client: git
+     defaultBranch: main               # FIXED from "master" (repo's real default branch)
+     sync: true
+     hooks:
+       pre-commit:
+         - '. "$HOME/.cargo/env"'
+         - "cargo fmt --check"
+         - "cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings"
+         - "typos"
+         - "cargo deny check"
+   telemetry: false
+   ```
+   Confirmed via `moon query projects` that `cli-npm` registers correctly with just the workspace.yml entry (no `moon.yml` file needed for basic registration).
+
+   **`.github/workflows/ci.yml`** (modified, staged not committed) — the `detect-changes` job's script, most recent fix:
+   ```yaml
+           # moon 2.3.3's `query projects` has no --base/--head flags (confirmed against
+           # `moon query projects --help` and the pinned version) — passing them failed
+           # the whole command, which used to silently land in the fail-open branch below
+           # every single run. It reads the base from MOON_BASE instead, and always diffs
+           # against whatever's actually checked out on disk (there's no MOON_HEAD — moon
+           # ignores it if set) — which is exactly github.sha here since actions/checkout
+           # already put us there, so this is the correct comparison without needing one.
+           AFFECTED=$(MOON_BASE="$BASE" moon query projects --affected --downstream deep)
+           if [ $? -ne 0 ] || [ -z "$AFFECTED" ]; then
+             echo "rust=true" >> "$GITHUB_OUTPUT"
+             echo "typescript=true" >> "$GITHUB_OUTPUT"
+             echo "moon query failed — running everything."
+             exit 0
+           fi
+
+           IDS=$(echo "$AFFECTED" | python3 -c "import json,sys; d=json.load(sys.stdin); print(' '.join(p['id'] for p in d['projects']))")
+           echo "Affected projects: ${IDS:-none}"
+
+           RUST=false
+           TS=false
+           for id in $IDS; do
+             case "$id" in
+               core|cli|crates-binding) RUST=true ;;
+               vite-plugin|napi|validate|cli-npm) TS=true ;;
+               # Unmapped project (new one added to .moon/workspace.yml and forgotten
+               # here) — fail open rather than silently leaving it with zero CI coverage.
+               *) RUST=true; TS=true ;;
+             esac
+           done
+
+           echo "rust=$RUST" >> "$GITHUB_OUTPUT"
+           echo "typescript=$TS" >> "$GITHUB_OUTPUT"
+   ```
+   This job also has: `outputs: rust/typescript`, `steps: actions/checkout@v4 with fetch-depth: 0`, `moonrepo/setup-toolchain@v0`. All 8 downstream jobs (`lint`, `test`, `coverage`, `bench` gated on `rust`; `format`, `typescript`, `install` gated on `typescript`; `deny` deliberately left ungated since it's a security/license check independent of code changes) reference `needs: detect-changes` and the appropriate `if:` condition — these gating lines were added in an earlier commit (b06e303) and are unchanged in this latest fix.
+
+   **`crates/core/src/resolver/import.rs`** — the P0 fix (committed as b5b519b):
+   ```rust
+   use camino::{Utf8Path, Utf8PathBuf};
+   use compact_str::CompactString;
+   use rustc_hash::FxHashSet;
+
+   use crate::import_map::ReExportStep;
+   use crate::types::*;
+
+   use super::ResolutionContext;
+
+   const MAX_REEXPORT_DEPTH: u8 = 8;
+
+   /// Counts real invocations of `follow_reexports`, so tests can assert the
+   /// visited-set is actually collapsing shared-descendant re-exploration
+   /// (linear in graph size) instead of just checking wall-clock time — the
+   /// per-call work here is cheap enough, and oxc_resolver's own path cache
+   /// absorbing enough of the redundant filesystem cost, that wall-clock alone
+   /// doesn't reliably distinguish "linear" from "branching_factor^depth".
+   #[cfg(test)]
+   static FOLLOW_REEXPORTS_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+   #[cfg(test)]
+   pub(crate) fn reset_follow_reexports_call_count() {
+       FOLLOW_REEXPORTS_CALLS.store(0, std::sync::atomic::Ordering::Relaxed);
+   }
+
+   #[cfg(test)]
+   pub(crate) fn follow_reexports_call_count() -> usize {
+       FOLLOW_REEXPORTS_CALLS.load(std::sync::atomic::Ordering::Relaxed)
+   }
+
+   pub(super) fn resolve_to_canonical(
+       name: &str,
+       consuming_file: &Utf8Path,
+       ctx: &ResolutionContext,
+       diagnostics: &mut Vec<Diagnostic>,
+   ) -> Option<(Utf8PathBuf, String)> {
+       if let Some(import_ref) = ctx.import_map.find_import(consuming_file, name) {
+           let resolved_file = resolve_import_specifier(&import_ref.specifier, consuming_file, ctx, diagnostics)?;
+           let canonical_name = import_ref.exported_name.to_string();
+           let mut visited = FxHashSet::default();
+           return Some(follow_reexports(resolved_file, canonical_name, ctx, diagnostics, &mut visited, 0));
+       }
+       // ... namespace-import branch also creates its own `let mut visited = FxHashSet::default();`
+       let resolved_file = resolve_import_specifier(&namespace_ref.specifier, consuming_file, ctx, diagnostics)?;
+       let mut visited = FxHashSet::default();
+       Some(follow_reexports(resolved_file, member.to_string(), ctx, diagnostics, &mut visited, 0))
+   }
+
+   fn follow_reexports(
+       file: Utf8PathBuf,
+       name: String,
+       ctx: &ResolutionContext,
+       diagnostics: &mut Vec<Diagnostic>,
+       visited: &mut FxHashSet<(Utf8PathBuf, CompactString)>,
+       depth: u8,
+   ) -> (Utf8PathBuf, String) {
+       #[cfg(test)]
+       FOLLOW_REEXPORTS_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+       if depth >= MAX_REEXPORT_DEPTH || is_declared_at(&ctx.global, &file, &name) {
+           return (file, name);
+       }
+       // Real barrels commonly share descendants (several sub-barrels wildcarding
+       // the same underlying `types.ts`, say) — without this, re-exploring an
+       // already-visited (file, name) pair from a different parent multiplies out
+       // to branching_factor^depth calls instead of one call per graph node. This
+       // also subsumes cycle detection: a cycle revisits a pair by definition.
+       if !visited.insert((file.clone(), CompactString::from(name.as_str()))) {
+           return (file, name);
+       }
+       match ctx.import_map.resolve_reexport_chain(&file, &name, &ctx.global) {
+           Some(ReExportStep::Named { source_specifier, source_name }) => {
+               let Some(next_file) = resolve_import_specifier(&source_specifier, &file, ctx, diagnostics) else {
+                   return (file, name);
+               };
+               follow_reexports(next_file, source_name, ctx, diagnostics, visited, depth + 1)
+           }
+           Some(ReExportStep::Wildcards(specifiers)) => {
+               for specifier in &specifiers {
+                   let Some(candidate_file) = resolve_import_specifier(specifier, &file, ctx, diagnostics) else {
+                       continue;
+                   };
+                   let resolved = follow_reexports(candidate_file, name.clone(), ctx, diagnostics, visited, depth + 1);
+                   if is_declared_at(&ctx.global, &resolved.0, &resolved.1) {
+                       return resolved;
+                   }
+               }
+               (file, name)
+           }
+           None => (file, name),
+       }
+   }
+   ```
+
+   **`crates/core/src/resolver/mod.rs`** — added re-export (committed as b5b519b):
+   ```rust
+   #[cfg(test)]
+   pub(crate) use import::{follow_reexports_call_count, reset_follow_reexports_call_count};
+   ```
+   (Placed right after the existing `mod substitute; mod template;` lines.)
+
+   **`crates/core/src/pipeline/mod.rs`** — added regression test (committed as b5b519b):
+   ```rust
+   #[test]
+   fn test_barrel_resolution_does_not_exponentially_blow_up_on_shared_descendants() {
+       let manifest_dir = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"));
+       let tmp = TempDir::new_in(manifest_dir).unwrap();
+
+       const DEPTH: usize = 8;
+       for level in 0..DEPTH {
+           write_file(
+               &tmp,
+               &format!("barrel_{level}.ts"),
+               &format!("export * from './barrel_{}';\nexport * from './barrel_{}';\n", level + 1, level + 1),
+           );
+       }
+       write_file(&tmp, &format!("barrel_{DEPTH}.ts"), "export const unrelated = 1;\n");
+       write_file(
+           &tmp,
+           "Component.tsx",
+           r#"
+   import type { NeverDeclared } from './barrel_0';
+   export function Component(props: { value: NeverDeclared }) { return null; }
+   "#,
+       );
+
+       let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+       let options = PipelineOptions {
+           src_dirs: vec![dir],
+           cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+           ..Default::default()
+       };
+
+       crate::resolver::reset_follow_reexports_call_count();
+       let output = extract(&options);
+       let calls = crate::resolver::follow_reexports_call_count();
+
+       assert!(
+           calls < 50,
+           "follow_reexports was called {calls} times on a depth-{DEPTH} shared-descendant \
+            barrel graph (expected ~9, linear in graph size) — looks like the visited-set \
+            regressed back to exploring branching_factor^depth calls"
+       );
+       assert!(output.components.contains_key("Component"), "expected Component to still be extracted");
+   }
+   ```
+   Confirmed RED (511 calls) by temporarily changing the visited-set check to `if false && !visited.insert(...)`, then restored to GREEN (test passes, ~9 calls expected/well under 50). Full file now has 159 tests (was 158).
+
+   **`docs/adr/*.md`, `docs/STATUS.md`, `.oxfmtrc.json`, `.oxlintrc.json`, `justfile`, `LICENSE`, `deny.toml`, package.json files across 13 npm packages, `crates/*/moon.yml`, `packages/napi/moon.yml`, `crates/binding/moon.yml`, `crates/core/moon.yml`** — all modified/created in earlier phases of this session (before the adversarial review), already committed across many commits (611d215, b06e303, 4c79e73, 31fd9f5, 14b06e8, fc46e80, 6c411b9, 3916b5e). These are stable/complete and not currently being touched.
+
+4. Errors and fixes:
+
+   - **Factual error: "no Opus 5 exists yet"** — I incorrectly told the user this when asked about using "fable 5 and opus 5" for the adversarial review. The user corrected me plainly: "You should have access to opus 5 too." I acknowledged the mistake directly ("You're right, I made an error — Opus 5 (`claude-opus-5`) is listed right in my own model info") and corrected the model allocation.
+
+   - **"Not a monorepo" / "we haven't setup CI" factual pushback from user** — I initially made claims that didn't hold up (the repo IS a monorepo; CI DOES already exist — I'd shown the user its full contents earlier in the conversation). The user caught both errors directly ("Wouldn't moon be perfect for this?" after I'd said CI didn't need moon). I explicitly owned the reasoning error: "I was wrong to point at 'CI doesn't call moon today' as an argument against moon... That's a fact about the current file, not a verdict on whether moon would help. Those are different claims and I conflated them." This led to reversing the recommendation to keep moon.
+
+   - **oxfmt formatting far more than intended** — running `oxfmt --check .` tried to reformat `Cargo.toml`, `deny.toml`, `package.json`, `moon.yml`, markdown docs (including undoing the earlier hard-wrap fix work), and test fixtures under `fixtures/**` (deliberately-crafted extraction-test files). Fixed by switching from a broad `ignorePatterns`-based exclude approach to an explicit allowlist of real hand-written source globs passed directly on the CLI (`packages/vite-plugin/src/**/*.ts`, etc.), rather than trying to blocklist every unwanted format.
+
+   - **oxlint config `overrides` doesn't support `categories`** — attempting `"categories": {...}` inside an `overrides` entry produced: `error: unknown field 'categories', expected one of 'files', 'excludeFiles', 'env', 'globals', 'plugins', 'jsPlugins', 'rules'`. Fixed by dropping category-level overrides from the config entirely and instead running oxlint twice via CLI with `-A pedantic -A perf -A style -A unicorn/consistent-function-scoping -A vitest/require-mock-type-parameters --vitest-plugin` for the relaxed/tests invocation.
+
+   - **oxlint findings overly noisy at first** (`no-magic-numbers`, `id-length`, `sort-keys`, `sort-imports`, `sort-vars`, `func-style`, `capitalized-comments`, `no-inline-comments`, `init-declarations`, `no-continue`, `no-underscore-dangle`, `require-unicode-regexp`, `prefer-named-capture-group`, `curly`, `no-ternary`, `max-statements`, `max-lines-per-function`, `typescript/method-signature-style`, `typescript/array-type`, `unicorn/no-null`) — all deliberately disabled via `rules: {...: "off"}` after judging them as noise against this codebase's actual conventions, not real quality signal.
+
+   - **`node/no-sync` firing on one-shot CLI scripts** (`apps/validate/src/*.ts`, `packages/cli/bin/cli.js`) — these are legitimately one-shot process scripts where sync I/O is correct, not a mistake. Fixed via an `overrides` block disabling `node/no-sync` for those specific paths.
+
+   - **Two promise/.then() findings in `packages/vite-plugin/src/index.ts`'s `configureServer` were false positives** — the hook must return its teardown function synchronously and can't `await`, so the fire-and-forget `.then()/.catch()` chain is intentional. Fixed via a block-scoped `/* oxlint-disable promise/prefer-await-to-then, promise/always-return, promise/prefer-await-to-callbacks */` ... `/* oxlint-enable ... */` pair with an explanatory comment, rather than disabling the rules globally. Note: initially tried `oxlint-disable-next-line` which only suppresses violations on the immediately following line, but the violation was actually on the `.then(` line one line further down — had to switch to the block-disable form.
+
+   - **Low coverage number in `apps/validate`'s `compare:all` output (9%, 551/5840 props) appeared alarming after editing `apps/validate/src/*.ts` files for oxlint fixes** — verified via `git stash push -- apps/validate/src/` then re-running `compare:all`, confirming byte-identical output before and after my edits, proving this number is pre-existing (RDT counts non-component exports like hooks/helper functions as "components" that this tool correctly skips) and NOT a regression from my changes.
+
+   - **Wall-clock timing assertion unreliable for the P0 regression test** — my first attempt (assert `elapsed.as_secs() < 5`) passed even WITHOUT the fix (203ms, then 342ms with a more elaborate 10-way-branching/4-level construction), because oxc_resolver's own path-resolution cache absorbed the redundant filesystem work regardless of the logical call-graph shape, and per-call logic (hashmap probes) was cheap enough that even ~10,000 calls stayed under a second. Fixed by abandoning wall-clock and adding a deterministic `#[cfg(test)]` atomic call counter instead, asserting directly on call count (511 without fix, ~9 with fix — a huge, unambiguous, non-flaky signal).
+
+   - **`pub(super)` visibility insufficient for cross-module test helper access** — `crates/core/src/resolver/import.rs`'s counter helper functions were initially `pub(super)` (visible only within `resolver`), but needed to be called from `pipeline::tests` (a different module). Attempting `pub(crate) use import::{...}` in `resolver/mod.rs` to re-export failed with E0603 "function import is private" / E0364, because a `pub(crate) use` re-export cannot widen a `pub(super)` item's visibility. Fixed by changing the underlying functions in `import.rs` from `pub(super)` to `pub(crate)` directly.
+
+   - **`MOON_HEAD` env var contamination in local verification testing** — repeated tests of `moon query projects --affected --base X --head Y` gave confusing, seemingly-contradictory results (e.g., `MOON_BASE=31fd9f5 MOON_HEAD=31fd9f5` — same commit both ends — showed non-empty affected projects) because uncommitted changes to `.moon/workspace.yml` (a global input for every task) were contaminating results, and separately because MOON_HEAD turned out to be completely ignored by moon (it always diffs MOON_BASE against the actual current working-tree/disk state). Resolved through careful, repeated `git stash push -u` / `git stash pop` cycles to get clean-tree test results, ultimately reaching the conclusive finding that MOON_HEAD is a no-op — harmless for real CI (since checkout always matches github.sha) but the code/comments should not claim it does anything. Updated the ci.yml comment accordingly and dropped the `MOON_HEAD=` assignment from the actual command.
+
+5. Problem Solving:
+
+   Executed a large, multi-phase session: (1) tooling audit and remediation (oxfmt/oxlint/moon/CI), (2) GitHub repo migration with license reconciliation (discovered and resolved a real MIT-vs-AGPL conflict), (3) a comprehensive multi-model adversarial code review (Sonnet 5 finding, Opus 5 + Fable 5 verifying, Opus 5 synthesizing) covering everything since commit cc2ff97, and (4) systematic remediation of the review's confirmed findings, prioritized by severity. The P0 finding (exponential blowup in barrel/re-export resolution, a real performance regression I had introduced earlier this session) has been fixed, tested (with a genuinely novel testing approach — a `#[cfg(test)]` atomic call counter — after wall-clock timing proved unreliable), and committed. The P1 (moon affected-detection completely non-functional due to unsupported CLI flags) and P1b (a related gating-hole risk once fail-open masking is removed) and P2 (`.moon/workspace.yml`'s wrong `defaultBranch`) findings have all been fixed and verified through extensive empirical local testing (using `git stash` to isolate clean-tree comparisons), and the fix is currently staged (`git add .github/workflows/ci.yml .moon/workspace.yml` completed) but NOT yet committed.
+
+6. All user messages (verbatim, excluding tool results and the mid-turn system-injected messages which I've included since they were genuine user content delivered mid-turn):
+   - "Should we setup a GH project in the repo and milestones?"
+   - "Are we appropriately setup with mise, pnpm, just, oxcfmt, oxlint, clippy, etc?"
+   - "Also tsdown and vitest? publishing coverage and test results, CI workflows, etc?"
+   - "Let's move from proto to mise and avoid moon since it's not a monorepo right?"
+   - "wrap at 120 char and adopt the absolute best practices. For oxlint we should be pretty pedantic right? more flexible for the tests than the code though"
+   - "If this is a monorepo should we use moon and proto?"
+   - "We haven't setup the CI though so you're just assuming. Wouldn't moon be perfect for this?"
+   - "Would this be simplified with just and moon?"
+   - "How do we propose doing versioning with changesets?"
+   - "We'll be building a tool to manage the changesets (callisto in ~/Projects), let's tackle the rest"
+   - "What's next?" (appears twice at different points in the session — once mid-tooling-work, once again later)
+   - "moved repo to https://github.com/orin-dx/oxc-react-docgen"
+   - "Make sure we do['n]t have codegen anywhere in the code or docs. It was a typo somewhere"
+   - "Any cleanup we should do in git history before pushing to main?"
+   - "AGPL3 is the intended license"
+   - "Do we need to set license in the NPM packages and crates?"
+   - "Shall we use fable 5 and opus 5 in agent teams to analyze the work we've done and look for bugs, performance issues, improvements, etc? Consider the end-goal and what we're competing with."
+   - "/model" (local slash command; produced informational stdout "Kept model as Sonnet 5" and "Restarted so you can see it" — not a conversational request)
+   - "You should have access to opus 5 too"
+   - "Let's do it"
+
+7. Pending Tasks:
+   - **Commit the currently-staged P1/P1b/P2 fix** (`.github/workflows/ci.yml` + `.moon/workspace.yml` changes) — staged via `git add` but commit message not yet written and `git commit` not yet run.
+   - **P2b**: format/lint glob drift risk — `justfile`'s `ts_src`/`ts_src_only` and `ci.yml`'s `format` job duplicate hardcoded file lists (e.g. `packages/napi/index.d.ts`, `packages/cli/bin/cli.js` as exact filenames rather than globs); `packages/vite-plugin/vitest.config.ts` is currently uncovered by any oxfmt/oxlint glob (currently harmless — passes both tools — but is real drift exposure). Report's suggested fix: widen to `packages/napi/*.d.ts`, `packages/cli/**/*.js`, add `packages/vite-plugin/vitest.config.ts` (or `*.ts`), and have `ci.yml`'s format job call `just lint`/`just fmt-check` instead of duplicating the path lists.
+   - **P3 items** (low severity, no runtime impact):
+     - `named.rs`'s unresolvable-type diagnostic (step 7, around line 149-160) never got the "(resolved to 'N' in 'F')" location note that `chain.rs`'s equivalent diagnostic (step 6) gained in this session's earlier work — report suggests factoring the `resolved_elsewhere`/`location_note` logic into a shared helper (similar to `max_depth_diagnostic`) used by both chain.rs and named.rs.
+     - Stale comment in `crates/core/src/pipeline/mod.rs` (around line 174-178) claiming `#![recursion_limit = "2048"]` "requires... for serde monomorphization for PropType" — this contradicts the project's own ADR 0002 (`docs/adr/0002-manual-serialize-for-prop-type.md`), which already documented that `PropType` uses a hand-written `Serialize`/`Deserialize` (no derive, no recursive expansion) and that the recursion_limit attribute was verified as no-longer-load-bearing. `ARCHITECTURE.md:160` also already says this. The stale comment should be corrected/removed since it deters the ADR's own recommended cleanup.
+     - `deny.toml`'s AGPL allow-list entry (`"AGPL-3.0-or-later", # this workspace's own crates`) is graph-wide (permits AGPL from any transitive dependency, not just this workspace's own 3 publishable crates) — report's suggested fix is `[[licenses.exceptions]]` blocks scoping the allowance to `oxc-react-docgen-core`/`-cli`/`-binding` specifically, though the report itself downgraded this from "high" to genuinely low priority in its "What's NOT a real problem" section (the workspace already carries AGPL obligations itself, so an inbound AGPL dep creates no new incompatibility).
+   - Two GitHub issues (`orin-dx/oxc-react-docgen#1` and `#2`) and the ADR/STATUS.md docs system remain complete and correct from earlier work — no further action needed there unless new findings surface.
+   - After all adversarial-review findings are addressed, a wrap-up summary to the user covering what was fixed vs. what (if anything) was deliberately left as a follow-up, and a reminder that pushing to the new remote (`orin-dx/oxc-react-docgen`) still requires an explicit force-push authorization (unrelated histories) that has not yet been given, and the still-open question of whether to normalize the three different git-history author emails before that push.
+
+8. Current Work:
+   Immediately before this summary was requested, I had just finished fixing and empirically verifying the P1 (moon `--base`/`--head` flags don't exist; `MOON_HEAD` is a no-op), P1b (missing category-mapping default arm + `packages/cli` never registered as a moon project), and P2 (`defaultBranch: master` should be `main`) findings from the adversarial review report, all bundled into the same fix per the report's own recommendation ("Same PR as #2"). The specific sequence of final verification steps just completed:
+   1. Fixed `.moon/workspace.yml`: added `cli-npm: "packages/cli"` to the `projects:` map, changed `vcs.defaultBranch` from `master` to `main`.
+   2. Fixed `.github/workflows/ci.yml`'s `detect-changes` job: replaced the broken `moon query projects --affected --downstream deep --base "$BASE" --head "${{ github.sha }}"` (which always failed with `error: unexpected argument '--base' found`, silently landing in the fail-open branch every single run) with `MOON_BASE="$BASE" moon query projects --affected --downstream deep` (dropping the ineffective `MOON_HEAD` assignment after conclusively proving via repeated clean-tree tests that moon ignores it entirely). Updated the case-statement to add `validate|cli-npm` to the typescript arm, and added a `*) RUST=true; TS=true ;;` default/catch-all arm for any future unmapped project.
+   3. Ran three decisive, clean-tree validation scenarios using a locally-extracted copy of the exact bash logic:
+      - Only `packages/vite-plugin/src/index.ts` dirty → `rust=false typescript=true` ✓
+      - Only `crates/core/src/lib.rs` dirty → `rust=true typescript=true` (via `--downstream deep` correctly marking `cli`, `core`, `crates-binding`, `napi`, `validate` as affected) ✓
+      - Nothing dirty → `rust=false typescript=false` ✓
+   4. Ran `python3 -c "import yaml; ..."` to confirm the modified `ci.yml` is still valid YAML with all 9 expected job keys present.
+   5. Ran `cargo build --workspace` (clean) and `cargo test --workspace` (all green: 21 CLI + 159 core + 8 snapshot + 4 binding tests).
+   6. Ran `git status --short` (confirmed only `.github/workflows/ci.yml` and `.moon/workspace.yml` modified, nothing else dirty).
+   7. Ran `git add .github/workflows/ci.yml .moon/workspace.yml` — **this was the very last tool call whose result was shown** (completed with no output/error) before the summary was requested.
+
+   No commit has been made yet for this P1/P1b/P2 batch. The fix is fully verified (build, tests, YAML validity, and extensive manual simulation of the actual affected-detection logic against real git history) but sits staged, uncommitted.
+
+9. Optional Next Step:
+   Write the commit message and execute `git commit` for the currently-staged P1/P1b/P2 fix (`.github/workflows/ci.yml` + `.moon/workspace.yml`), following the same detailed, root-cause-explaining commit message style used for the P0 fix (`b5b519b`) and every other commit this session — citing the adversarial review as the source, explaining that `moon query projects` doesn't support `--base`/`--head` in the pinned 2.3.3 version (confirmed via `--help`), that this caused the affected-detection job to silently no-op via its fail-open branch on every single CI run since it was introduced (commit b06e303), that `MOON_HEAD` was empirically proven to be ignored by moon (harmless in real CI since checkout already matches `github.sha`), and that the category-mapping gap (`validate`/`packages/cli` previously falling through with zero coverage) was fixed alongside since the report explicitly flagged it as needing to land in the same PR as the `--base`/`--head` fix (fixing one without the other would have gone from "everything runs, wastefully" to "some real changes get silently zero CI coverage" — a strictly worse failure mode). This directly continues from where the "Let's do it" adversarial-review request left off: I am mid-way through fixing the report's prioritized findings (P0 done and committed; P1/P1b/P2 fixed, verified, and staged but not yet committed; P2b and P3 items still pending). After committing, the natural next step (not yet confirmed with the user) would be to address P2b (glob drift) and the three P3 items, then give the user a final wrap-up summary of the whole adversarial-review remediation — but I should confirm with the user whether they want me to continue through all remaining findings or pause here, since my last several actions have been autonomous continuation of "Let's do it" without an intervening check-in.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

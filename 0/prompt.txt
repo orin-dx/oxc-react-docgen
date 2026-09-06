@@ -1,0 +1,1 @@
+Can we take a stab at another round of evaluation of the architecture and our rust best practices? Where else can we improve our codebase to something that exceeds the standards for the industry? How do we compare to the codebases for the likes of RTK, oxc, oxlint, rolldown?

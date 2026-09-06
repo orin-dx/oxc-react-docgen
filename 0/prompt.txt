@@ -1,0 +1,1 @@
+We haven't setup the CI though so you're just assuming. Wouldn't moon be perfect for this?

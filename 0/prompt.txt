@@ -1,0 +1,546 @@
+<task-notification>
+<task-id>ab98a773afba74ad3</task-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/0602cae8-9776-4cab-baaa-67ad00aaf7d1/tasks/ab98a773afba74ad3.output</output-file>
+<status>completed</status>
+<summary>Agent "Research NAPI-RS v3 testing and Vite plugin testing best practices" came to rest</summary>
+<note>A task-notification fires each time this agent comes to rest with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The final agent completed with critical findings that substantially upgrade the NAPI-RS section. Here is the complete, consolidated report.
+
+---
+
+# Testing Best Practices: NAPI-RS v3 + Vite Plugin (Vitest)
+
+## PART 1: NAPI-RS v3 Testing
+
+### 1. Can you call `#[napi]` functions in Rust `#[test]` without Node.js?
+
+**No — not without the `noop` feature flag.** This is structural to how napi-rs works and affects v2 and v3 equally.
+
+When `cargo test` runs, Rust builds a native test executable (not a `cdylib`). NAPI C symbols (`napi_create_object`, `napi_create_function`, `napi_delete_reference`, etc.) are only available from the Node.js runtime when it `dlopen`s the `.node` shared library. Node.js does not ship a linkable `libnode.so`/`libnode.dylib`. The test executable fails at link time:
+
+- Linux: `mold: error: undefined symbol: napi_create_object`
+- macOS: `dyld: symbol not found in flat namespace (_napi_create_object)`
+
+The `#[napi]` macro does gate the module-registration `ctor!` block behind `#[cfg(all(not(test), ...))]` — so the registration is stripped in test builds. But the `unsafe fn __cb__` callback bodies (which reference `napi_create_function`, `napi_create_object`, etc.) are emitted **unconditionally**, and those are what fail at link time. The `napi::Error` Drop impl's `napi_delete_reference` call is also a problem.
+
+The official napi-rs README states explicitly:
+
+&gt; "Because libraries that depend on this crate must be loaded into a Node executable in order to resolve symbols, all tests are written in JavaScript in the `test_module` subdirectory."
+
+**Three patterns exist, in priority order:**
+
+#### Pattern A — Two-crate split (architectural best practice, already what this project does)
+
+Pure logic in `crates/core` (no `napi` dependency) — `cargo test -p oxc-react-docgen-core` works with zero flags. Thin `#[napi]` shims in `crates/napi` — tested only via Node.js (Ava). Explicitly recommended by napi-rs contributor `@messense` in issue #1099. **This is the right approach for this project.**
+
+#### Pattern B — `noop` feature (for testing within the napi crate itself)
+
+Requires **`napi &gt;= 3.2.3`** and **`napi-derive &gt;= 3.2.3`** (v3.0-v3.2.2 had a regression fixed in PR #2872). With `noop` enabled, `#[napi]` becomes a true pass-through proc macro — no bridge functions, no registration, no NAPI symbol references:
+
+```toml
+# Cargo.toml
+[features]
+noop = ["napi/noop", "napi-derive/noop"]
+
+[dependencies]
+napi = { version = "3", features = ["napi4", "tokio_rt"] }
+napi-derive = "3"
+```
+
+```rust
+// src/lib.rs — #[napi] functions become plain Rust under noop
+#[napi]
+pub fn extract_props(source: String) -&gt; napi::Result&lt;Vec&lt;PropInfo&gt;&gt; {
+    inner::extract_props_inner(&amp;source)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract() {
+        // Works! Under --features noop, napi::Result&lt;T&gt; is just Result&lt;T, napi::Error&gt;
+        // and napi::Error has no NAPI symbol references
+        let result = extract_props("export const Foo = (p: {x: number}) =&gt; null".into());
+        assert!(result.is_ok());
+    }
+}
+```
+
+Run with: `cargo test --features noop`
+
+Official example at: `https://github.com/napi-rs/napi-rs/tree/main/examples/napi-cargo-test`
+
+**Caveat:** `cfg_attr` (conditionally applying `#[napi]`) is broken for methods with `self` + sub-attributes like `#[napi(getter)]` — see issue #1120.
+
+#### Pattern C — macOS linker flag (not recommended)
+
+`.cargo/config.toml` with `-Wl,-undefined,dynamic_lookup`. Broken on aarch64 macOS (confirmed in issue #1356). Does not work on Linux. Tests that actually invoke NAPI functions at runtime abort. Don't use this.
+
+---
+
+### 2. `napi-rs/package-template` test setup
+
+The official template uses **Ava v8** — not Jest, Vitest, or Node.js built-in `node:test`. (PR #436 proposes switching to `node:test` + Node.js v22 native TypeScript stripping, but it is not merged as of mid-2026.)
+
+```json
+// package.json
+{
+  "scripts": { "test": "ava" },
+  "ava": {
+    "extensions": ["ts"],
+    "timeout": "2m",
+    "workerThreads": false,
+    "environmentVariables": {
+      "OXC_TSCONFIG_PATH": "./__test__/tsconfig.json"
+    },
+    "nodeArguments": ["--import", "@oxc-node/core/register"]
+  }
+}
+```
+
+Key points:
+- `workerThreads: false` — **required**. Native `.node` addons cannot be safely loaded in V8 worker threads.
+- `@oxc-node/core/register` — OXC's own Node.js module hook for TypeScript stripping (replaces `ts-node`, `tsx`, `ts-jest`).
+- Test directory is `__test__/` (single underscore each side), with a single `index.spec.ts`.
+
+```typescript
+// __test__/index.spec.ts
+import test from 'ava'
+import { plus100 } from '../index'
+
+test('sync function from native code', (t) =&gt; {
+  t.is(plus100(42), 142)
+})
+```
+
+The test imports from `../index` (the generated JS entry point). No manual binary path handling — the generated `index.js` handles platform detection automatically.
+
+---
+
+### 3. Testing async `#[napi]` functions
+
+**From Node.js:** Just `await` the returned `Promise&lt;T&gt;`. Tokio integration is fully transparent.
+
+```typescript
+test('async extraction', async (t) =&gt; {
+  const result = await extractPropsAsync('./fixtures/Button.tsx')
+  t.is(result.components[0].name, 'Button')
+})
+
+// AbortSignal support (napi v3)
+test('abortable', async (t) =&gt; {
+  const ctrl = new AbortController()
+  const p = extractPropsAsync('./fixtures/Slow.tsx', ctrl.signal)
+  ctrl.abort()
+  await t.throwsAsync(p)
+})
+```
+
+**From Rust:** Separate the async logic into a plain `async fn`, test with `#[tokio::test]`:
+
+```rust
+pub async fn extract_async_inner(path: &amp;str) -&gt; Result&lt;Vec&lt;PropInfo&gt;, Error&gt; {
+    let source = tokio::fs::read_to_string(path).await?;
+    extract_inner(&amp;source)
+}
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn test_async() {
+        let r = extract_async_inner("fixtures/Button.tsx").await;
+        assert!(r.is_ok());
+    }
+}
+
+// napi wrapper — thin shim only
+#[napi]
+pub async fn extract_props_async(path: String) -&gt; napi::Result&lt;Vec&lt;PropInfo&gt;&gt; {
+    extract_async_inner(&amp;path).await
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+```
+
+---
+
+### 4. `NAPI_RS_NATIVE_LIBRARY_PATH`
+
+Added in `@napi-rs/cli@3.0.0-alpha.71`, merged **February 20, 2025** (PR #2471). **CLI v3 only** — does not exist in CLI v2.
+
+When set, the generated `index.js` attempts `require(process.env.NAPI_RS_NATIVE_LIBRARY_PATH)` as the very first step, before any platform detection.
+
+**Full fallback chain in generated `index.js`:**
+```
+1. NAPI_RS_NATIVE_LIBRARY_PATH (if set)
+2. Local co-located .node file  →  require('./pkg.darwin-arm64.node')
+3. Platform npm package          →  require('@scope/pkg-darwin-arm64')
+4. WASI/WASM fallback (if NAPI_RS_FORCE_WASI set)
+5. Throw with accumulated loadErrors[]
+```
+
+For typical monorepo use: `napi build --platform` places the `.node` adjacent to `index.js`, so step 2 finds it automatically and you don't need this env var. Use it when the artifact is in a non-standard path:
+
+```bash
+NAPI_RS_NATIVE_LIBRARY_PATH=../../target/release/libmy_pkg.dylib npm test
+```
+
+Two related env vars also exist: `NAPI_RS_ENFORCE_VERSION_CHECK` and `NAPI_RS_FORCE_WASI`.
+
+---
+
+### 5. Complete integration test pattern for this monorepo
+
+```
+packages/napi/
+  src/            ← generated by napi build
+    index.js
+    index.d.ts
+  __test__/
+    index.spec.ts
+    tsconfig.json   ← {"extends": "../tsconfig.json", "compilerOptions": {"module": "ESNext"}}
+    package.json    ← {"type": "module"}
+  package.json
+```
+
+```typescript
+// __test__/index.spec.ts
+import test from 'ava'
+import { extractProps, extractPropsAsync } from '../index.js'
+
+test('sync extraction', (t) =&gt; {
+  const r = extractProps('export const Foo = (p: {x: number}) =&gt; null')
+  t.is(r.components.length, 1)
+  t.is(r.components[0].props[0].name, 'x')
+})
+
+test('async extraction', async (t) =&gt; {
+  const r = await extractPropsAsync('./fixtures/Button.tsx')
+  t.truthy(r.components[0])
+})
+
+test('diagnostics on parse error', (t) =&gt; {
+  const r = extractProps('not valid ts {{{')
+  t.true(r.diagnostics.length &gt; 0)
+})
+```
+
+---
+
+## PART 2: Vite Plugin Testing with Vitest
+
+### 1. No standard `vite-plugin-test-utils` package exists
+
+The packages `vite-plugin-test-utils`, `@vitejs/test-utils`, and `vitest-vite-plugin` **do not exist on npm**. The ecosystem pattern is inline helpers. Two genuinely useful packages:
+
+| Package | Use |
+|---|---|
+| `vitest-mock-extended` | Typed partial mocks via `mock&lt;T&gt;()` — ideal for `HotUpdateOptions` and `ViteDevServer` |
+| `vitest-mock-commonjs` | Mocking `require()`-loaded modules (only if NAPI is `require()`d, not `import`ed) |
+
+---
+
+### 2. Testing `hotUpdate` without a dev server
+
+**Vite 6 `hotUpdate`** uses `this.environment.hot.send()` supplied via `.call()`. This is the current API (replacing `handleHotUpdate` which used `ctx.server.ws.send()`).
+
+```typescript
+import { describe, it, expect, vi } from 'vitest'
+import { myPlugin } from '../src/plugin'
+
+describe('hotUpdate', () =&gt; {
+  it('sends props-updated event on component change', async () =&gt; {
+    const plugin = myPlugin({ root: '/project' })
+
+    // Normalize ObjectHook — Vite hooks can be {handler, order, enforce} shape
+    const hookFn = typeof plugin.hotUpdate === 'function'
+      ? plugin.hotUpdate
+      : (plugin.hotUpdate as any).handler
+
+    const hotSend = vi.fn()
+    const thisCtx = {
+      environment: {
+        name: 'client',
+        hot: { send: hotSend },
+        moduleGraph: { invalidateModule: vi.fn() },
+        config: { root: '/project' },
+      },
+    }
+
+    await hookFn.call(thisCtx, {
+      type: 'update',
+      file: '/project/src/Button.tsx',
+      timestamp: Date.now(),
+      modules: [],
+      read: vi.fn().mockResolvedValue('export const Button = () =&gt; null'),
+      server: {} as any,  // only populate fields your plugin uses
+    })
+
+    expect(hotSend).toHaveBeenCalledWith('oxc-react-docgen:update', {
+      file: '/project/src/Button.tsx',
+      components: expect.any(Array),
+    })
+  })
+})
+```
+
+**Older `handleHotUpdate` (Vite 5, no `.call()` needed):**
+```typescript
+await (plugin.handleHotUpdate as Function)({
+  file: '/project/src/Button.tsx',
+  timestamp: Date.now(),
+  modules: [],
+  read: vi.fn(),
+  server: {
+    ws: { send: vi.fn() },
+    moduleGraph: { invalidateModule: vi.fn() },
+  } as any,
+})
+```
+
+With `vitest-mock-extended` for type-safety:
+```typescript
+import { mock } from 'vitest-mock-extended'
+import type { HotUpdateOptions } from 'vite'
+
+const options = mock&lt;HotUpdateOptions&gt;({
+  type: 'update',
+  file: '/project/src/Button.tsx',
+  timestamp: Date.now(),
+  modules: [],
+  read: vi.fn().mockResolvedValue(''),
+  // server and all other fields auto-mocked as vi.fn()
+})
+```
+
+For `resolveId` and `load`, the same pattern applies — access `.handler` if needed, call with `{} as any` for `this`, provide only the arguments your hook uses:
+
+```typescript
+// From Vite's own define.spec.ts:
+const result = await plugin.transform.handler.call(
+  { environment },  // only fields the hook actually touches
+  code,
+  'foo.ts',
+)
+```
+
+---
+
+### 3. `createServer()` for integration tests
+
+```typescript
+import { createServer, type ViteDevServer } from 'vite'
+import { afterEach, beforeEach, it, expect } from 'vitest'
+
+let server: ViteDevServer | undefined
+
+beforeEach(async () =&gt; {
+  server = await createServer({
+    configFile: false,                    // isolate from project vite.config.ts
+    root: new URL('./fixtures', import.meta.url).pathname,
+    logLevel: 'silent',
+    plugins: [myPlugin()],
+    server: {
+      middlewareMode: true,               // no HTTP, no port binding
+      watch: { usePolling: true, interval: 100 },  // CI-safe
+    },
+    appType: 'custom',
+  })
+})
+
+afterEach(async () =&gt; {
+  await server?.close()                   // always close — prevents port leaks
+})
+
+it('resolves virtual module', async () =&gt; {
+  const result = await server!.transformRequest('/virtual:oxc-react-docgen')
+  expect(result?.code).toContain('export const components =')
+})
+
+it('loads SSR module', async () =&gt; {
+  const mod = await server!.ssrLoadModule('/virtual:my-module')
+  expect(mod.default).toBeDefined()
+})
+```
+
+**Gotchas:**
+- Always `await server.close()` in `afterEach` — dangling watchers are a real problem
+- `middlewareMode: true` + no `.listen()` = no port binding, faster startup
+- `configFile: false` prevents inheriting project's `vite.config.ts`
+- `usePolling: true` is required in CI (inotify unreliable in containers)
+- Use `pool: 'forks'` in `vitest.config.ts` whenever `createServer()` is used with a plugin that calls into a native binary (see below)
+
+---
+
+### 4. Mocking `@oxc-react-docgen/napi`
+
+**Strategy 1 — `vi.mock()` with factory (primary choice for ESM imports):**
+
+```typescript
+// Hoisted automatically — must be at top level, not inside describe/it
+vi.mock('@oxc-react-docgen/napi', () =&gt; ({
+  extractProps: vi.fn().mockReturnValue({
+    components: [{ name: 'Button', props: [{ name: 'onClick', type: 'function' }] }],
+    diagnostics: [],
+  }),
+  extractPropsAsync: vi.fn().mockResolvedValue({ components: [], diagnostics: [] }),
+}))
+
+// NEVER use importOriginal for a .node binary — it attempts to load the real binary and crashes
+```
+
+**Strategy 2 — `__mocks__` directory (reusable across test files):**
+
+```
+packages/vite-plugin/
+  __mocks__/
+    @oxc-react-docgen/
+      napi.ts
+```
+
+```typescript
+// __mocks__/@oxc-react-docgen/napi.ts
+import { vi } from 'vitest'
+export const extractProps = vi.fn()
+export const extractPropsAsync = vi.fn()
+
+// In test file — no factory needed:
+vi.mock('@oxc-react-docgen/napi')
+```
+
+**Strategy 3 — `test.alias` in `vitest.config.ts` (fallback when Vitest errors parsing the binary):**
+
+```typescript
+export default defineConfig({
+  test: {
+    alias: {
+      '@oxc-react-docgen/napi': new URL('./__mocks__/@oxc-react-docgen/napi.ts', import.meta.url).pathname,
+    },
+    pool: 'forks',
+  },
+})
+```
+
+**Critical config — `pool: 'forks'`:**
+
+Vitest's default pool is `'threads'` (worker threads). Native `.node` addons cannot be safely loaded in worker threads — you get segfaults or `dlopen` errors. Any test suite that loads the real binary (integration tests, or any test that doesn't mock the NAPI module) must use `pool: 'forks'`.
+
+```typescript
+// vitest.config.ts — split by test type
+export default defineConfig({
+  test: {
+    projects: [
+      {
+        test: {
+          include: ['tests/unit/**'],
+          pool: 'threads',   // safe — NAPI is mocked via vi.mock()
+        },
+      },
+      {
+        test: {
+          include: ['tests/integration/**'],
+          pool: 'forks',     // required — createServer() loads real .node binary
+        },
+      },
+    ],
+  },
+})
+```
+
+---
+
+### 5. Testing `server.hot.send()` custom events
+
+**No real-world plugin intercepts raw WebSocket frames in tests.** The two-level pattern used across the ecosystem:
+
+**Unit level — mock `hot.send` as `vi.fn()`** (from `yusukebe/vite-ssr-components`, `rari-build/rari`, `dot-do/shadmin`, and others):
+
+```typescript
+it('broadcasts update event on component change', async () =&gt; {
+  const hotSend = vi.fn()
+  const server = {
+    hot: { send: hotSend, on: vi.fn() },
+    ws: { send: vi.fn() },  // Vite 5 compat
+    moduleGraph: { invalidateModule: vi.fn() },
+  }
+
+  // For hooks registered via configureServer:
+  await (plugin.configureServer as Function)(server)
+  server.watcher?.emit('change', '/project/src/Button.tsx')
+
+  // OR for hotUpdate hook:
+  await (plugin.hotUpdate as Function).call(
+    { environment: { hot: { send: hotSend } } },
+    { file: '/project/src/Button.tsx', type: 'update', modules: [], timestamp: Date.now(), read: vi.fn() }
+  )
+
+  expect(hotSend).toHaveBeenCalledWith('oxc-react-docgen:update', {
+    file: '/project/src/Button.tsx',
+    components: expect.arrayContaining([expect.objectContaining({ name: 'Button' })]),
+  })
+})
+```
+
+For Vite 5-style custom event payloads via `ws.send`:
+```typescript
+expect(mockServer.ws.send).toHaveBeenCalledWith(
+  expect.objectContaining({
+    type: 'custom',
+    event: 'oxc-react-docgen:update',
+    data: expect.objectContaining({ file: expect.any(String) }),
+  }),
+)
+```
+
+**Integration level:** Verify through module graph invalidation — check that `transformRequest()` returns different output after a file change, rather than trying to intercept WebSocket messages.
+
+**E2E level (only if needed):** Playwright + `editFile()` + `expect.poll()` on browser DOM, following Vite's own playground pattern. Heavy — unit mocking covers 95% of cases.
+
+---
+
+### 6. `vi.mock` vs `vi.importMock` vs manual mocks
+
+| API | When to use |
+|---|---|
+| `vi.mock('pkg', () =&gt; ({...}))` | **Primary choice.** Hoisted, replaces entire module. Never call `importOriginal` for `.node` binaries. |
+| `vi.mock('pkg')` (no factory) | When `__mocks__/pkg.ts` exists — Vitest picks it up automatically. |
+| `vi.importMock('pkg')` | Dynamic import mocking inside async test setup. Rarely needed; not recommended as primary approach. |
+| `test.alias` in config | When `vi.mock` fails because Vitest tries to parse/transform the `.node` binary before the factory runs. Most reliable for native binaries. |
+| `vi.mockForNodeRequire()` | Only for `require()`-loaded CJS modules. Requires `vitest-mock-commonjs`. Uncommon in ESM plugin code. |
+
+**Recommendation for `@oxc-react-docgen/napi`:** Use `vi.mock` with a factory for unit tests. Fall back to `test.alias` if the binary causes resolver errors. In integration tests that need the real NAPI module, use `pool: 'forks'` and let it load for real.
+
+---
+
+## Recommended test architecture for this project
+
+```
+crates/core/         ← cargo test (all logic, snapshot tests — already done)
+crates/napi/         ← thin #[napi] shims only; no Rust tests needed
+packages/napi/
+  __test__/
+    index.spec.ts    ← Ava, workerThreads:false, tests the JS surface
+packages/vite-plugin/
+  tests/
+    unit/            ← Vitest pool:threads, vi.mock NAPI, direct hook invocation
+    integration/     ← Vitest pool:forks, createServer(middlewareMode:true), real .node
+```
+
+---
+
+**Key sources:**
+- `https://github.com/napi-rs/napi-rs/tree/main/examples/napi-cargo-test` — official noop testing example
+- `https://github.com/napi-rs/napi-rs/issues/1099` — two-crate split recommendation by @messense
+- `https://github.com/napi-rs/napi-rs/pull/2872` — napi 3.2.3 fix for noop regression
+- `https://github.com/napi-rs/package-template` — official Ava + @oxc-node/core/register template
+- `https://github.com/napi-rs/napi-rs/pull/2471` — NAPI_RS_NATIVE_LIBRARY_PATH (Feb 2025)
+- `https://vite.dev/changes/hotupdate-hook` — Vite 6 hotUpdate + this.environment.hot.send() migration
+- `https://github.com/vitejs/vite/blob/main/packages/vite/src/node/__tests__/plugins/define.spec.ts` — plugin.transform.handler.call({environment}, ...) pattern
+- `https://github.com/yusukebe/vite-ssr-components/blob/main/src/plugin/hot-reload.test.ts` — Vite 6 hot.send mock
+- `https://github.com/dot-do/shadmin/blob/main/packages/shadmin/src/cli/vite-plugin.spec.ts` — Vite 5 ws.send mock
+- `https://github.com/rari-build/rari/blob/main/test/unit/vite/hmr-coordinator.test.ts` — custom event payload assertion
+- `https://github.com/vitejs/vite/blob/main/playground/vitestSetup.ts` — createServer() integration pattern</result>
+<usage><subagent_tokens>48081</subagent_tokens><tool_uses>22</tool_uses><duration_ms>1024029</duration_ms></usage>
+</task-notification>

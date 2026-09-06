@@ -1,0 +1,1 @@
+/compact let's keep all context necessary to continue our current work, including the full details of the interations of tests and the missing fixes we need to tackle

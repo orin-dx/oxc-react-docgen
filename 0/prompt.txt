@@ -1,0 +1,1 @@
+How do you propose we solve this chicken and egg problem? How do other NPM packages do this really? Seems weird to publish without the arch specific ones. How does that all work???

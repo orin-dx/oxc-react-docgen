@@ -1,0 +1,1 @@
+Doesn't moon+proto have hook support? Why do we need lefthook?

@@ -1,0 +1,279 @@
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+
+The session's primary work was building an RDT (react-docgen-typescript) spec coverage matrix — mapping every output field, PropType kind, and component pattern to existing fixture coverage, identifying gaps, adding fixtures, and fixing bugs discovered in the process.
+
+Explicit sequential requests:
+- Build the RDT spec coverage matrix (resumed from prior session)
+- Add a JSDoc/TSDoc fixture (`fixtures/rdt-compat/jsdoc.tsx`)
+- Explain how RDT handles `extends`, `Omit`, `Pick`, enums, discriminated unions, cross-package types
+- Research complex examples from popular libraries (FloatingUI, MUI, Radix, Shadcn, react-aria, Spectrum, IBM Carbon, Shopify)
+- Explain JSDoc `@default` + inline defaults interaction and `typeof` values
+- Use agent teams with appropriate models to comprehensively research all patterns and write fixtures
+- **(Current/pending):** What other patterns from popular libraries/design systems? How to best support Panda CSS and other CSS alternatives (vanilla-extract, Tailwind, Stitches, etc.)?
+
+---
+
+2. Key Technical Concepts:
+
+- **RDT (react-docgen-typescript) output shape**: `ExtractionOutput { components, enums, diagnostics, stats }`; `ComponentEntry { displayName, filePath, description, props, inheritance, notableInherited, discriminantProp, composes, tags, methods }`; `ParsedProp { name, type, required, defaultValue, description, tags, parent, declarations }`
+- **PropType tagged union**: 21 kinds — `string`, `number`, `boolean`, `null`, `unknown`, `undefined`, `never`, `void`, `any`, `reactNode`, `cssProperties`, `elementType`, `sxProps`, `stringLiteral`, `numberLiteral`, `boolLiteral`, `union`, `intersection`, `array`, `tuple`, `object`, `named`, `eventHandler`, `ref`, `htmlAttributes`, `literalUnion`, `opaque`
+- **CollectedType vs PropType**: `CollectedType` (raw AST from extractor) → `PropType` (resolved semantic type, tagged union)
+- **`sxProps` known-pattern shortcut**: Fires in `resolve_named` Step 5 (fallback) ONLY when type cannot be resolved from source — not when `SxProps<T>` is defined locally in fixture
+- **`CollectedType::Raw` resolver**: Source-text fallback for tuple elements; now recognizes TypeScript primitive keywords before treating as Named refs
+- **Tuple element bug**: `ts_tuple_element_to_collected` uses `CollectedType::Raw(source_text)` for plain type elements; `Raw("number")` was resolving to `Named{number}` not `PropType::Number`
+- **Component-level JSDoc tags**: Collected from JSDoc on the component variable declaration (not interface), stored in `ComponentMapping.tags`, flow to `ComponentEntry.tags` via `mapping.tags.clone()` at `resolver/mod.rs:155`
+- **JSDoc `@default` conflict**: Code default always wins; if both exist and differ, emits `JsDocDefaultMismatch` Info diagnostic and uses code value
+- **`extract_jsdoc_tags`**: Generic — stores any `@tagname value` pair verbatim; special-cased only for `@param`
+- **`resolve_function_type`**: 0 params → `EventHandler{void}`, 1 param → `EventHandler{event_type}`, ≥2 params → `Opaque{ConditionalType}` (wrong reason, param names lost)
+- **`classify_type_alias` BUG**: No `TSTypeLiteral` arm — `type X = { field: string }` object-literal aliases are silently dropped (never stored), making all references to them resolve as `Named` with UNRESOLVABLE_IMPORT
+- **`Pick<LibType, Keys>`**: Only works over project-source interfaces; `Pick<ButtonHTMLAttributes<...>, Keys>` → 0 props (HTML attrs not in source)
+- **Namespace compound components**: `ReExportNamespace` captured in `data.exports` but **never consumed** in pipeline — compound naming never produced
+- **Generic type params**: `resolve_interface_chain` takes `_type_args: &[String]` but ignores it (underscore-prefixed, never used) — T never substituted
+- **`ComponentPropsWithoutRef<typeof Primitive.button>`**: Only `StringLiteral` arg produces `HtmlAttributes`; `typeof X` arg → `Named`, all HTML props lost (critical real Radix gap)
+- **Dead code**: `func.rs:34-37` render-prop detection unreachable (prefix mismatch); `OpaqueReason::UnresolvableImport` and `OpaqueReason::PandaCodegenMissing` never constructed
+- **`OXC parse`**: Pure structural extraction, no type-checking pass; OXC 0.135
+- **DTS cache**: `node_modules/.cache/oxc-react-docgen/` using msgpack + atomic write, mtime+size keyed
+- **CSS-in-JS alternatives**: PandaCSS `RecipeVariantProps`/`defineRecipe` (covered), vanilla-extract, Tailwind, Stitches — CSS alternatives question is pending
+
+---
+
+3. Files and Code Sections:
+
+**`docs/rdt-coverage.md`** — NEW: Coverage matrix mapping every PropType kind, ComponentEntry field, ParsedProp field, and component pattern to fixtures. Updated iteratively as items were covered.
+
+**`fixtures/rdt-compat/types.tsx`** — NEW: Exercises 9 previously-uncovered PropType kinds in one component:
+```tsx
+import * as React from 'react';
+
+export interface TypeSamplerProps {
+  items: string[];                                          // array
+  position: [number, number];                              // tuple
+  step: 1 | 2 | 4 | 8;                                   // numberLiteral
+  alwaysEnabled?: true;                                    // boolLiteral
+  nothing?: undefined;                                     // undefined
+  sx?: SxProps;                                            // sxProps (unresolved name)
+  tokenStyle?: React.CSSProperties & { '--accent': string }; // intersection
+  buttonProps?: React.ComponentPropsWithoutRef<'button'>;  // htmlAttributes
+  derived?: string extends 'a' ? 'yes' : 'no';           // opaque{conditionalType}
+}
+export const TypeSampler = React.forwardRef<HTMLDivElement, TypeSamplerProps>(
+  (props, ref) => <div ref={ref} />,
+);
+TypeSampler.displayName = 'TypeSampler';
+```
+
+**`fixtures/rdt-compat/memo.tsx`** — NEW: React.memo pattern (uses explicit `props: AvatarProps` annotation, NOT generic type arg):
+```tsx
+export const Avatar = React.memo(function Avatar(props: AvatarProps) {
+  const { name, src, size = 40 } = props;
+  return <img src={src} alt={name} width={size} height={size} />;
+});
+```
+Note: `React.memo<AvatarProps>(({ name }) => ...)` destructuring form does NOT get extracted because no explicit type annotation on props.
+
+**`fixtures/rdt-compat/jsdoc.tsx`** — NEW: JSDoc patterns not covered elsewhere:
+```tsx
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** @default "flat" @deprecated Use `appearance` instead. */
+  variant?: 'flat' | 'outlined' | 'elevated';
+  /** Header slot content. @since 2.0.0 */
+  header?: React.ReactNode;
+}
+/**
+ * A card for grouping related content.
+ * @see https://example.com/components/card
+ * @since 1.0.0
+ * @category Layout
+ */
+export const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ variant = 'flat', ...props }, ref) => <div ref={ref} {...props} />,
+);
+Card.displayName = 'Card';
+```
+Confirmed output: `ComponentEntry.tags = { category: "Layout", see: "https://...", since: "1.0.0" }` and `header.tags.since = "2.0.0"`.
+
+**`crates/core/tests/snapshots.rs`** — MODIFIED: Added `snapshot_rdt_compat` test at end:
+```rust
+#[test]
+fn snapshot_rdt_compat() {
+    let value = snapshot_fixture("rdt-compat");
+    insta::assert_json_snapshot!(value);
+}
+```
+
+**`crates/core/tests/snapshots/snapshots__snapshot_rdt_compat.snap`** — NEW: Generated snapshot with Avatar (memo), Card (jsdoc), TypeSampler (types) all correctly resolved.
+
+**`crates/core/src/resolver/collected.rs`** — MODIFIED: Bug fix in `CollectedType::Raw` handler — added primitive keyword recognition before "simple identifier → Named" fallback:
+```rust
+// TypeScript primitive keywords — tuple elements come through Raw because
+// TSTupleElement falls through to source-text extraction for non-optional,
+// non-rest elements. Recognise keywords here so they emit the proper PropType.
+match trimmed {
+    "string" => return PropType::String,
+    "number" => return PropType::Number,
+    "boolean" => return PropType::Boolean,
+    "null" => return PropType::Null,
+    "undefined" => return PropType::Undefined,
+    "never" => return PropType::Never,
+    "void" => return PropType::Void,
+    "any" => return PropType::Any,
+    "unknown" => return PropType::Unknown,
+    _ => {}
+}
+```
+
+**`crates/core/src/extractor/jsdoc.rs`** — READ (not modified): Confirmed `extract_jsdoc_tags` is fully generic; `find_jsdoc` uses 120-byte proximity threshold to find preceding block comments.
+
+**`crates/core/src/resolver/collected.rs`** — READ: Confirmed `CollectedType::Mapped` → `PropType::Opaque{MappedType}` (for inline mapped types); but mapped type ALIASES go through `Passthrough` arm only if they're stored as `CollectedTypeAlias::Passthrough`.
+
+**`crates/core/src/resolver/func.rs`** — READ: Dead code branch at lines 34-37 (render-prop detection unreachable due to prefix mismatch); `resolve_typeof` only works for CVA/enum keys.
+
+**`crates/core/src/resolver/alias.rs`** — READ: `Pick` implemented at line 49; `Partial` at 56; `Required` at 65. All work via `resolve_base_as_chain` which only resolves source-defined types (not library HTML attribute types).
+
+**`crates/core/src/resolver/react.rs`** — READ: `ElementType` → `PropType::ElementType`; `ComponentType`/`FC` → `Named`; `ComponentPropsWithoutRef<'string'>` → `HtmlAttributes`; `ComponentPropsWithoutRef<typeof X>` → `Named` (broken for real Radix).
+
+---
+
+4. Errors and Fixes:
+
+**Bug: Tuple elements resolved as `Named` instead of primitives:**
+- Symptom: `[number, number]` produced `{ kind: "named", name: "number" }` in snapshot
+- Root cause: `ts_tuple_element_to_collected` in extractor falls through to `CollectedType::Raw(source_text)` for all plain type elements. The `Raw` resolver saw `"number"` as a plain identifier → `Named`
+- Fix: Added `match trimmed { "string" | "number" | "boolean" | ... => return PropType::Xxx, _ => {} }` in `collected.rs` `Raw` handler before the identifier fallback
+
+**Issue: SizeTokens mapped type alias didn't produce `opaque`:**
+- Attempted: `type SizeTokens = { [K in 'sm'|'md'|'lg']: string }; prop?: SizeTokens`
+- Result: `Named{SizeTokens}` with UNRESOLVABLE_IMPORT diagnostic (not `opaque`)
+- Reason: Mapped type aliases are NOT stored in `CollectedTypeAlias` (no variant for them); references to them fall through to Step 7 in `resolve_named` → `Named` + diagnostic
+- Fix: Replaced with inline conditional type `string extends 'a' ? 'yes' : 'no'` which correctly produces `opaque{conditionalType}`
+
+**Issue: Avatar not extracted from `React.memo<AvatarProps>(({ ... }) => ...)`:**
+- Symptom: filesParsed=2 but 0 components from memo fixture
+- Root cause: Generic type arg `<AvatarProps>` on `React.memo` is not used by extractor for props detection; destructured `({ name, src, size })` without explicit type annotation is untyped
+- Fix: Changed to `React.memo(function Avatar(props: AvatarProps) { ... })` — explicit `props: AvatarProps` annotation is what the extractor looks for
+
+---
+
+5. Problem Solving:
+
+**Coverage Matrix Construction:** 
+- Systematically enumerated all 21 PropType kinds via grep across all 7 existing snapshots
+- Found 11 kinds with zero coverage (sxProps, opaque, tuple, array, intersection, boolLiteral, numberLiteral, htmlAttributes, undefined, never, void)
+- Identified component-level `tags` as always `{}` across all snapshots
+- Confirmed non-empty `enums` only in shadcn; non-null `discriminantProp` only in MUI TextField
+
+**sxProps detection mechanism:**
+- MUI fixture defines `SxProps<T>` locally → resolver finds local alias → resolves structurally → complex union output (never hits known-pattern shortcut)
+- Solution for fixture: reference `SxProps` without any definition or import → `resolve_to_canonical` fails → fallback to `(consuming_file, "SxProps")` → not in type_aliases or interfaces → Step 5 known-pattern check fires → `PropType::SxProps`
+
+**Agent research results (two Opus agents run in parallel):**
+
+Agent 1 (Resolver Capability Auditor) identified critical bugs:
+- `type X = { … }` object-literal type aliases dropped entirely (`classify_type_alias` missing `TSTypeLiteral` arm)
+- `Pick<LibType, Keys>` → 0 props (HTML attrs not source-resolvable)
+- Multi-param callbacks → `Opaque{ConditionalType}` (wrong reason, lost names)
+- `ReExportNamespace` captured but never consumed (compound components broken)
+- `JS built-ins Set/Map/Date` not in recognized list → spurious warnings
+- Generic type args ignored in `resolve_interface_chain`
+
+Agent 2 (Library Pattern Researcher) read real Radix and MUI `.d.ts` files and found:
+- Real Radix pattern is `ComponentPropsWithoutRef<typeof Primitive.button>` — NOT the string literal form our fixture uses (all HTML props lost with real Radix types)
+- Method-shorthand handlers `onValueChange?(value: string): void` lose param types (replaced with `"..."`)
+- `JSXElementConstructor` not recognized (only `ComponentType`/`FC` recognized)
+- MUI Autocomplete has 5 generic type params — all ignored
+
+---
+
+6. All User Messages:
+
+- (Session resumed from prior context — no explicit greeting, task resumed directly)
+- "Let's add that jsdoc/tsdoc fixture right?"
+- "How does RDT deal with extend, ommit, pick? How does it deal with enums? discriminated unions? Shared types across packages? Also typeof values?"
+- "Are these accounted in the fixtures you wrote? Consider complex examples of these and how they should map to RDT? Any other common patterns we can find from popular libraries like FloatingUI, MUI, Radix, Shadcn, react-aria, spectrum, IBM carbon, shopify's design system, etc? How do we deal with jsdoc/tsdoc defalts + inline defaults (inline overrides). Also typeof values?"
+- "Use agent teams with the appropriate models and effort to really understand all our requirements and how to best write fixtures for a comprehensive spec"
+- "What other patterns did you learn from the popular libraries, component libraries and design systems?? Any others we should consider? How do we best use Panda CSS or other other CSS alternatives that are popular these days?" **(CURRENT — pending response)**
+
+Security-relevant constraints from CLAUDE.md (must preserve):
+- No `unwrap()` outside `#[cfg(test)]` — use `?`
+- `FxHashMap` for internal maps; `BTreeMap` for JSON-output maps
+- `CompactString` for type/prop names in hot paths
+- No AST refs escape `parse_file()` — allocator is local per call
+- No terminal/display code in `crates/core`
+- Always emit `Diagnostic` when degrading — never fail silently
+
+---
+
+7. Pending Tasks:
+
+**High priority — fixture implementation for agent-identified gaps:**
+1. `ComponentPropsWithoutRef<typeof Primitive.button>` fixture (real Radix pattern — biggest real-world miss)
+2. Generic component `<T>` fixture (type param substitution not working)
+3. Method-shorthand handler params fixture (`onValueChange?(value: string): void` vs arrow form)
+4. MUI slots/slotProps + `JSXElementConstructor` mis-kinding fixture
+5. Non-CSS indexed access (`container?: PortalProps['container']`) → opaque assertion
+6. Namespace export alias (`export { Foo as Root }`) compound component fixture
+7. `Pick<SourceInterface, Keys>` fixture (works for source types)
+8. Large Placement 12-member literal union fixture
+9. Controlled/uncontrolled value+defaultValue+onValueChange fixture
+10. `JSDoc @default` conflict with code default (triggers JsDocDefaultMismatch diagnostic)
+
+**Pending user question to answer (current):**
+- Additional patterns from popular libraries/design systems beyond what agents found
+- Panda CSS and other CSS alternatives (vanilla-extract, Tailwind, Stitches, CVA, tw-merge, etc.) — how they should be handled in the extractor
+
+**Coverage matrix gaps remaining:**
+- `void` kind (not a real prop type, N/A)
+- `never` kind (not a real prop type, N/A)
+- `any` kind (suppressed by strict, N/A)
+- `defaultValue.computed: true` (from `Component.defaultProps = { … }`)
+- Generic component support (currently broken)
+
+---
+
+8. Current Work:
+
+The two parallel Opus agents completed their research. Their combined findings document:
+
+**From Resolver Auditor:**
+- 7 cross-cutting gaps ranked by impact
+- Dead code: `func.rs:34-37`, `OpaqueReason::UnresolvableImport`, `OpaqueReason::PandaCodegenMissing`
+- Complete per-pattern output description for 19 TypeScript patterns
+
+**From Library Researcher:**
+- Read real `.d.ts` files from `@radix-ui/react-select`, `@radix-ui/react-dialog`, MUI Autocomplete
+- 7 fixture priorities ranked by impact
+- Confirmed `JSXElementConstructor` gap in `resolver/react.rs:57-66`
+- Confirmed method-shorthand param loss in `extractor/mod.rs:359`
+
+Immediately before the summary request, the user asked: **"What other patterns did you learn from the popular libraries, component libraries and design systems?? Any others we should consider? How do we best use Panda CSS or other other CSS alternatives that are popular these days?"**
+
+This question requires synthesizing the agent findings + addressing CSS-in-JS alternative support.
+
+---
+
+9. Optional Next Step:
+
+The user's most recent message is: "What other patterns did you learn from the popular libraries, component libraries and design systems?? Any others we should consider? How do we best use Panda CSS or other other CSS alternatives that are popular these days?"
+
+The next step is to answer this question comprehensively by synthesizing the agent research into:
+
+1. **Additional library patterns** beyond what the agents covered — IBM Carbon's `renderIcon: React.ElementType | React.FC<unknown>` union, Shopify Polaris's `ComplexAction` object props, Spectrum's `Key = string | number`, FloatingUI's `Middleware` object, React Hook Form's `register()` return pattern, TanStack Table's column definitions, Headless UI's compound component state
+
+2. **CSS-in-JS/CSS alternatives and how the extractor handles each:**
+   - **PandaCSS**: Currently supported via `defineRecipe`/`RecipeVariantProps`/`VariantProps` — `known.rs` handles `RecipeVariantProps`; `variantFunctions` option in `ExtractOptions`; panda fixture demonstrates this
+   - **vanilla-extract**: `recipe()` from `@vanilla-extract/recipes` → similar to PandaCSS, `RecipeVariantProps` pattern; likely needs `variantFunctions` option addition
+   - **CVA (Class Variance Authority)**: Already supported — shadcn fixture
+   - **Tailwind + CVA**: Same as CVA — `cva()` detected
+   - **Stitches**: `css({})` and `styled()` — different pattern, props come from `variants` config; would need new known-pattern handling
+   - **tw-merge/tailwind-merge**: Pure utility, no prop impact
+   - **CSS Modules**: No prop impact
+   - **Linaria/Astroturf**: Similar to CSS modules
+   - **Tamagui**: Uses `createStyledComponent` with variants — similar to Stitches
+
+Then implement the comprehensive fixture files based on all research.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gabe/.claude/projects/-Users-gabe-Projects-oxc-react-codegen/d83be67f-8b07-459c-989b-529791ef5ca7.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.

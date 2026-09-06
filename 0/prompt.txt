@@ -1,0 +1,32 @@
+<task-notification>
+<task-id>a0b1c5be87b671353</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/c1a2ed3d-6a2c-4bd4-8b39-b490075d71ff/tasks/a0b1c5be87b671353.output</output-file>
+<status>completed</status>
+<summary>Agent "Scout second batch of design system repos" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Research findings: 6 verified candidate fixtures
+
+All checked live via GitHub API/raw content today, not memory — repo license, archive status, last-push date, and the specific file's current existence/line count were all confirmed.
+
+**1. Zendesk Garden — `zendeskgarden/react-components`** (Apache-2.0, pushed today)
+*Category 1 (styled-components generic merging).* File: `.packages/buttons/src/styled/StyledButton.ts` (522 lines, real `.ts` — not `.d.ts`). Confirmed pattern: `styled.button.attrs&lt;IStyledButtonProps&gt;(props =&gt; ({...}))`, where `IStyledButtonProps extends ButtonHTMLAttributes&lt;HTMLButtonElement&gt;` and style functions take `IStyledButtonProps &amp; ThemeProps&lt;DefaultTheme&gt;`. This is a distinct shape from CVA/tailwind-variants: transient `$`-prefixed props merged with native HTML attributes *and* styled-components' injected `ThemeProps`, via the `.attrs&lt;T&gt;()` generic call form rather than a bare `styled.div&lt;Props&gt;`.
+
+**2. React Hook Form — `react-hook-form/react-hook-form`** (MIT, pushed today)
+*Category 2 (form-library generics threaded deep).* File: `src/form.tsx` (164 lines) plus `src/types/controller.ts` (96 lines). Confirmed: `Form&lt;TFieldValues extends FieldValues, TTransformedValues = TFieldValues&gt;`, `ControllerRenderProps&lt;TFieldValues, TName extends FieldPath&lt;TFieldValues&gt;&gt;`, and `FieldPathValue&lt;TFieldValues, TName&gt;` — a recursive, path-indexed conditional type binding a value type to a dotted field-path string literal. Genuinely different substitution shape than Ark's `Assign&lt;T,U&gt;`: multi-parameter generics with one parameter constrained by another, flowing through `Controller` → `useController` → `useFormContext` → `FormProvider` across separate files.
+
+**3. React Day Picker — `gpbl/react-day-picker`** (MIT, pushed 2026-06-16)
+*Category 3 (large discriminated union).* File: `packages/react-day-picker/src/types/props.ts` (671 lines); consumed by `packages/react-day-picker/src/DayPicker.tsx` (832 lines). Confirmed: `DayPickerProps = PropsBase &amp; (PropsSingle | PropsSingleRequired | PropsMulti | PropsMultiRequired | PropsRange | PropsRangeRequired | {mode?:undefined; required?:undefined})` — a base-type intersected with a 7-way union double-discriminated on both `mode` and `required`. Larger/more complex than the current discriminated-union fixture.
+
+**4. Headless UI — `tailwindlabs/headlessui`** (MIT, pushed 2026-04-13)
+*Category 3 (classic `as`-prop polymorphism, not render-prop style).* File: `packages/@headlessui-react/src/components/listbox/listbox.tsx` (1067 lines). Confirmed multiple exported generic prop types (`ListboxProps&lt;TTag, TType, TActualType&gt;`, `ListboxButtonProps&lt;TTag extends ElementType&gt;`, `ListboxOptionsProps&lt;TTag&gt;`, etc.) all built from a shared `Props&lt;TTag, RenderPropArg, PropsWeControl&gt;` helper with default type args — the genuine `as="button"`-style polymorphic convention, not Base UI's `render` prop. Not in the excluded list.
+
+**5. AutoForm — `vantezzen/autoform`** (MIT, pushed today)
+*Category 4 (runtime-schema-derived props).* File: `packages/react/src/react-hook-form/AutoForm.tsx` (90 lines), with the schema binding in the sibling `packages/zod` adapter package. Confirmed: `AutoForm&lt;T extends FieldValues = FieldValues&gt;({schema, ...}: AutoFormProps&lt;T&gt;)`, where `schema` is a Zod (or Yup/Joi) object whose parsed shape drives `T` at the call site via a schema-provider package. This is the best real, currently-shipping, permissively-licensed example found — genuine `z.infer`-adjacent component libraries are rare; most "Zod + React" results are form-*validation* glue (resolvers), not component prop types.
+
+**6. Blueprint Table — `palantir/blueprint`** (Apache-2.0, pushed today)
+*Category 6 (large slot/compound component).* File: `packages/table/src/table.tsx` (1639 lines) on the `develop` default branch. Confirmed to exist at that path/size. Blueprint's `Table`/`Column`/`Cell`/header compound API is a classic large slot-based component, not simplified — and not on the excluded list.
+
+**Ruled out along the way** (checked and rejected): Remotion (license is source-available with a commercial-size cutoff, not MIT/Apache), PrimeReact (`archived: true` on GitHub), Shopify Polaris (`archived: true`, `NOASSERTION` license), Elastic EUI (`NOASSERTION`, actually dual SSPL/Elastic License 2.0 by default), Grommet (real source is `.js` + separate `.d.ts`, not real TSX generics), react-zorm (`NOASSERTION` license, stale since 2024).</result>
+<usage><subagent_tokens>59131</subagent_tokens><tool_uses>41</tool_uses><duration_ms>375433</duration_ms></usage>
+</task-notification>

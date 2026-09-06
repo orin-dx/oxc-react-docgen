@@ -1,0 +1,1 @@
+What prompt should I give the new session to load all necessary context

@@ -1,0 +1,69 @@
+Investigate whether this repo has a Cargo-workspace build-lock serialization bug in its
+CI/lint/test task runner (moon, Turborepo, Nx, Makefile, or similar), and fix it if so.
+
+## Background
+
+Cargo takes a process-level file lock on a workspace's shared `target/` directory for the
+duration of any `cargo` invocation (build, check, clippy, test) touching it. If a monorepo
+task runner fans out one `cargo <cmd> -p $crate` invocation per crate — even when it *thinks*
+it's running them in parallel — every one of those processes contends for the same lock, so
+they serialize behind each other. The task runner's own parallelism is real at the process-
+spawn level; Cargo silently defeats it underneath. Symptom: a lint/build/test step that "hangs"
+or takes 10-60+ minutes even though no single crate should take that long, with repeated
+"Blocking waiting for file lock on build directory" lines in verbose output — easy to
+misdiagnose as a hung process, a bad dependency (heavy C-linked crates like aws-lc-sys/ring/
+wasmtime are common red herrings), or a caching bug, when it's actually just N processes
+queued behind one lock.
+
+This is a known, acknowledged Cargo/monorepo-tool interaction — moonrepo's own Rust handbook
+states it explicitly: "if you do per-crate, Cargo itself will 'wait for build lock' when
+multiple processes are running," and recommends workspace-wide invocations instead.
+
+## Diagnose
+
+1. Find the task definition that runs clippy/build/test per-crate (e.g. a global task template
+   with `-p $project` or equivalent, applied to every package).
+2. Run the full task with verbose/streaming output and check for repeated
+   "Blocking waiting for file lock" lines, and whether wall-clock time is roughly the *sum* of
+   each crate's individual build time rather than the *max*.
+3. Confirm: kill everything, run one crate's task alone and time it, then run the full fan-out
+   and compare total wall time against (that time) × (crate count). If they're close, this is
+   the bug.
+
+## Fix
+
+Two changes, not one — they serve different call sites:
+
+1. **Full-scope runs (CI, `just ci`-equivalent):** replace the per-crate fan-out with a single
+   `cargo clippy --workspace --all-targets -- -D warnings` (same pattern for `build`/`test`,
+   though `cargo test --workspace` doesn't run doctests — pair with `cargo test --doc`, or use
+   `cargo nextest run --workspace` and fall back to the runner's own task for coverage it
+   doesn't handle). One process, Cargo's internal job scheduler parallelizes compilation across
+   crates on its own — no lock contention because there's only one lock-holder.
+
+2. **Affected-only runs (pre-push, incremental CI):** don't drop the task runner's affected-
+   project detection — it's real, dependency-graph-aware signal a plain Cargo invocation can't
+   compute on its own. Instead of letting it *execute* per-project (which reintroduces the same
+   lock problem at a smaller scale whenever 2+ projects are affected), use it only to *build the
+   scope*, then feed that into one Cargo invocation with multiple `-p` flags:
+   projects=$(<task-runner query for affected project ids>)
+   if [ -z "$projects" ]; then exit 0; fi
+   args=(); for p in $projects; do args+=(-p "$p"); done
+   cargo clippy "${args[@]}" --all-targets -- -D warnings
+For moon specifically: `moon query projects --affected` returns JSON with a `.projects[].id`
+array of exactly the changed crates (verified: touching two crates' files returns exactly
+those two project ids, nothing else) — pipe that through `jq -r '.projects[].id'`.
+
+Do not scope lint to affected crates' *downstream dependents* — clippy warnings are about a
+crate's own source, not its callers, so only the changed crates themselves need relinting. Test
+scoping is a separate, judgment-call question (a changed crate's behavior can break a
+downstream crate's integration tests) — don't fold that into a lint fix without deciding it
+explicitly.
+
+## Verify
+
+- Time the old fan-out path once for a real before/after number, not just "it feels faster."
+- Test both the zero-affected case (clean tree → instant no-op) and a multi-affected case
+  (touch 2+ unrelated crates → confirm the resulting single command lints exactly those crates
+  and nothing else) before trusting the fix.
+- Re-run the repo's full CI/lint suite once after the change to confirm nothing else broke.

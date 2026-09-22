@@ -506,8 +506,18 @@ mod tests {
         leftovers.sort();
         assert_eq!(leftovers, vec!["dts-v1.msgpack".to_owned(), "manifest.json".to_owned()]);
 
-        // Last rename wins: the surviving file is one writer's complete cache.
+        // Last rename wins, and it is a complete, decodable file. It can hold
+        // more than one writer's entry: a writer that loads after another has
+        // saved starts from that file.
         let reloaded = DtsCache::load_from_disk(Some(&cache_dir));
-        assert_eq!(reloaded.store.len(), 1);
+        let written: std::collections::BTreeSet<String> = (0..writers).map(|i| format!("/virtual/t{i}.d.ts")).collect();
+        let loaded: std::collections::BTreeSet<String> =
+            reloaded.store.iter().map(|r| r.key().path.to_string()).collect();
+        assert!(!loaded.is_empty(), "the surviving cache file must decode to at least one entry");
+        assert!(
+            loaded.is_subset(&written),
+            "unexpected entries: {:?}",
+            loaded.difference(&written).collect::<Vec<_>>()
+        );
     }
 }

@@ -2811,6 +2811,10 @@ packages:
     resolution: {integrity: sha512-vIYeF1u3CjlhAFekPPAk2h/Kv4T3mAkMox5OymRiJQB0spDP10LHvt+K7G9Ny6NuuMAb25/6n1qyUjAcGNf/AA==}
     engines: {node: '>= 6'}
 
+ignoredOptionalDependencies:
+  - '@oxc-react-docgen/cli-*'
+  - '@oxc-react-docgen/napi-*'
+
 snapshots:
 
   '@ark-ui/react@5.39.0(react-dom@19.2.7(react@19.3.0))(react@19.3.0)':

@@ -3,3 +3,13 @@ packages:
   - "apps/*"
 allowBuilds:
   esbuild: true
+
+# packages/cli and packages/napi declare optionalDependencies on their own
+# per-platform artifact packages, which the release pipeline publishes. None of
+# them exist on the registry yet, so a clean `--frozen-lockfile` install -- what
+# CI always does -- compared those specifiers against a lockfile that cannot
+# record them and failed. Consumers installing from npm are unaffected: this
+# only governs this workspace's own install.
+ignoredOptionalDependencies:
+  - "@oxc-react-docgen/cli-*"
+  - "@oxc-react-docgen/napi-*"

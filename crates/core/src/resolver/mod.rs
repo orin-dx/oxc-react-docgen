@@ -258,13 +258,32 @@ pub fn resolve_package_dts_path(from_dir: &camino::Utf8Path, package_name: &str)
 pub fn resolve_ts_lib_paths(from_dir: &camino::Utf8Path) -> Vec<String> {
     let resolve_options = ResolveOptions { extensions: vec![".d.ts".into()], ..ResolveOptions::default() };
     let resolver = Resolver::new(resolve_options);
+    let mut ts7_lib_dir = None;
     ["lib.es5.d.ts", "lib.dom.d.ts"]
         .into_iter()
         .filter_map(|lib_file| {
             let specifier = format!("typescript/lib/{lib_file}");
-            resolver.resolve(from_dir.as_std_path(), &specifier).ok().map(|r| r.path().to_string_lossy().into_owned())
+            if let Ok(r) = resolver.resolve(from_dir.as_std_path(), &specifier) {
+                return Some(r.path().to_string_lossy().into_owned());
+            }
+            let dir = ts7_lib_dir.get_or_insert_with(|| typescript_7_lib_dir(&resolver, from_dir)).as_ref()?;
+            let path = dir.join(lib_file);
+            path.is_file().then(|| path.to_string_lossy().into_owned())
         })
         .collect()
+}
+
+/// TypeScript 7 ships its lib files in whichever `@typescript/typescript-<platform>` optional dependency got installed,
+/// and that package's `exports` exposes only `package.json`, so `typescript/lib/...` no longer resolves.
+fn typescript_7_lib_dir(resolver: &Resolver, from_dir: &camino::Utf8Path) -> Option<std::path::PathBuf> {
+    let manifest_path = resolver.resolve(from_dir.as_std_path(), "typescript/package.json").ok()?.into_path_buf();
+    let manifest: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest_path).ok()?).ok()?;
+    let ts_dir = manifest_path.parent()?;
+    manifest.get("optionalDependencies")?.as_object()?.keys().find_map(|name| {
+        let platform_manifest = resolver.resolve(ts_dir, &format!("{name}/package.json")).ok()?.into_path_buf();
+        let lib_dir = platform_manifest.parent()?.join("lib");
+        lib_dir.is_dir().then_some(lib_dir)
+    })
 }
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
@@ -3005,5 +3024,64 @@ mod tests {
         );
         assert_eq!(diag.unwrap().severity, DiagnosticSeverity::Warning);
         assert_eq!(diag.unwrap().code, DiagnosticCode::OpaqueType);
+    }
+
+    // ── resolve_ts_lib_paths: TypeScript <= 6 and 7 package layouts ──────────
+
+    fn write(root: &std::path::Path, rel: &str, content: &str) {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, content).unwrap();
+    }
+
+    fn lib_paths_from(root: &std::path::Path) -> Vec<String> {
+        let root = Utf8PathBuf::from_path_buf(root.canonicalize().unwrap()).unwrap();
+        resolve_ts_lib_paths(&root)
+    }
+
+    #[test]
+    fn ts_lib_paths_resolve_from_typescript_6_lib_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write(tmp.path(), "node_modules/typescript/package.json", r#"{"name":"typescript","version":"5.9.3"}"#);
+        write(tmp.path(), "node_modules/typescript/lib/lib.es5.d.ts", "");
+        write(tmp.path(), "node_modules/typescript/lib/lib.dom.d.ts", "");
+
+        let lib = tmp.path().canonicalize().unwrap().join("node_modules/typescript/lib");
+        assert_eq!(
+            lib_paths_from(tmp.path()),
+            vec![lib.join("lib.es5.d.ts").to_string_lossy(), lib.join("lib.dom.d.ts").to_string_lossy()]
+        );
+    }
+
+    #[test]
+    fn ts_lib_paths_resolve_from_typescript_7_platform_package() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Two declared platforms, only one installed, and `exports` hiding `./lib/*` on both packages.
+        write(
+            tmp.path(),
+            "node_modules/typescript/package.json",
+            r#"{"name":"typescript","version":"7.0.2","exports":{"./package.json":"./package.json"},
+               "optionalDependencies":{"@typescript/typescript-missing":"7.0.2",
+                                       "@typescript/typescript-here":"7.0.2"}}"#,
+        );
+        write(
+            tmp.path(),
+            "node_modules/@typescript/typescript-here/package.json",
+            r#"{"name":"@typescript/typescript-here","version":"7.0.2","exports":{"./package.json":"./package.json"}}"#,
+        );
+        write(tmp.path(), "node_modules/@typescript/typescript-here/lib/lib.es5.d.ts", "");
+        write(tmp.path(), "node_modules/@typescript/typescript-here/lib/lib.dom.d.ts", "");
+
+        let lib = tmp.path().canonicalize().unwrap().join("node_modules/@typescript/typescript-here/lib");
+        assert_eq!(
+            lib_paths_from(tmp.path()),
+            vec![lib.join("lib.es5.d.ts").to_string_lossy(), lib.join("lib.dom.d.ts").to_string_lossy()]
+        );
+    }
+
+    #[test]
+    fn ts_lib_paths_are_empty_without_typescript() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert_eq!(lib_paths_from(tmp.path()), Vec::<String>::new());
     }
 }

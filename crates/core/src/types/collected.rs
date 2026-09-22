@@ -621,7 +621,7 @@ pub enum ExtendsRef {
         /// The import specifier this name came from, if determinable
         source_specifier: Option<std::string::String>,
     },
-    /// interface Foo extends ButtonHTMLAttributes<HTMLButtonElement>
+    /// `interface Foo extends ButtonHTMLAttributes<HTMLButtonElement>`
     /// Recognized as baked-in React/DOM type — no file lookup needed
     Builtin {
         name: TypeName,

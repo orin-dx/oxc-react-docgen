@@ -333,11 +333,11 @@ expression: value
               {
                 "kind": "literalUnion",
                 "members": [
-                  "\"xs\"",
-                  "\"sm\"",
-                  "\"md\"",
-                  "\"lg\"",
-                  "\"xl\""
+                  "xs",
+                  "sm",
+                  "md",
+                  "lg",
+                  "xl"
                 ],
                 "hasDefault": false
               },
@@ -397,22 +397,22 @@ expression: value
               {
                 "kind": "literalUnion",
                 "members": [
-                  "\"xs\"",
-                  "\"sm\"",
-                  "\"md\"",
-                  "\"lg\"",
-                  "\"xl\""
+                  "xs",
+                  "sm",
+                  "md",
+                  "lg",
+                  "xl"
                 ],
                 "hasDefault": false
               },
               {
                 "kind": "literalUnion",
                 "members": [
-                  "compact-\"xs\"",
-                  "compact-\"sm\"",
-                  "compact-\"md\"",
-                  "compact-\"lg\"",
-                  "compact-\"xl\""
+                  "compact-xs",
+                  "compact-sm",
+                  "compact-md",
+                  "compact-lg",
+                  "compact-xl"
                 ],
                 "hasDefault": false
               }
@@ -561,7 +561,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.ButtonHTMLAttributes",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@[VERSION]/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "button",
           "totalProps": 0
@@ -1480,11 +1480,11 @@ expression: value
               {
                 "kind": "literalUnion",
                 "members": [
-                  "\"xs\"",
-                  "\"sm\"",
-                  "\"md\"",
-                  "\"lg\"",
-                  "\"xl\""
+                  "xs",
+                  "sm",
+                  "md",
+                  "lg",
+                  "xl"
                 ],
                 "hasDefault": false
               },
@@ -1690,11 +1690,11 @@ expression: value
           "type": {
             "kind": "literalUnion",
             "members": [
-              "\"xs\"",
-              "\"sm\"",
-              "\"md\"",
-              "\"lg\"",
-              "\"xl\""
+              "xs",
+              "sm",
+              "md",
+              "lg",
+              "xl"
             ],
             "hasDefault": false
           },

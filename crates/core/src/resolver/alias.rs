@@ -116,13 +116,13 @@ pub(super) fn resolve_type_alias_chain(
             // Pure string union used directly as a component's props base — malformed
             // usage, mirroring the diagnostic `resolve_base_as_chain`'s non-object-like
             // fallback pushes for the same "this isn't shaped like props" situation.
+            let display = members.iter().map(|m| format!("\"{m}\"")).collect::<Vec<_>>().join(" | ");
             let diag = Diagnostic {
                 severity: DiagnosticSeverity::Warning,
                 message: format!(
                     "'{}' is a literal union and can't be used as a component's props base in '{}' — \
                      expected an interface, intersection, union, or inline object type",
-                    members.join(" | "),
-                    file_path
+                    display, file_path
                 ),
                 file: Some(file_path.to_string()),
                 line: None,
@@ -130,7 +130,7 @@ pub(super) fn resolve_type_alias_chain(
                 help: Some("Check that this type resolves to an object-like shape.".into()),
                 code: DiagnosticCode::OpaqueType,
             };
-            ResolvedChain::give_up(members.join(" | "), Some(diag), state)
+            ResolvedChain::give_up(display, Some(diag), state)
         }
     }
 }

@@ -57,9 +57,9 @@ pub enum HtmlAttributeMode {
     /// disabled, aria-*, etc.) — the default. Matches RDT's shape for consumers
     /// that filter node_modules-sourced props, just with a smaller, hand-picked set.
     Curated,
-    /// Actually resolve @types/react's real HTMLAttributes/AriaAttributes/
-    /// DOMAttributes/<Element>HTMLAttributes interface chain, matching RDT's full
-    /// ~250-300 attributes per element.
+    /// Actually resolve `@types/react`'s real `HTMLAttributes`/`AriaAttributes`/
+    /// `DOMAttributes`/`<Element>HTMLAttributes` interface chain, matching RDT's
+    /// full ~250-300 attributes per element.
     Full,
     /// Don't synthesize any inherited HTML attributes at all — own props only.
     None,
@@ -544,6 +544,10 @@ fn merge_cached_dts_file(
         }
     };
     diagnostics.append(&mut data.diagnostics);
+    // These files exist to resolve types, not to document components: `@types/react`'s
+    // own `class PureComponent<P, ...> extends Component<P, ...>` otherwise matches the
+    // class-component detector and surfaces as a 0-prop component plus an unresolvable `P`.
+    data.component_mappings.clear();
     global.merge(path, data);
 }
 
@@ -912,6 +916,83 @@ mod tests {
             "expected the diagnostic to explain that no source directories were configured, got: {}",
             error.message
         );
+    }
+
+    // ── literal-union alias props: bare members, never pre-quoted ────────────
+
+    #[test]
+    fn literal_union_alias_props_keep_bare_members_through_resolution_and_templates() {
+        let tmp = TempDir::new().unwrap();
+        write_file(
+            &tmp,
+            "Chip.tsx",
+            r#"
+type Size = "sm" | "md";
+interface ChipProps {
+  size?: Size;
+  density?: `compact-${Size}`;
+}
+export function Chip(props: ChipProps) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+        let chip = output.components.get("Chip").expect("Chip component not found");
+
+        let size = &chip.props["size"].prop_type;
+        assert_eq!(*size, PropType::LiteralUnion { members: vec!["sm".into(), "md".into()], has_default: false });
+        assert_eq!(size.raw_string(), r#""sm" | "md""#);
+
+        let density = &chip.props["density"].prop_type;
+        assert_eq!(
+            *density,
+            PropType::LiteralUnion { members: vec!["compact-sm".into(), "compact-md".into()], has_default: false }
+        );
+    }
+
+    // ── ambient files contribute types, not components ───────────────────────
+
+    /// Full mode merges the real `@types/react` (which declares `class PureComponent<P, S, SS>
+    /// extends Component<P, S, SS>`). Its component mappings must not leak into the output.
+    fn full_mode_options_for(tmp: &TempDir) -> PipelineOptions {
+        PipelineOptions {
+            src_dirs: vec![Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap()],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            html_attributes: HtmlAttributeMode::Full,
+            ..Default::default()
+        }
+    }
+
+    const BUTTON_SOURCE: &str = r#"
+import * as React from "react";
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary";
+}
+export function Button(props: ButtonProps) { return null; }
+"#;
+
+    #[test]
+    fn full_mode_does_not_emit_components_declared_in_merged_react_types() {
+        let tmp = TempDir::new_in(camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+        write_file(&tmp, "Button.tsx", BUTTON_SOURCE);
+
+        let output = extract(&full_mode_options_for(&tmp));
+
+        // `TrustedHTML` and friends are a separate, documented same-namespace-resolution gap;
+        // the ghost's own symptom is the unresolvable props parameter `P`.
+        let ghost_diagnostics: Vec<&Diagnostic> =
+            output.diagnostics.iter().filter(|d| d.message.contains("Cannot resolve type 'P'")).collect();
+        assert!(ghost_diagnostics.is_empty(), "unexpected diagnostics from the ghost component: {ghost_diagnostics:?}");
+
+        let names: Vec<&str> = output.components.keys().map(String::as_str).collect();
+        assert_eq!(names, vec!["Button"]);
     }
 
     // ── test_html_attribute_mode_full_resolves_real_button_attrs_end_to_end ───

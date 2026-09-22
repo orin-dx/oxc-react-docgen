@@ -67,12 +67,9 @@ pub(super) fn try_expand_template_literal(
             }
             CollectedType::Named { name, .. } => {
                 // Look up in global type aliases for a LiteralUnion.
-                let resolved = resolve_named_to_string_literals(name.as_str(), consuming_file, ctx, state, depth + 1);
-                if let Some(strs) = resolved {
-                    per_part.push(strs);
-                } else {
-                    return None; // Can't expand.
-                }
+                // `?` here means "can't expand" -- the caller reads None as
+                // "this template literal has no finite string expansion".
+                per_part.push(resolve_named_to_string_literals(name.as_str(), consuming_file, ctx, state, depth + 1)?);
             }
             _ => {
                 let pt = resolve_collected_type(part, consuming_file, ctx, state, depth + 1);
@@ -84,11 +81,7 @@ pub(super) fn try_expand_template_literal(
                             .iter()
                             .map(|m| if let PropType::StringLiteral(s) = m { Some(s.clone()) } else { None })
                             .collect();
-                        if let Some(s) = strs {
-                            per_part.push(s);
-                        } else {
-                            return None;
-                        }
+                        per_part.push(strs?);
                     }
                     _ => return None,
                 }

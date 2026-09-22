@@ -7,7 +7,7 @@ Core extraction, resolver, CLI, NAPI binding, and Vite plugin all work and are f
 ## Numbers
 
 - 545 Rust tests (77 cli + 443 core unit + 8 snapshot + 1 core compile-fail + 16 napi binding), 36 vitest (33 unit, mocked NAPI + 3 integration against the real native binding — `packages/vite-plugin/tests/integration/`, gated on a locally-built `.node` binary, auto-skips otherwise) — all green
-- `cargo clippy --workspace --all-targets -D warnings` clean with `#![forbid(unsafe_code)]` enforced
+- `cargo clippy --workspace --all-targets -D warnings` clean with `unsafe_code = "deny"` enforced workspace-wide
 - 20 real-world fixture libraries validated against `react-docgen-typescript` (shadcn, Radix, MUI, Chakra, Mantine, React Aria, antd, ariakit, ark-ui, base-ui, blueprint, day-picker, fluentui, headlessui, panda, react-final-form, react-resizable-panels, storybook-emotion, tanstack-table, zendesk-garden — see `rdt-coverage.md`)
 
 ## Features & Improvements Added
@@ -17,12 +17,12 @@ Core extraction, resolver, CLI, NAPI binding, and Vite plugin all work and are f
 - **TOON output format** (`--format toon` / `toon.rs`) — Token-optimized format for LLM agents, cutting context window token usage by ~65-75%.
 - **JSON schema export** (`oxc-react-docgen schema`) — Machine-readable Draft-07 JSON Schema export for component metadata validation.
 - **Atomic & Bounded DTS cache** (`cache.rs`) — Atomic temp-file swap writes, dirty flag tracking, and 5,000 entry eviction cap.
-- **LSP server protocol handler** (`oxc-react-docgen lsp`) — Language Server Protocol handler for IDE component prop hovers.
-- **Strict Safe Rust** — `#![forbid(unsafe_code)]` active across `crates/core` and `crates/cli`.
+- **LSP server scaffold** (`oxc-react-docgen lsp`) — bounded framing plus initialize/shutdown/exit lifecycle. It currently advertises `hoverProvider: false` and does not serve component prop hovers yet.
+- **Strict Safe Rust** — `unsafe_code = "deny"` via `[workspace.lints]`, active across all three crates (`core`, `cli`, `binding`) — none currently use `unsafe`, including the NAPI FFI boundary (napi-rs's `#[napi]` macros generate the glue without user-visible `unsafe`).
 
 ## Known gaps that won't get fixed without a type checker
 
-See the "Known gaps summary" table in `rdt-coverage.md` for the full, maintained list. The short version: conditional types, mapped types over an unbound generic, and a couple of `@emotion/styled`-specific call shapes all need real type inference OXC deliberately doesn't do. Not bugs, not on the roadmap unless typescript-go's Corsa API stabilizes (see `type-checker-integration.md`).
+See the "Known gaps summary" table in `rdt-coverage.md` for the full, maintained list. The short version: conditional types, mapped types over an unbound generic, and a couple of `@emotion/styled`-specific call shapes all need real type inference OXC deliberately doesn't do. Not bugs, and not on the roadmap until a stable programmatic or LSP-backed TypeScript semantic route passes the gates in `type-checker-integration.md`.
 
 ## Where to look next
 

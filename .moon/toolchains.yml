@@ -1,0 +1,19 @@
+# https://moonrepo.dev/docs/config/toolchain
+#
+# moon 2.0 renamed this file from `toolchain.yml` to `toolchains.yml`. Under
+# the old name moon silently ignored it, so every version declared here was
+# dead config -- which is why node/pnpm/rust versions live in `.prototools`
+# and are inherited below rather than restated.
+$schema: "https://moonrepo.dev/schemas/toolchains.json"
+
+node:
+  versionFromPrototools: true
+
+pnpm:
+  versionFromPrototools: true
+
+rust:
+  versionFromPrototools: true
+  # proto is the single source of truth for the toolchain; moon must not
+  # write a competing rust-toolchain.toml into the workspace.
+  syncToolchainConfig: false

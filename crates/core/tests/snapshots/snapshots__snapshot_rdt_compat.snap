@@ -310,7 +310,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.HTMLProps",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@[VERSION]/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -520,7 +520,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.HTMLAttributes",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@[VERSION]/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "div",
           "totalProps": 0
@@ -774,7 +774,7 @@ expression: value
       "inheritance": [
         {
           "typeName": "React.SVGAttributes",
-          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts",
+          "fileName": "[ROOT]/node_modules/.pnpm/@types+react@[VERSION]/node_modules/@types/react/index.d.ts",
           "omitted": [],
           "htmlElement": "svg",
           "totalProps": 0

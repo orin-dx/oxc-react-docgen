@@ -26,7 +26,10 @@ use crate::types::{Diagnostic, DiagnosticCode, DiagnosticSeverity, SourceData};
 /// Also bumped for the mtime+size -> content-hash key change (P0-2 fix):
 /// `SerializableCacheKey`'s own shape changed, so pre-existing on-disk cache
 /// files must be discarded rather than misread under the new field layout.
-const CACHE_SCHEMA_VERSION: u32 = 3;
+/// Also bumped when the extractor produces different `SourceData` for byte-identical
+/// input — the content-hash key can't notice that, so a stale entry would be served
+/// forever (v4: `LiteralUnion` alias members are stored bare instead of quote-wrapped).
+const CACHE_SCHEMA_VERSION: u32 = 4;
 
 // ─── Internal key type ────────────────────────────────────────────────────────
 
@@ -196,11 +199,7 @@ impl DtsCache {
 
         let bytes = rmp_serde::to_vec(&entries).map_err(|e| e.to_string())?;
 
-        // Atomic write: write to tmp then rename (avoids half-written files on crash).
-        let tmp_path = self.cache_dir.join("dts-v1.msgpack.tmp");
-        let final_path = self.cache_dir.join("dts-v1.msgpack");
-        std::fs::write(tmp_path.as_std_path(), &bytes).map_err(|e| e.to_string())?;
-        std::fs::rename(tmp_path.as_std_path(), final_path.as_std_path()).map_err(|e| e.to_string())?;
+        write_atomic(&self.cache_dir, "dts-v1.msgpack", &bytes)?;
 
         // Write manifest (schema version + entry count for quick inspection).
         let manifest = serde_json::json!({
@@ -208,8 +207,7 @@ impl DtsCache {
             "entry_count": entries.len(),
         });
         let manifest_json = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
-        std::fs::write(self.cache_dir.join("manifest.json").as_std_path(), manifest_json.as_bytes())
-            .map_err(|e| e.to_string())?;
+        write_atomic(&self.cache_dir, "manifest.json", manifest_json.as_bytes())?;
 
         self.dirty.store(false, std::sync::atomic::Ordering::Relaxed);
         Ok(())
@@ -222,6 +220,29 @@ impl DtsCache {
     fn key_for(&self, path: &Utf8Path, content: &str) -> CacheKey {
         CacheKey { path: path.to_owned(), content_hash: hash_content(content) }
     }
+}
+
+/// Write `bytes` to `dir/name` via a temp file and rename, so a reader never
+/// sees a half-written file.
+///
+/// The temp name is unique per process and per call. Several processes share
+/// one cache dir in practice -- parallel test binaries, or the CLI and the Vite
+/// plugin in the same project -- and with a fixed temp name they overwrite each
+/// other's temp file, so whichever renames second fails with ENOENT. Last
+/// rename wins, which is fine: every writer's file is complete.
+fn write_atomic(dir: &Utf8Path, name: &str, bytes: &[u8]) -> Result<(), String> {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp_path = dir.join(format!("{name}.{}.{seq}.tmp", std::process::id()));
+    let final_path = dir.join(name);
+
+    let result = std::fs::write(tmp_path.as_std_path(), bytes)
+        .and_then(|()| std::fs::rename(tmp_path.as_std_path(), final_path.as_std_path()));
+    if result.is_err() {
+        // Best-effort: don't leave an orphaned temp file behind.
+        let _ = std::fs::remove_file(tmp_path.as_std_path());
+    }
+    result.map_err(|e| e.to_string())
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -453,5 +474,50 @@ mod tests {
         let file_path = make_temp_file(&tmp, "overflow.d.ts", b"export type O = string;");
         cache.insert(&file_path, "export type O = string;", SourceData::default());
         assert!(cache.store.len() <= MAX_CACHE_ENTRIES);
+    }
+
+    #[test]
+    fn concurrent_saves_to_one_cache_dir_all_succeed_and_leave_no_temp_files() {
+        // Separate DtsCache instances on one dir, as separate processes would be.
+        let tmp = temp_dir("concurrent");
+        let cache_dir = tmp.join("cache");
+        let writers = 16;
+
+        let failures: Vec<Diagnostic> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..writers)
+                .map(|i| {
+                    let cache_dir = &cache_dir;
+                    scope.spawn(move || {
+                        let cache = DtsCache::load_from_disk(Some(cache_dir));
+                        let content = format!("export type T{i} = string;");
+                        cache.insert(Utf8Path::new(&format!("/virtual/t{i}.d.ts")), &content, SourceData::default());
+                        cache.save_to_disk()
+                    })
+                })
+                .collect();
+            handles.into_iter().filter_map(|h| h.join().unwrap()).collect()
+        });
+        assert_eq!(failures, vec![], "every concurrent save must succeed");
+
+        let mut leftovers: Vec<String> = std::fs::read_dir(cache_dir.as_std_path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        leftovers.sort();
+        assert_eq!(leftovers, vec!["dts-v1.msgpack".to_owned(), "manifest.json".to_owned()]);
+
+        // Last rename wins, and it is a complete, decodable file. It can hold
+        // more than one writer's entry: a writer that loads after another has
+        // saved starts from that file.
+        let reloaded = DtsCache::load_from_disk(Some(&cache_dir));
+        let written: std::collections::BTreeSet<String> = (0..writers).map(|i| format!("/virtual/t{i}.d.ts")).collect();
+        let loaded: std::collections::BTreeSet<String> =
+            reloaded.store.iter().map(|r| r.key().path.to_string()).collect();
+        assert!(!loaded.is_empty(), "the surviving cache file must decode to at least one entry");
+        assert!(
+            loaded.is_subset(&written),
+            "unexpected entries: {:?}",
+            loaded.difference(&written).collect::<Vec<_>>()
+        );
     }
 }

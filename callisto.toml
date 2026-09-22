@@ -1,0 +1,129 @@
+# callisto configuration
+#
+# Mirrors ~/projects/michi's proven callisto.toml shape — the closest
+# existing reference for a Rust-crates + NAPI-binding + npm-wrapper
+# monorepo. One structural difference from michi: michi's NAPI crate and
+# its npm wrapper share a single directory (packages/michi-node/, holding
+# both Cargo.toml and package.json), whereas this repo splits them across
+# crates/binding (the cdylib) and packages/napi (the npm wrapper) — expressed
+# as two separate [[package]] entries joined by a [[fixed-group]] below, the
+# same mechanism michi uses for its own crate+wrapper pair.
+#
+# `[[package]] match` is a PACKAGE NAME (bare, or "<ecosystem>/<name>"
+# ecosystem-qualified — one of cargo/npm/pypi/go/maven/nuget/deno/jsr),
+# never a directory path — confirmed against callisto-model's PackageId::parse
+# and callisto-graph's own test suite (crates/callisto-graph/src/config/
+# resolve.rs, tests/per_package_config_test.rs). A directory-path `match`
+# (e.g. "crates/core") parses to a literal bare name that no real package is
+# ever named, so the rule silently matches nothing — verified empirically:
+# an earlier draft of this file used directory paths for every [[package]]
+# entry and callisto plan-publish still listed crates/binding for a cratesIo
+# publish despite publish-to = [] below, because that override was never
+# actually being applied. michi's own callisto.toml has this same mistake
+# (match = "packages/michi-node", match = "."), which is presumably why it
+# went unnoticed there too — its manifest-derived defaults happen to already
+# match what it wants.
+#
+# Pinned to callisto 0.8.0 (GitHub Release `callisto@0.8.0`, commit
+# c5578e6a63754b54575b3ac7518cc1753e443393). .github/workflows/release.yml
+# pins both callisto actions to that commit and installs the attested
+# prebuilt CLI with `verification: require`.
+#
+# 0.8 split releasing into two authority boundaries: callisto-action only
+# creates or updates the `callisto/version-packages` PR — its former
+# `publish` input no longer exists — and publication runs from the merged
+# release commit through `callisto release plan` → `callisto release execute`
+# in this repo's own durable workflow. That path reads the `publish-to`
+# overrides below as authority, unlike the legacy `callisto plan-publish`
+# command this file was originally written against.
+#
+# 0.8 also adds a `[release]` section for product binary assets, deliberately
+# unused here: its `artifact-targets` are validated against callisto's own
+# hardcoded (target, asset-name) table (`PRODUCT_ARTIFACT_TARGETS`), so no
+# other workspace can declare it. With no `[release]` section the derived
+# intent carries no artifact slots, which release.yml asserts before
+# executing.
+#
+# No .moon/workspace.yml changes are needed: the moon WASM extension
+# (crates/callisto-moon) only implements read-only `status`/`plan-publish`
+# reporting subcommands — no `publish`/`tag`/apply path exists through it.
+# setup-callisto puts the `callisto` binary on $GITHUB_PATH directly; moon is
+# installed alongside it as a toolchain dependency, not as callisto's host.
+
+# Group members and changeset frontmatter resolve bare names through
+# callisto's identity index, which errors on an ambiguous name rather than
+# guessing. The private root package.json is therefore named
+# `oxc-react-docgen-workspace`, not `oxc-react-docgen`: sharing the CLI
+# crate's name made every `oxc-react-docgen: patch` changeset ambiguous
+# across cargo and npm. The fixed-group members below stay ecosystem-
+# qualified anyway, since that is cheap insurance against the same collision.
+
+[changesets]
+dir = ".changeset"
+
+[cascade]
+mode = "out-of-range"
+bump-severity = "patch"
+peer-escalation = true
+preserve-npm-ranges = true
+
+# Rust library crate — published to crates.io, no npm counterpart. Consumed
+# via path dependency by both crates/cli and crates/binding.
+[[package]]
+match = "cargo/oxc-react-docgen-core"
+publish-to = ["crates-io"]
+release-trigger = "changeset"
+
+# Rust CLI crate — published to crates.io. packages/cli wraps its compiled
+# per-platform binaries for npm distribution; kept in lockstep below.
+[[package]]
+match = "cargo/oxc-react-docgen"
+publish-to = ["crates-io"]
+release-trigger = "changeset"
+
+# npm CLI wrapper — distributes crates/cli's compiled binaries.
+[[package]]
+match = "npm/@oxc-react-docgen/cli"
+publish-to = ["npm"]
+release-trigger = "changeset"
+
+# NAPI binding crate (cdylib) — not published to crates.io independently (no
+# real-world use case for `cargo add`ing an FFI shim on its own). Callisto
+# still tracks/bumps its version to stay in lockstep with its npm wrapper via
+# the fixed-group below, but is excluded from the crates.io publish plan.
+#
+# Under 0.8's release path this override is authoritative: intent derivation
+# builds registry-publish operations (and the tag that depends on them)
+# straight from `publish-to`, so an empty list yields neither a crates.io
+# publish nor a tag for this crate. crates/binding/Cargo.toml's own
+# `publish = false` remains the second gate — callisto-manifests'
+# is_publishable() still treats a missing `publish` key as true, which is
+# what the legacy `callisto plan-publish` command reads.
+[[package]]
+match = "cargo/oxc-react-docgen-napi"
+publish-to = []
+release-trigger = "changeset"
+
+# npm NAPI wrapper — distributes crates/binding's compiled .node binaries.
+[[package]]
+match = "npm/@oxc-react-docgen/napi"
+publish-to = ["npm"]
+release-trigger = "changeset"
+
+# Vite plugin — standalone npm package, no Rust counterpart.
+[[package]]
+match = "npm/@oxc-react-docgen/vite-plugin"
+publish-to = ["npm"]
+release-trigger = "changeset"
+
+# Keep the NAPI binding crate and its npm wrapper versioned in lockstep —
+# the npm package is meaningless without a matching binding build.
+[[fixed-group]]
+name = "napi-and-binding"
+members = ["cargo/oxc-react-docgen-napi", "npm/@oxc-react-docgen/napi"]
+
+# Keep the CLI crate and its npm wrapper versioned in lockstep — the npm
+# package just redistributes this crate's compiled binaries.
+[[fixed-group]]
+name = "cli-and-npm-wrapper"
+members = ["cargo/oxc-react-docgen", "npm/@oxc-react-docgen/cli"]

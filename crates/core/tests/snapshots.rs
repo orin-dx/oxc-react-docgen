@@ -37,6 +37,43 @@ fn run_fixture(library: &str) -> serde_json::Value {
     serde_json::from_str(&json_str).expect("round-trip must parse")
 }
 
+/// Replace pnpm virtual-store versions with `[VERSION]`.
+///
+/// Types resolved out of `node_modules` carry their real path, and under pnpm
+/// that path embeds the exact dependency version:
+/// `node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts`.
+/// Without this, every routine `@types/react` bump rewrites every snapshot
+/// that references a React builtin — noise that would bury a real extraction
+/// change in a dependency-update PR.
+fn redact_pnpm_versions(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(start) = rest.find(".pnpm/") {
+        let (before, after) = rest.split_at(start + ".pnpm/".len());
+        out.push_str(before);
+        let (segment, tail) = match after.find('/') {
+            Some(end) => after.split_at(end),
+            // A trailing `.pnpm/<segment>` with no following separator.
+            None => (after, ""),
+        };
+        // The version starts at the first `@` after index 0: a scoped package
+        // encodes as `@types+react@19.2.17`, where the leading `@` is the
+        // scope marker, and a peer-suffixed segment
+        // (`react-dom@19.3.0_react@19.3.0`) carries further `@`s that belong
+        // to the version span, not to the name.
+        match segment[1..].find('@').map(|at| at + 1) {
+            Some(at) => {
+                out.push_str(&segment[..at]);
+                out.push_str("@[VERSION]");
+            }
+            None => out.push_str(segment),
+        }
+        rest = tail;
+    }
+    out.push_str(rest);
+    out
+}
+
 /// Replace all absolute paths in the JSON value with `[ROOT]`.
 /// This makes snapshots portable across machines and directory layouts.
 fn redact_paths(value: &mut serde_json::Value, workspace: &str) {
@@ -50,6 +87,9 @@ fn redact_paths(value: &mut serde_json::Value, workspace: &str) {
                 // Embedded path (e.g., diagnostic messages containing quoted absolute paths):
                 // replace all occurrences so snapshots are stable across checkout locations.
                 *s = s.replace(workspace, "[ROOT]");
+            }
+            if s.contains(".pnpm/") {
+                *s = redact_pnpm_versions(s);
             }
         }
         serde_json::Value::Array(arr) => {
@@ -126,4 +166,31 @@ fn snapshot_panda() {
 fn snapshot_rdt_compat() {
     let value = snapshot_fixture("rdt-compat");
     insta::assert_json_snapshot!(value);
+}
+
+// ── Redaction unit tests ──────────────────────────────────────────────────────
+
+#[test]
+fn pnpm_version_redaction_covers_scoped_peer_and_repeated_segments() {
+    // Scoped package: the version starts at the LAST `@`, not the `@types` one.
+    assert_eq!(
+        redact_pnpm_versions("[ROOT]/node_modules/.pnpm/@types+react@19.3.0/node_modules/@types/react/index.d.ts"),
+        "[ROOT]/node_modules/.pnpm/@types+react@[VERSION]/node_modules/@types/react/index.d.ts"
+    );
+    // Peer-suffixed segment: the whole version-and-peers span is one redaction.
+    assert_eq!(
+        redact_pnpm_versions(
+            "[ROOT]/node_modules/.pnpm/react-dom@19.3.0_react@19.3.0/node_modules/react-dom/index.d.ts"
+        ),
+        "[ROOT]/node_modules/.pnpm/react-dom@[VERSION]/node_modules/react-dom/index.d.ts"
+    );
+    // Nested store paths: every `.pnpm/` segment is redacted, not just the first.
+    assert_eq!(
+        redact_pnpm_versions(".pnpm/a@1.0.0/node_modules/.pnpm/b@2.0.0/node_modules/b.d.ts"),
+        ".pnpm/a@[VERSION]/node_modules/.pnpm/b@[VERSION]/node_modules/b.d.ts"
+    );
+    // A path with no store segment is returned byte-for-byte.
+    assert_eq!(redact_pnpm_versions("[ROOT]/fixtures/radix/button.tsx"), "[ROOT]/fixtures/radix/button.tsx");
+    // A versionless segment (`@` only as the scope marker) is left alone.
+    assert_eq!(redact_pnpm_versions(".pnpm/@scope+pkg/node_modules/x.d.ts"), ".pnpm/@scope+pkg/node_modules/x.d.ts");
 }

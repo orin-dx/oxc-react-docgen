@@ -35,10 +35,12 @@ After every part lands: run the full verification suite (`cargo test --workspace
 ### Task 1: `DiagnosticCode::InternalPanic` variant
 
 **Files:**
+
 - Modify: `crates/core/src/types/diagnostic.rs:57-78`
 - Test: inline `#[cfg(test)]` module in the same file (matches `io_read_error_reports_the_path_and_underlying_error` directly above)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[test]
 fn internal_panic_code_serializes_as_screaming_snake_case() {
@@ -56,11 +58,10 @@ fn internal_panic_code_serializes_as_screaming_snake_case() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core internal_panic_code_serializes_as_screaming_snake_case -- --nocapture`
-Expected: FAIL with a compile error — `no variant named InternalPanic found for enum DiagnosticCode`.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core internal_panic_code_serializes_as_screaming_snake_case -- --nocapture` Expected: FAIL with a compile error — `no variant named InternalPanic found for enum DiagnosticCode`.
 
 - [ ] **Step 3: Write minimal implementation**
+
 ```rust
     /// TypeScript syntax error reported by the parser.
     ParseError,
@@ -69,13 +70,13 @@ Expected: FAIL with a compile error — `no variant named InternalPanic found fo
     /// operation — always a bug, filed with the panic's own message.
     InternalPanic,
 ```
+
 (Appended as the last variant of the existing `DiagnosticCode` enum at `crates/core/src/types/diagnostic.rs:78`, right after `ParseError`.)
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core internal_panic_code_serializes_as_screaming_snake_case -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core internal_panic_code_serializes_as_screaming_snake_case -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/types/diagnostic.rs
 git commit -m "feat(diagnostic): add InternalPanic code for caught panics"
@@ -84,11 +85,13 @@ git commit -m "feat(diagnostic): add InternalPanic code for caught panics"
 ### Task 2: `panic_guard::contain_panic` module
 
 **Files:**
+
 - Create: `crates/core/src/panic_guard.rs`
 - Modify: `crates/core/src/lib.rs:3-12` (register the module — `pub`, not `pub(crate)`, because `crates/binding` needs to call it directly from across the crate boundary; the mechanism doc's `pub(crate)` sketch didn't anticipate that NAPI call sites live in a separate crate)
 - Test: inline `#[cfg(test)]` module in `panic_guard.rs`
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -119,13 +122,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core panic_guard:: -- --nocapture`
-Expected: FAIL with a compile error — `panic_guard` module (and `contain_panic`) doesn't exist yet.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core panic_guard:: -- --nocapture` Expected: FAIL with a compile error — `panic_guard` module (and `contain_panic`) doesn't exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
 `crates/core/src/panic_guard.rs`:
+
 ```rust
 //! Single sanctioned panic-containment boundary (see ADR 0005).
 //!
@@ -176,19 +178,20 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 ```
 
 `crates/core/src/lib.rs` — add the module declaration next to the other `pub mod` entries:
+
 ```rust
 pub mod pipeline;
 pub mod plugin;
 pub mod panic_guard;
 pub mod react_types;
 ```
+
 (inserted alphabetically-adjacent to `plugin`/`react_types` at `crates/core/src/lib.rs:7-9`)
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core panic_guard:: -- --nocapture`
-Expected: PASS (3 tests)
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core panic_guard:: -- --nocapture` Expected: PASS (3 tests)
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/panic_guard.rs crates/core/src/lib.rs
 git commit -m "feat(core): add contain_panic, the single panic-containment boundary"
@@ -197,12 +200,14 @@ git commit -m "feat(core): add contain_panic, the single panic-containment bound
 ### Task 3: Wrap the rayon parse-phase closure (`pipeline/mod.rs` Phase 2)
 
 **Files:**
+
 - Modify: `crates/core/src/pipeline/mod.rs:259-279`
 - Test: inline `#[cfg(test)]` module in the same file (`crates/core/src/pipeline/mod.rs:490+`, matches this file's existing `TempDir`-based fixture style)
 
 - [ ] **Step 1: Write the failing test**
 
 Depends on a test-only panicking plugin hooked into `on_file_extracted`, since that's the only way to inject a real panic into the parse phase without modifying non-test code. Add this to the existing `#[cfg(test)] mod tests` block in `pipeline/mod.rs`:
+
 ```rust
     #[test]
     fn a_panic_during_parse_phase_degrades_to_a_diagnostic_not_a_crash() {
@@ -244,13 +249,12 @@ Depends on a test-only panicking plugin hooked into `on_file_extracted`, since t
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core a_panic_during_parse_phase_degrades_to_a_diagnostic_not_a_crash -- --nocapture`
-Expected: FAIL — the test thread itself panics and aborts the test binary (no containment exists yet on this path; `on_file_extracted` runs inside the Phase 3 merge loop today, uncontained).
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core a_panic_during_parse_phase_degrades_to_a_diagnostic_not_a_crash -- --nocapture` Expected: FAIL — the test thread itself panics and aborts the test binary (no containment exists yet on this path; `on_file_extracted` runs inside the Phase 3 merge loop today, uncontained).
 
 - [ ] **Step 3: Write minimal implementation**
 
 Replace the Phase 2 `.map()` body at `crates/core/src/pipeline/mod.rs:259-279`:
+
 ```rust
     // Phase 2: Parallel parse with rayon — check DTS cache for .d.ts files.
     let source_data_vec: Vec<(Utf8PathBuf, SourceData, Option<Diagnostic>)> = src_files
@@ -281,10 +285,13 @@ Replace the Phase 2 `.map()` body at `crates/core/src/pipeline/mod.rs:259-279`:
 ```
 
 Since the panic in this task's test actually happens in `run_on_file_extracted` (Phase 3, not Phase 2's parse closure itself), also wrap that call — this is the same mechanism, and both need to land together for the test to pass. At `crates/core/src/pipeline/mod.rs:293`:
+
 ```rust
         options.plugins.run_on_file_extracted(&path, &mut data);
 ```
+
 becomes (this line's full containment — including tagging with the plugin's name — lands properly in Task 5; for now, wrap the whole call here so this test passes without waiting on Task 5's `PluginRegistry` API change):
+
 ```rust
         if let Err(diag) =
             crate::panic_guard::contain_panic(&format!("on_file_extracted:{path}"), || {
@@ -295,11 +302,10 @@ becomes (this line's full containment — including tagging with the plugin's na
         }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core a_panic_during_parse_phase_degrades_to_a_diagnostic_not_a_crash -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core a_panic_during_parse_phase_degrades_to_a_diagnostic_not_a_crash -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/pipeline/mod.rs
 git commit -m "fix(pipeline): contain panics in the parse-phase rayon batch"
@@ -308,12 +314,14 @@ git commit -m "fix(pipeline): contain panics in the parse-phase rayon batch"
 ### Task 4: Wrap the rayon resolve-phase closure (`pipeline/mod.rs` Phase 4)
 
 **Files:**
+
 - Modify: `crates/core/src/pipeline/mod.rs:356-357`
 - Test: inline `#[cfg(test)]` module in the same file
 
 - [ ] **Step 1: Write the failing test**
 
 `resolve_component` itself can't be made to panic without editing non-test resolver code, so exercise the boundary via a panicking `on_component_resolved` plugin hook instead — same shape as Task 3's test, but for Phase 4/5's `run_on_component_resolved` call at `mod.rs:385`.
+
 ```rust
     #[test]
     fn a_panic_during_component_resolved_hook_degrades_to_a_diagnostic_not_a_crash() {
@@ -357,13 +365,12 @@ git commit -m "fix(pipeline): contain panics in the parse-phase rayon batch"
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core a_panic_during_component_resolved_hook_degrades_to_a_diagnostic_not_a_crash -- --nocapture`
-Expected: FAIL — test thread panics and aborts (no containment on `run_on_component_resolved` yet).
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core a_panic_during_component_resolved_hook_degrades_to_a_diagnostic_not_a_crash -- --nocapture` Expected: FAIL — test thread panics and aborts (no containment on `run_on_component_resolved` yet).
 
 - [ ] **Step 3: Write minimal implementation**
 
 Wrap the resolve-phase `.map()` at `crates/core/src/pipeline/mod.rs:356-357`:
+
 ```rust
     let ctx = Arc::new(ResolutionContext::new(global.clone(), options));
     let results: Vec<(ComponentEntry, Vec<Diagnostic>)> = mappings
@@ -390,6 +397,7 @@ Wrap the resolve-phase `.map()` at `crates/core/src/pipeline/mod.rs:356-357`:
 ```
 
 And wrap the `run_on_component_resolved` call at `crates/core/src/pipeline/mod.rs:385` (same pattern as Task 3's Phase 3 fix, applied to Phase 5):
+
 ```rust
         let mut entry = entry;
         if let Err(diag) = crate::panic_guard::contain_panic(
@@ -402,11 +410,10 @@ And wrap the `run_on_component_resolved` call at `crates/core/src/pipeline/mod.r
         diagnostics.extend(diags);
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core a_panic_during_component_resolved_hook_degrades_to_a_diagnostic_not_a_crash -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core a_panic_during_component_resolved_hook_degrades_to_a_diagnostic_not_a_crash -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/pipeline/mod.rs
 git commit -m "fix(pipeline): contain panics in the resolve-phase rayon batch"
@@ -415,6 +422,7 @@ git commit -m "fix(pipeline): contain panics in the resolve-phase rayon batch"
 ### Task 5: Per-plugin-call containment in `PluginRegistry`
 
 **Files:**
+
 - Modify: `crates/core/src/plugin.rs:47-57`
 - Modify: `crates/core/src/pipeline/mod.rs:293,385` (replace Task 3/4's inline wraps now that `PluginRegistry` reports its own diagnostics per-plugin)
 - Test: inline `#[cfg(test)]` module in `crates/core/src/plugin.rs`
@@ -422,6 +430,7 @@ git commit -m "fix(pipeline): contain panics in the resolve-phase rayon batch"
 - [ ] **Step 1: Write the failing test**
 
 Note: `run_on_file_extracted`/`run_on_component_resolved` currently return `()`; this test calls them expecting `Vec<Diagnostic>`, so it won't compile until Step 3 lands — that's the "fails" state.
+
 ```rust
     #[test]
     fn a_panicking_plugin_is_contained_and_tagged_with_its_name_others_still_run() {
@@ -469,13 +478,12 @@ Note: `run_on_file_extracted`/`run_on_component_resolved` currently return `()`;
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core a_panicking_plugin_is_contained_and_tagged_with_its_name_others_still_run -- --nocapture`
-Expected: FAIL with a compile error — `run_on_component_resolved` returns `()`, not `Vec<Diagnostic>`.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core a_panicking_plugin_is_contained_and_tagged_with_its_name_others_still_run -- --nocapture` Expected: FAIL with a compile error — `run_on_component_resolved` returns `()`, not `Vec<Diagnostic>`.
 
 - [ ] **Step 3: Write minimal implementation**
 
 `crates/core/src/plugin.rs:47-57`:
+
 ```rust
     pub fn run_on_file_extracted(&self, file_path: &camino::Utf8Path, data: &mut SourceData) -> Vec<crate::types::Diagnostic> {
         let mut diagnostics = Vec::new();
@@ -501,10 +509,13 @@ Expected: FAIL with a compile error — `run_on_component_resolved` returns `()`
 ```
 
 Update the two call sites this supersedes back in `pipeline/mod.rs`, replacing Task 3's Phase 3 wrap (`:293`):
+
 ```rust
         diagnostics.extend(options.plugins.run_on_file_extracted(&path, &mut data));
 ```
+
 and Task 4's Phase 5 wrap (`:385`):
+
 ```rust
         let mut entry = entry;
         diagnostics.extend(options.plugins.run_on_component_resolved(&mut entry));
@@ -512,11 +523,10 @@ and Task 4's Phase 5 wrap (`:385`):
         diagnostics.extend(diags);
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core -- --nocapture` (full crate — this touches two files' call sites, so also re-run Task 3/4's tests: `a_panic_during_parse_phase_degrades_to_a_diagnostic_not_a_crash`, `a_panic_during_component_resolved_hook_degrades_to_a_diagnostic_not_a_crash`)
-Expected: PASS, all plugin/pipeline panic-containment tests green
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core -- --nocapture` (full crate — this touches two files' call sites, so also re-run Task 3/4's tests: `a_panic_during_parse_phase_degrades_to_a_diagnostic_not_a_crash`, `a_panic_during_component_resolved_hook_degrades_to_a_diagnostic_not_a_crash`) Expected: PASS, all plugin/pipeline panic-containment tests green
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/plugin.rs crates/core/src/pipeline/mod.rs
 git commit -m "fix(plugin): isolate panics per-plugin-call, tagged with the plugin's name"
@@ -525,6 +535,7 @@ git commit -m "fix(plugin): isolate panics per-plugin-call, tagged with the plug
 ### Task 6: Panic-contain the five NAPI entry points
 
 **Files:**
+
 - Modify: `crates/binding/src/lib.rs:118-127` (`extract_all`)
 - Modify: `crates/binding/src/lib.rs:132-138` (`create_session`)
 - Modify: `crates/binding/src/lib.rs:143-166` (`extract_file_incremental`)
@@ -535,6 +546,7 @@ git commit -m "fix(plugin): isolate panics per-plugin-call, tagged with the plug
 - [ ] **Step 1: Write the failing test**
 
 `crates/binding` can't practically trigger a real panic inside `WatchSession::new`/`extract` without editing non-test core code, so this proves the one thing this task actually adds: `panic_guard::contain_panic` is `pub` and reachable across the crate boundary these five entry points need to call it from.
+
 ```rust
     #[test]
     fn contain_panic_is_reachable_from_the_binding_crate() {
@@ -545,13 +557,12 @@ git commit -m "fix(plugin): isolate panics per-plugin-call, tagged with the plug
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-binding contain_panic_is_reachable_from_the_binding_crate -- --nocapture`
-Expected: FAIL with a compile error — `panic_guard` isn't a public module of `oxc-react-docgen-core` yet (Task 2 declared it `pub mod`, but confirm; if Task 2 already used `pub mod`, this instead fails because `crates/binding/Cargo.toml`/imports haven't been touched — no, `oxc-react-docgen-core` is already a path dependency, so the only reason this fails is if `panic_guard` were still `pub(crate)`. Given Task 2 makes it `pub mod`, this step should actually already compile — treat this as a regression/contract test locking that visibility in, and skip to Step 4 if Task 2 already landed.)
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-binding contain_panic_is_reachable_from_the_binding_crate -- --nocapture` Expected: FAIL with a compile error — `panic_guard` isn't a public module of `oxc-react-docgen-core` yet (Task 2 declared it `pub mod`, but confirm; if Task 2 already used `pub mod`, this instead fails because `crates/binding/Cargo.toml`/imports haven't been touched — no, `oxc-react-docgen-core` is already a path dependency, so the only reason this fails is if `panic_guard` were still `pub(crate)`. Given Task 2 makes it `pub mod`, this step should actually already compile — treat this as a regression/contract test locking that visibility in, and skip to Step 4 if Task 2 already landed.)
 
 - [ ] **Step 3: Write minimal implementation**
 
 `extract_all` (`crates/binding/src/lib.rs:118-127`):
+
 ```rust
 #[napi]
 pub async fn extract_all(options: JsExtractOptions) -> napi::Result<String> {
@@ -571,6 +582,7 @@ pub async fn extract_all(options: JsExtractOptions) -> napi::Result<String> {
 ```
 
 `create_session` (`crates/binding/src/lib.rs:132-138`):
+
 ```rust
 #[napi]
 pub fn create_session(options: JsExtractOptions) -> napi::Result<u32> {
@@ -588,6 +600,7 @@ pub fn create_session(options: JsExtractOptions) -> napi::Result<u32> {
 ```
 
 `extract_file_incremental` (`crates/binding/src/lib.rs:143-166`) — only the `spawn_blocking` body changes:
+
 ```rust
     tokio::task::spawn_blocking(move || {
         match oxc_react_docgen_core::panic_guard::contain_panic("extract_file_incremental", move || {
@@ -604,6 +617,7 @@ pub fn create_session(options: JsExtractOptions) -> napi::Result<u32> {
 ```
 
 `initialize_session` (`crates/binding/src/lib.rs:171-189`) — only the `spawn_blocking` body changes:
+
 ```rust
     tokio::task::spawn_blocking(move || {
         match oxc_react_docgen_core::panic_guard::contain_panic("initialize_session", move || {
@@ -620,6 +634,7 @@ pub fn create_session(options: JsExtractOptions) -> napi::Result<u32> {
 ```
 
 `close_session` (`crates/binding/src/lib.rs:192-195`):
+
 ```rust
 #[napi]
 pub fn close_session(session_id: u32) {
@@ -629,11 +644,10 @@ pub fn close_session(session_id: u32) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-binding -- --nocapture`
-Expected: PASS (including the pre-existing `unset_fields_match_pipeline_options_defaults` and JSON-error tests, unaffected by this change)
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-binding -- --nocapture` Expected: PASS (including the pre-existing `unset_fields_match_pipeline_options_defaults` and JSON-error tests, unaffected by this change)
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/binding/src/lib.rs
 git commit -m "fix(binding): contain panics at all five NAPI entry points"
@@ -642,10 +656,12 @@ git commit -m "fix(binding): contain panics at all five NAPI entry points"
 ### Task 7: Fix `watch.rs`'s poisonable init-lock `.expect(...)`
 
 **Files:**
+
 - Modify: `crates/core/src/pipeline/watch.rs:93`
 - Test: inline `#[cfg(test)]` module in the same file (`crates/core/src/pipeline/watch.rs:220+`, matches this file's existing `WatchSession` fixture style)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
     #[test]
     fn initialize_recovers_from_a_poisoned_lock_instead_of_panicking() {
@@ -667,23 +683,22 @@ git commit -m "fix(binding): contain panics at all five NAPI entry points"
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core initialize_recovers_from_a_poisoned_lock_instead_of_panicking -- --nocapture`
-Expected: FAIL — `session.initialize()`'s `.expect("init lock poisoned")` panics on the poisoned lock, aborting the test.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core initialize_recovers_from_a_poisoned_lock_instead_of_panicking -- --nocapture` Expected: FAIL — `session.initialize()`'s `.expect("init lock poisoned")` panics on the poisoned lock, aborting the test.
 
 - [ ] **Step 3: Write minimal implementation**
 
 `crates/core/src/pipeline/watch.rs:93`, inside `initialize()`:
+
 ```rust
         let mut guard = self.initialized.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 ```
+
 (replaces `let mut guard = self.initialized.lock().expect("init lock poisoned");`)
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core initialize_recovers_from_a_poisoned_lock_instead_of_panicking -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core initialize_recovers_from_a_poisoned_lock_instead_of_panicking -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/pipeline/watch.rs
 git commit -m "fix(watch): recover from a poisoned init lock instead of panicking"
@@ -692,20 +707,18 @@ git commit -m "fix(watch): recover from a poisoned init lock instead of panickin
 ### Task 8: Write ADR 0005 and document the rule in `crates/core/CLAUDE.md`
 
 **Files:**
+
 - Create: `docs/adr/0005-panic-containment-boundary.md`
 - Modify: `crates/core/CLAUDE.md` (append a short "Panics" section)
 
-- [ ] **Step 1: Verify the ADR doesn't exist yet**
-Run: `ls docs/adr/0005-panic-containment-boundary.md`
-Expected: FAIL — `No such file or directory`
+- [ ] **Step 1: Verify the ADR doesn't exist yet** Run: `ls docs/adr/0005-panic-containment-boundary.md` Expected: FAIL — `No such file or directory`
 
-- [ ] **Step 2: (same check, listing the directory for context)**
-Run: `ls docs/adr/`
-Expected: `0000-template.md 0001-... 0002-... 0003-... 0004-... README.md` — confirms `0005` is the next free number.
+- [ ] **Step 2: (same check, listing the directory for context)** Run: `ls docs/adr/` Expected: `0000-template.md 0001-... 0002-... 0003-... 0004-... README.md` — confirms `0005` is the next free number.
 
 - [ ] **Step 3: Write the ADR and CLAUDE.md addition**
 
 `docs/adr/0005-panic-containment-boundary.md`:
+
 ```markdown
 # 0005. Contain panics at a single, per-item boundary
 
@@ -713,58 +726,37 @@ Expected: `0000-template.md 0001-... 0002-... 0003-... 0004-... README.md` — c
 
 ## Context
 
-No existing ADR covers panic/unwind policy. Panic safety today is an
-accident of `tokio::spawn_blocking`'s `JoinError`, inconsistent across NAPI
-entry points, plugin hooks, and rayon batches — `create_session`/
-`close_session` didn't even get that accidental protection, and
-`watch.rs`'s `std::sync::Mutex` could poison permanently as a direct
-consequence. Picking the wrong granularity later, once call sites depend on
-it, is expensive to fix retroactively.
+No existing ADR covers panic/unwind policy. Panic safety today is an accident of `tokio::spawn_blocking`'s `JoinError`, inconsistent across NAPI entry points, plugin hooks, and rayon batches — `create_session`/ `close_session` didn't even get that accidental protection, and `watch.rs`'s `std::sync::Mutex` could poison permanently as a direct consequence. Picking the wrong granularity later, once call sites depend on it, is expensive to fix retroactively.
 
 ## Decision
 
-Panics reachable from a rayon `.map()`, a `DocgenPlugin` hook, or a NAPI
-entry point are contained at per-file / per-plugin-call / per-entry-point
-granularity through one sanctioned helper, `panic_guard::contain_panic`,
-converting the payload into a `Diagnostic` (or `napi::Error`) instead of
-aborting a batch, killing the whole pipeline, or poisoning a session lock.
+Panics reachable from a rayon `.map()`, a `DocgenPlugin` hook, or a NAPI entry point are contained at per-file / per-plugin-call / per-entry-point granularity through one sanctioned helper, `panic_guard::contain_panic`, converting the payload into a `Diagnostic` (or `napi::Error`) instead of aborting a batch, killing the whole pipeline, or poisoning a session lock.
 
 ## Consequences
 
-- One bad file, plugin, or session call degrades to a diagnostic instead of
-  taking down everything sharing its batch, pipeline, or session.
-- Every future concurrent, plugin, or FFI entry point has one obvious place
-  to route through, instead of re-deriving the answer.
-- `watch.rs`'s poisoned-mutex trap is now much less likely, since nothing
-  panics while the init lock is held — and `.expect(...)` was replaced with
-  `.unwrap_or_else(|p| p.into_inner())` as defense in depth for whatever
-  still slips through.
-- `contain_panic` is `pub`, not `pub(crate)`, because `crates/binding`'s
-  five NAPI entry points need to call it across the crate boundary — a
-  slightly wider surface than a pure-internal helper, accepted because the
-  alternative (duplicating the containment logic in `crates/binding`) is
-  exactly the kind of drift this ADR exists to prevent.
+- One bad file, plugin, or session call degrades to a diagnostic instead of taking down everything sharing its batch, pipeline, or session.
+- Every future concurrent, plugin, or FFI entry point has one obvious place to route through, instead of re-deriving the answer.
+- `watch.rs`'s poisoned-mutex trap is now much less likely, since nothing panics while the init lock is held — and `.expect(...)` was replaced with `.unwrap_or_else(|p| p.into_inner())` as defense in depth for whatever still slips through.
+- `contain_panic` is `pub`, not `pub(crate)`, because `crates/binding`'s five NAPI entry points need to call it across the crate boundary — a slightly wider surface than a pure-internal helper, accepted because the alternative (duplicating the containment logic in `crates/binding`) is exactly the kind of drift this ADR exists to prevent.
 ```
 
 `crates/core/CLAUDE.md` — append after the "## Resolver" section:
+
 ```markdown
 ## Panics
 
-Every panic reachable from a rayon `.map()`, a `DocgenPlugin` hook, or a
-NAPI entry point must cross `panic_guard::contain_panic` — see ADR 0005.
-Never add a new concurrent or FFI-facing entry point without routing it
-through this helper first.
+Every panic reachable from a rayon `.map()`, a `DocgenPlugin` hook, or a NAPI entry point must cross `panic_guard::contain_panic` — see ADR 0005. Never add a new concurrent or FFI-facing entry point without routing it through this helper first.
 ```
 
-- [ ] **Step 4: Verify**
-Run: `ls docs/adr/0005-panic-containment-boundary.md && grep -q "Panics" crates/core/CLAUDE.md && echo OK`
-Expected: `OK`
+- [ ] **Step 4: Verify** Run: `ls docs/adr/0005-panic-containment-boundary.md && grep -q "Panics" crates/core/CLAUDE.md && echo OK` Expected: `OK`
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add docs/adr/0005-panic-containment-boundary.md crates/core/CLAUDE.md
 git commit -m "docs(adr): accept 0005, contain panics at a single boundary"
 ```
+
 ---
 
 ## Part B: Resolver give-up constructors + precedence fix (P0-1)
@@ -772,6 +764,7 @@ git commit -m "docs(adr): accept 0005, contain panics at a single boundary"
 ### Task 1: `ResolvedChain::give_up` — cycle-detected path stops silently degrading
 
 **Files:**
+
 - Modify: `crates/core/src/resolver/mod.rs:345-395` (the `ResolvedChain` struct + `impl` block)
 - Modify: `crates/core/src/resolver/chain.rs:39-41,108,120,191`
 - Modify: `crates/core/src/resolver/alias.rs:106,116,168,178,291,380`
@@ -779,6 +772,7 @@ git commit -m "docs(adr): accept 0005, contain panics at a single boundary"
 - Test: inline `#[cfg(test)] mod tests` in `crates/core/src/resolver/mod.rs` (existing convention — `empty_ctx()`/`resolve_type()` helpers already live there)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 // crates/core/src/resolver/mod.rs, inside `mod tests`
 
@@ -842,13 +836,12 @@ fn test_self_referential_extends_emits_diagnostic_instead_of_silent_default() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core test_self_referential_extends_emits_diagnostic_instead_of_silent_default -- --nocapture`
-Expected: FAIL — `resolve_component` returns diagnostics with no "circular" message, because `chain.rs:40` returns `ResolvedChain::default()` on the cycle hit without pushing anything.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core test_self_referential_extends_emits_diagnostic_instead_of_silent_default -- --nocapture` Expected: FAIL — `resolve_component` returns diagnostics with no "circular" message, because `chain.rs:40` returns `ResolvedChain::default()` on the cycle hit without pushing anything.
 
 - [ ] **Step 3: Write minimal implementation**
 
 In `crates/core/src/resolver/mod.rs`, replace the `ResolvedChain` struct/impl:
+
 ```rust
 /// Result of resolving a props chain (including extends).
 struct ResolvedChain {
@@ -927,9 +920,11 @@ impl ResolvedChain {
     }
 }
 ```
+
 (Note: `#[derive(Default)]` is removed from the struct — `empty()` replaces it.)
 
 In `crates/core/src/resolver/chain.rs`, replace the cycle-detected branch (lines 39-41):
+
 ```rust
     let visit_key: CompactString = format!("{}:{}<{}>", consuming_file, type_name, type_args.join(",")).into();
     if !state.visited.insert(visit_key) {
@@ -951,14 +946,18 @@ In `crates/core/src/resolver/chain.rs`, replace the cycle-detected branch (lines
         );
     }
 ```
+
 And fix the two now-invalid `..Default::default()` accumulator sites in the same file:
+
 - Line 108: `KnownPatternResult::Props(props) => ResolvedChain { props, ..Default::default() },` → `KnownPatternResult::Props(props) => ResolvedChain { props, ..ResolvedChain::empty() },`
 - Line 120: `ResolvedChain { inheritance: vec![layer], ..Default::default() }` → `ResolvedChain { inheritance: vec![layer], ..ResolvedChain::empty() }`
 - Line 191: `let mut chain = ResolvedChain::default();` → `let mut chain = ResolvedChain::empty();`
 
 In `crates/core/src/resolver/alias.rs`, replace each bare-default accumulator site:
+
 - Line 106: `let mut chain = ResolvedChain::default();` → `let mut chain = ResolvedChain::empty();`
 - **Line 116 `[corrected]`: this is one of the 3 confirmed genuine silent-give-up sites, not an accumulator — it needs a diagnostic, not just a rename.** A `LiteralUnion` used directly as a props base is malformed usage, and this path currently gives up with zero trace, unlike the parallel diagnosed path at `alias.rs:234-253` which pushes a "cannot be used as a component's props base" diagnostic for other non-object-like types. Fix: match that existing diagnostic's shape and route through `give_up`:
+
 ```rust
 CollectedTypeAlias::LiteralUnion { members, .. } => {
     let diag = Diagnostic {
@@ -978,7 +977,9 @@ CollectedTypeAlias::LiteralUnion { members, .. } => {
     ResolvedChain::give_up(members.join(" | "), Some(diag), state)
 }
 ```
+
 (Adjust the exact match pattern/field names to what `CollectedTypeAlias::LiteralUnion`'s real variant shape is — read the actual definition in `types/collected.rs` before writing this arm; the message text should mirror whatever wording `alias.rs:234-253`'s existing diagnostic actually uses, for consistency.) Add a dedicated regression test alongside the cycle-detected test in Step 1, asserting a diagnostic is now emitted for a props type that resolves to a bare literal union (e.g. `type Props = 'a' | 'b' | 'c'` used directly as a component's props type).
+
 - Line 168: `let mut chain = ResolvedChain::default();` → `let mut chain = ResolvedChain::empty();`
 - Line 178: `let mut chain = ResolvedChain::default();` → `let mut chain = ResolvedChain::empty();`
 - Line 291: `let mut chain = ResolvedChain::default();` → `let mut chain = ResolvedChain::empty();`
@@ -986,11 +987,10 @@ CollectedTypeAlias::LiteralUnion { members, .. } => {
 
 In `crates/core/src/resolver/extends.rs`, line 65: `return (ResolvedChain::default(), Some(layer));` → `return (ResolvedChain::empty(), Some(layer));`
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core test_self_referential_extends_emits_diagnostic_instead_of_silent_default -- --nocapture` then `cargo test -p oxc-react-docgen-core`
-Expected: PASS, full suite green (the `empty()`-substitution sites are pure renames with identical behavior, so existing snapshot/unit tests act as the regression net for them).
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core test_self_referential_extends_emits_diagnostic_instead_of_silent_default -- --nocapture` then `cargo test -p oxc-react-docgen-core` Expected: PASS, full suite green (the `empty()`-substitution sites are pure renames with identical behavior, so existing snapshot/unit tests act as the regression net for them).
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/resolver/mod.rs crates/core/src/resolver/chain.rs crates/core/src/resolver/alias.rs crates/core/src/resolver/extends.rs
 git commit -m "fix(resolver): emit a diagnostic on self-referential extends instead of silently defaulting"
@@ -1001,6 +1001,7 @@ git commit -m "fix(resolver): emit a diagnostic on self-referential extends inst
 ### Task 2: `OpaqueDetail` — make `PropType::Opaque` unconstructible except through a give-up constructor
 
 **Files:**
+
 - Modify: `crates/core/src/types/output.rs:1-8` (imports), `:140-207` (`PropType` enum — `Opaque` variant), `:275` (`raw_string`), `:294-397` (`to_tagged_value`), `:399-537` (`from_tagged_value`)
 - Modify: `crates/core/src/toon.rs:143`, `:243` (test)
 - Modify: `crates/core/src/known.rs:102-111,126-129,133-136,193-196,221-224,228-231` (construction sites), `:387-389,423-425,432-434,525-527,535-537` (test assertions — exact line numbers will shift slightly as edits land; match by content)
@@ -1009,6 +1010,7 @@ git commit -m "fix(resolver): emit a diagnostic on self-referential extends inst
 **Note on file placement:** the root-cause doc proposed a new `resolver/opaque.rs`, but `PropType` is defined in `crates/core/src/types/output.rs` and `crates/core/CLAUDE.md`'s module layout has `resolver/` depend on `types/`, never the reverse — putting `OpaqueDetail` in `resolver/` would make `types/output.rs` import from `resolver/`, an architecture violation. `OpaqueDetail` is defined in `types/output.rs` itself instead; `ResolveState`/`Diagnostic` (needed by `give_up`) already live in `types/`, so no new cross-module dependency is introduced.
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 // crates/core/src/types/output.rs, inside a new `#[cfg(test)] mod tests` block
 // (add this module at the end of the file if one doesn't already exist there)
@@ -1050,22 +1052,23 @@ mod opaque_detail_tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core opaque_detail_tests -- --nocapture`
-Expected: FAIL to compile — `OpaqueDetail` doesn't exist yet.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core opaque_detail_tests -- --nocapture` Expected: FAIL to compile — `OpaqueDetail` doesn't exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
 In `crates/core/src/types/output.rs`, add the import and change the `Opaque` variant (replace the struct-style variant at line ~202):
+
 ```rust
 use super::global::ResolveState; // add alongside the existing `use super::diagnostic::Diagnostic;`
 ```
+
 ```rust
     // ── Unresolvable — graceful degradation
     Opaque(OpaqueDetail),
 ```
 
 Add the `OpaqueDetail` type right after the `PropType` enum closes (after line 207, before `impl PropType`):
+
 ```rust
 /// The private payload of `PropType::Opaque`. Fields are unreachable from
 /// outside this module — the only ways to build one are `give_up` (pushes
@@ -1111,12 +1114,15 @@ impl OpaqueDetail {
 ```
 
 Update `raw_string` (line 275):
+
 ```rust
             PropType::Opaque(detail) => detail.raw.clone(),
 ```
+
 (same-module access — direct field access is fine inside `output.rs`.)
 
 Update `to_tagged_value`'s `Opaque` arm (lines 366-395) — only the match pattern changes, body is unchanged since it's still inside `output.rs`:
+
 ```rust
             PropType::Opaque(OpaqueDetail { raw, reason }) => {
                 let reason_val = match reason {
@@ -1151,6 +1157,7 @@ Update `to_tagged_value`'s `Opaque` arm (lines 366-395) — only the match patte
 ```
 
 Update `from_tagged_value`'s `"opaque"` arm (line ~529) and fallback arm (line ~531-534) — construction via `OpaqueDetail::new` since deserialization isn't a "give up" decision (the diagnostic already fired when the value was first produced):
+
 ```rust
             "opaque" => {
                 let raw = v["raw"].as_str().unwrap_or("").to_owned();
@@ -1181,17 +1188,21 @@ Update `from_tagged_value`'s `"opaque"` arm (line ~529) and fallback arm (line ~
 ```
 
 In `crates/core/src/toon.rs`:
+
 - Line 143: `PropType::Opaque { raw, .. } => format!("opaque({raw})"),` → `PropType::Opaque(detail) => format!("opaque({})", detail.raw()),`
 - Line 243 (test): `assert_eq!(format_type_compact(&PropType::Opaque { raw: "CustomType".into(), reason: crate::types::output::OpaqueReason::ConditionalType }), "opaque(CustomType)");` → `assert_eq!(format_type_compact(&crate::types::output::OpaqueDetail::new("CustomType", crate::types::output::OpaqueReason::ConditionalType)), "opaque(CustomType)");`
 
 In `crates/core/src/known.rs`, convert every direct-construction site to `OpaqueDetail::new(...)` (these callers push their own diagnostic separately via `push_known_opaque_diagnostic` — see that function's doc comment, unchanged behavior):
+
 - Lines 100-106:
+
 ```rust
                 Some(KnownPatternResult::Type(PropType::Union(vec![
                     base.clone(),
                     OpaqueDetail::new("/* module augmentation */", OpaqueReason::ModuleAugmentation),
                 ])))
 ```
+
 - Lines 108-111: `Some(KnownPatternResult::Type(OpaqueDetail::new("OverridableStringUnion", OpaqueReason::ModuleAugmentation)))`
 - Lines 126-129: `"ThemingProps" => Some(KnownPatternResult::Type(OpaqueDetail::new("ThemingProps", OpaqueReason::RuntimeDependent { function_name: "chakra".into() }))),`
 - Lines 133-136: `"StylesApiProps" => Some(KnownPatternResult::Type(OpaqueDetail::new("StylesApiProps", OpaqueReason::RuntimeDependent { function_name: "createStyles".into() }))),`
@@ -1200,13 +1211,16 @@ In `crates/core/src/known.rs`, convert every direct-construction site to `Opaque
 - Lines 228-231: `_ => Some(KnownPatternResult::Type(OpaqueDetail::new("VariantProps<...>", OpaqueReason::RuntimeDependent { function_name: "cva".into() }))),`
 
 And its test assertions (`PropType::Opaque { reason: X, .. }` → guard on `.reason()`):
+
 ```rust
         assert!(matches!(
             result,
             Some(KnownPatternResult::Type(PropType::Opaque(ref d))) if d.reason() == &OpaqueReason::ModuleAugmentation
         ));
 ```
+
 (same substitution — `d.reason() == &OpaqueReason::RuntimeDependent { .. }` doesn't compile as a `==`, so use `matches!(d.reason(), OpaqueReason::RuntimeDependent { .. })`) at every occurrence: `test_overridable_string_union_no_args`, `test_theming_props_is_runtime_dependent`, `test_styles_api_props_is_runtime_dependent`, `test_recipe_variant_props_no_args_is_opaque`, `test_variant_props_named_not_in_global_is_opaque`. Concretely, e.g.:
+
 ```rust
     #[test]
     fn test_theming_props_is_runtime_dependent() {
@@ -1218,9 +1232,11 @@ And its test assertions (`PropType::Opaque { reason: X, .. }` → guard on `.rea
         ));
     }
 ```
+
 Apply the same shape to the other four assertions listed above (swap the reason pattern per test: `OpaqueReason::ModuleAugmentation` for `test_overridable_string_union_no_args`, `OpaqueReason::RuntimeDependent { .. }` for the rest).
 
-Finally, resolve every other now-non-compiling `PropType::Opaque { .. }` pattern/construction across the crate that Task 2 doesn't otherwise cover, so the crate builds (these are handled for real in Tasks 3-8, but the crate must compile at the end of *this* task too — replace them mechanically with the equivalent tuple-variant/accessor form for now; Tasks 3-8 then route the resolver-internal ones through `give_up` for real):
+Finally, resolve every other now-non-compiling `PropType::Opaque { .. }` pattern/construction across the crate that Task 2 doesn't otherwise cover, so the crate builds (these are handled for real in Tasks 3-8, but the crate must compile at the end of _this_ task too — replace them mechanically with the equivalent tuple-variant/accessor form for now; Tasks 3-8 then route the resolver-internal ones through `give_up` for real):
+
 - `crates/core/src/resolver/collected.rs:25,80,104,108,151` → `OpaqueDetail::new(...)` (temporary; Task 3 upgrades to `give_up`)
 - `crates/core/src/resolver/func.rs:61` → `OpaqueDetail::new(raw, OpaqueReason::MultiParamFunction)` (temporary; Task 4 upgrades to `give_up`)
 - `crates/core/src/resolver/primitives.rs:181` → `OpaqueDetail::new(expression.clone(), OpaqueReason::IndexedAccess { expression })` (temporary; Task 5 upgrades to `give_up`)
@@ -1229,11 +1245,10 @@ Finally, resolve every other now-non-compiling `PropType::Opaque { .. }` pattern
 - `crates/core/src/resolver/chain.rs:123` — same pattern-match fix: `if let PropType::Opaque(detail) = &pt { push_known_opaque_diagnostic(&mut state.diagnostics, detail.reason(), type_name_bare, consuming_file); }`
 - `crates/core/src/resolver/mod.rs` test assertions at lines 1924, 1972, 1989, 2028, 2132, 2180, 2194, 2205, 2218 — e.g. `matches!(result, PropType::Opaque { reason: OpaqueReason::TemplateLiteral { .. }, .. })` → `matches!(&result, PropType::Opaque(d) if matches!(d.reason(), OpaqueReason::TemplateLiteral { .. }))`, and the bare `matches!(result, PropType::Opaque { .. })` occurrences → `matches!(result, PropType::Opaque(_))`.
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core opaque_detail_tests -- --nocapture` then `cargo test -p oxc-react-docgen-core` and `cargo clippy -p oxc-react-docgen-core -- -D warnings`
-Expected: PASS — new tests pass, full suite compiles and passes (no behavior change yet, only the constructor surface).
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core opaque_detail_tests -- --nocapture` then `cargo test -p oxc-react-docgen-core` and `cargo clippy -p oxc-react-docgen-core -- -D warnings` Expected: PASS — new tests pass, full suite compiles and passes (no behavior change yet, only the constructor surface).
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/types/output.rs crates/core/src/toon.rs crates/core/src/known.rs crates/core/src/resolver/collected.rs crates/core/src/resolver/func.rs crates/core/src/resolver/primitives.rs crates/core/src/resolver/template.rs crates/core/src/resolver/named.rs crates/core/src/resolver/chain.rs crates/core/src/resolver/mod.rs
 git commit -m "refactor(resolver): make PropType::Opaque unconstructible outside OpaqueDetail::new/give_up"
@@ -1244,11 +1259,13 @@ git commit -m "refactor(resolver): make PropType::Opaque unconstructible outside
 ### Task 3: Route `collected.rs`'s and `named.rs`'s depth-exceeded Opaque sites through `give_up`
 
 **Files:**
+
 - Modify: `crates/core/src/resolver/collected.rs:22-26,78-81,101-109,150-152,157-174`
 - Modify: `crates/core/src/resolver/named.rs:27-30`
 - Test: inline in `crates/core/src/resolver/mod.rs`'s existing `mod tests` — `test_conditional_type_opaque_emits_diagnostic`, `test_mapped_type_opaque_emits_diagnostic`, `test_keyof_opaque_emits_diagnostic`, `test_complex_raw_fallback_opaque_emits_diagnostic` (Test 21 block, already present) already assert a diagnostic is emitted for every one of these sites — this task is a pure refactor behind that existing net, plus one new test for the previously-untested depth-exceeded path.
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 // crates/core/src/resolver/mod.rs, inside `mod tests`, near Test 21
 
@@ -1273,13 +1290,12 @@ fn test_depth_exceeded_opaque_carries_the_max_depth_diagnostic() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core test_depth_exceeded_opaque_carries_the_max_depth_diagnostic -- --nocapture`
-Expected: This one actually already passes today (the depth-exceeded branch already pushes `max_depth_diagnostic` before constructing the literal) — confirm it passes *before* touching the code, so it's a locked-in regression guard rather than a new-behavior test; the real "fails first" signal for this task is Step 3 not compiling until `push_opaque_diagnostic` is rewired to return a `Diagnostic` for `give_up` to consume — run `cargo build -p oxc-react-docgen-core` after making the diagnostic-builder change below and confirm the four `Test 21` assertions and this new test all still pass once the give_up wiring lands.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core test_depth_exceeded_opaque_carries_the_max_depth_diagnostic -- --nocapture` Expected: This one actually already passes today (the depth-exceeded branch already pushes `max_depth_diagnostic` before constructing the literal) — confirm it passes _before_ touching the code, so it's a locked-in regression guard rather than a new-behavior test; the real "fails first" signal for this task is Step 3 not compiling until `push_opaque_diagnostic` is rewired to return a `Diagnostic` for `give_up` to consume — run `cargo build -p oxc-react-docgen-core` after making the diagnostic-builder change below and confirm the four `Test 21` assertions and this new test all still pass once the give_up wiring lands.
 
 - [ ] **Step 3: Write minimal implementation**
 
 In `crates/core/src/resolver/collected.rs`, change `push_opaque_diagnostic` from a side-effecting `fn(&mut ResolveState, ...)` into a pure `Diagnostic` builder, and route every Opaque site through `OpaqueDetail::give_up`:
+
 ```rust
 pub fn resolve_collected_type(
     ct: &CollectedType,
@@ -1383,6 +1399,7 @@ fn opaque_diagnostic(what: &str, ct: &CollectedType, file: &Utf8Path) -> Diagnos
 ```
 
 In `crates/core/src/resolver/named.rs`, replace lines 27-30:
+
 ```rust
     if depth > MAX_DEPTH {
         let diag = super::max_depth_diagnostic(&format!("named type '{}'", name), consuming_file);
@@ -1390,11 +1407,10 @@ In `crates/core/src/resolver/named.rs`, replace lines 27-30:
     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core test_depth_exceeded_opaque_carries_the_max_depth_diagnostic test_conditional_type_opaque_emits_diagnostic test_mapped_type_opaque_emits_diagnostic test_keyof_opaque_emits_diagnostic test_complex_raw_fallback_opaque_emits_diagnostic -- --nocapture` then `cargo test -p oxc-react-docgen-core`
-Expected: PASS, full suite green.
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core test_depth_exceeded_opaque_carries_the_max_depth_diagnostic test_conditional_type_opaque_emits_diagnostic test_mapped_type_opaque_emits_diagnostic test_keyof_opaque_emits_diagnostic test_complex_raw_fallback_opaque_emits_diagnostic -- --nocapture` then `cargo test -p oxc-react-docgen-core` Expected: PASS, full suite green.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/resolver/collected.rs crates/core/src/resolver/named.rs crates/core/src/resolver/mod.rs
 git commit -m "refactor(resolver): route collected.rs/named.rs Opaque sites through OpaqueDetail::give_up"
@@ -1405,10 +1421,12 @@ git commit -m "refactor(resolver): route collected.rs/named.rs Opaque sites thro
 ### Task 4: Fix `func.rs`'s multi-param function type — missing diagnostic
 
 **Files:**
+
 - Modify: `crates/core/src/resolver/func.rs:54-62`
 - Test: inline in `crates/core/src/resolver/mod.rs`'s existing `mod tests` (next to Test 16, the existing multi-param-function test that only checks the `PropType`, never the diagnostic)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 // crates/core/src/resolver/mod.rs, inside `mod tests`, right after the
 // existing multi-param-function `PropType` test (Test 16)
@@ -1438,13 +1456,12 @@ fn test_multi_param_function_opaque_emits_diagnostic() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core test_multi_param_function_opaque_emits_diagnostic -- --nocapture`
-Expected: FAIL — `state.diagnostics` is empty, since `func.rs:61` currently constructs `PropType::Opaque` with no diagnostic push anywhere on this path.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core test_multi_param_function_opaque_emits_diagnostic -- --nocapture` Expected: FAIL — `state.diagnostics` is empty, since `func.rs:61` currently constructs `PropType::Opaque` with no diagnostic push anywhere on this path.
 
 - [ ] **Step 3: Write minimal implementation**
 
 In `crates/core/src/resolver/func.rs`, replace the final block of `resolve_function_type` (lines 54-61):
+
 ```rust
     // Multi-param function — describe as opaque.
     let param_strs: Vec<String> = params.iter().map(|p| p.to_raw_string()).collect();
@@ -1468,11 +1485,10 @@ In `crates/core/src/resolver/func.rs`, replace the final block of `resolve_funct
     OpaqueDetail::give_up(state, raw, OpaqueReason::MultiParamFunction, diagnostic)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core test_multi_param_function_opaque_emits_diagnostic -- --nocapture` then `cargo test -p oxc-react-docgen-core`
-Expected: PASS, full suite green.
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core test_multi_param_function_opaque_emits_diagnostic -- --nocapture` then `cargo test -p oxc-react-docgen-core` Expected: PASS, full suite green.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/resolver/func.rs crates/core/src/resolver/mod.rs
 git commit -m "fix(resolver): emit a diagnostic for multi-param function types instead of degrading silently"
@@ -1483,10 +1499,12 @@ git commit -m "fix(resolver): emit a diagnostic for multi-param function types i
 ### Task 5: Route `primitives.rs`'s indexed-access Opaque site through `give_up`
 
 **Files:**
+
 - Modify: `crates/core/src/resolver/primitives.rs:171-182`
 - Test: inline `#[cfg(test)]` module in `crates/core/src/resolver/primitives.rs` (new — this file currently has no test module of its own; `resolver/mod.rs` covers it indirectly)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 // crates/core/src/resolver/primitives.rs, appended at the end of the file
 
@@ -1517,13 +1535,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core indexed_access_on_an_unresolvable_object_gives_up_with_a_diagnostic -- --nocapture`
-Expected: PASS already today (the existing code already pushes the diagnostic before constructing the literal) — the point of this task is the refactor, not new behavior; run `cargo build -p oxc-react-docgen-core` first to confirm it currently compiles against the pre-Task-2 struct-literal form is gone (Task 2 already converted this site to `OpaqueDetail::new` without the diagnostic tie), then apply Step 3 and re-run this test to lock the diagnostic back in through `give_up`.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core indexed_access_on_an_unresolvable_object_gives_up_with_a_diagnostic -- --nocapture` Expected: PASS already today (the existing code already pushes the diagnostic before constructing the literal) — the point of this task is the refactor, not new behavior; run `cargo build -p oxc-react-docgen-core` first to confirm it currently compiles against the pre-Task-2 struct-literal form is gone (Task 2 already converted this site to `OpaqueDetail::new` without the diagnostic tie), then apply Step 3 and re-run this test to lock the diagnostic back in through `give_up`.
 
 - [ ] **Step 3: Write minimal implementation**
 
 In `crates/core/src/resolver/primitives.rs`, replace the final block of `resolve_indexed_access` (lines 171-182):
+
 ```rust
     let expression = format!("{}[{}]", obj.to_raw_string(), key.to_raw_string());
     let diagnostic = Diagnostic {
@@ -1538,11 +1555,10 @@ In `crates/core/src/resolver/primitives.rs`, replace the final block of `resolve
     OpaqueDetail::give_up(state, expression.clone(), OpaqueReason::IndexedAccess { expression }, diagnostic)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core indexed_access_on_an_unresolvable_object_gives_up_with_a_diagnostic -- --nocapture` then `cargo test -p oxc-react-docgen-core`
-Expected: PASS, full suite green.
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core indexed_access_on_an_unresolvable_object_gives_up_with_a_diagnostic -- --nocapture` then `cargo test -p oxc-react-docgen-core` Expected: PASS, full suite green.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/resolver/primitives.rs
 git commit -m "refactor(resolver): route primitives.rs's indexed-access Opaque site through OpaqueDetail::give_up"
@@ -1553,10 +1569,12 @@ git commit -m "refactor(resolver): route primitives.rs's indexed-access Opaque s
 ### Task 6: Route `template.rs`'s template-literal Opaque site through `give_up`
 
 **Files:**
+
 - Modify: `crates/core/src/resolver/template.rs:17-40`
 - Test: inline in `crates/core/src/resolver/mod.rs`'s existing `mod tests` — `test_template_literal_opaque_on_unknown_type` (Test 12) already exists; update its `matches!` to the new tuple form and add a diagnostic assertion.
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 // crates/core/src/resolver/mod.rs, replace the body of the existing
 // `test_template_literal_opaque_on_unknown_type` (Test 12)
@@ -1588,13 +1606,12 @@ fn test_template_literal_opaque_on_unknown_type() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core test_template_literal_opaque_on_unknown_type -- --nocapture`
-Expected: FAIL to compile — `resolve_template_literal` isn't `pub(super)`-reachable in that exact shape from the test yet if the call signature changed; more importantly this locks in the diagnostic-code assertion which the pre-refactor `OpaqueDetail::new`-only version (from Task 2) doesn't satisfy through `give_up` — confirm the diagnostic assertion specifically fails before Step 3 by temporarily checking `state.diagnostics` is non-empty regardless (it already will be, since Task 2 didn't remove the manual push at template.rs's call site — the actual gap here is purely the tuple-variant match syntax). Treat this test primarily as the compile-and-shape regression gate for the refactor.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core test_template_literal_opaque_on_unknown_type -- --nocapture` Expected: FAIL to compile — `resolve_template_literal` isn't `pub(super)`-reachable in that exact shape from the test yet if the call signature changed; more importantly this locks in the diagnostic-code assertion which the pre-refactor `OpaqueDetail::new`-only version (from Task 2) doesn't satisfy through `give_up` — confirm the diagnostic assertion specifically fails before Step 3 by temporarily checking `state.diagnostics` is non-empty regardless (it already will be, since Task 2 didn't remove the manual push at template.rs's call site — the actual gap here is purely the tuple-variant match syntax). Treat this test primarily as the compile-and-shape regression gate for the refactor.
 
 - [ ] **Step 3: Write minimal implementation**
 
 In `crates/core/src/resolver/template.rs`, replace lines 29-39:
+
 ```rust
     let raw = CollectedType::TemplateLiteral(parts.to_vec()).to_raw_string();
     let diagnostic = Diagnostic {
@@ -1609,11 +1626,10 @@ In `crates/core/src/resolver/template.rs`, replace lines 29-39:
     OpaqueDetail::give_up(state, raw.clone(), OpaqueReason::TemplateLiteral { expression: raw }, diagnostic)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core test_template_literal_opaque_on_unknown_type -- --nocapture` then `cargo test -p oxc-react-docgen-core`
-Expected: PASS, full suite green.
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core test_template_literal_opaque_on_unknown_type -- --nocapture` then `cargo test -p oxc-react-docgen-core` Expected: PASS, full suite green.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/resolver/template.rs crates/core/src/resolver/mod.rs
 git commit -m "refactor(resolver): route template.rs's Opaque site through OpaqueDetail::give_up"
@@ -1624,12 +1640,14 @@ git commit -m "refactor(resolver): route template.rs's Opaque site through Opaqu
 ### Task 7: Extract `resolve_source_defined_or_known` — shared source-before-known precedence
 
 **Files:**
+
 - Create: `crates/core/src/resolver/precedence.rs`
 - Modify: `crates/core/src/resolver/mod.rs:26-37` (add `mod precedence;`)
 - Modify: `crates/core/src/resolver/named.rs:38-90` (steps 2-5 rewired through the shared function — behavior-preserving, `named.rs` already has the correct order)
 - Test: inline `#[cfg(test)]` module in `crates/core/src/resolver/precedence.rs`
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 // crates/core/src/resolver/precedence.rs
 
@@ -1684,13 +1702,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core source_defined_interface_wins_over_a_known_pattern_shortcut -- --nocapture`
-Expected: FAIL to compile — `resolve_source_defined_or_known`/`SourceOrKnownMatch` don't exist yet.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core source_defined_interface_wins_over_a_known_pattern_shortcut -- --nocapture` Expected: FAIL to compile — `resolve_source_defined_or_known`/`SourceOrKnownMatch` don't exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
 Create `crates/core/src/resolver/precedence.rs`:
+
 ```rust
 //! Shared "try the project's own source before falling back to known
 //! library-pattern shortcuts" resolution order.
@@ -1759,6 +1776,7 @@ pub(super) fn resolve_source_defined_or_known<'g>(
 ```
 
 In `crates/core/src/resolver/mod.rs`, add the module declaration alongside the others (line ~34):
+
 ```rust
 mod named;
 mod precedence;
@@ -1766,6 +1784,7 @@ mod primitives;
 ```
 
 In `crates/core/src/resolver/named.rs`, replace steps 2-5 (lines 38-90) to call the shared function — same order, same behavior, one call site instead of a hand-rolled sequence:
+
 ```rust
     // Resolve type arguments eagerly — needed for both source lookups and known patterns.
     let resolved_args: Vec<PropType> =
@@ -1804,13 +1823,13 @@ In `crates/core/src/resolver/named.rs`, replace steps 2-5 (lines 38-90) to call 
         None => {}
     }
 ```
+
 (The unchanged tail — steps 6, 6.5, 6.7, 7 — stays as-is; it already uses `canonical_file`/`canonical_name`, which are now sourced from the shared function's return instead of a local `resolve_to_canonical` call.)
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core source_defined_interface_wins_over_a_known_pattern_shortcut -- --nocapture` then `cargo test -p oxc-react-docgen-core`
-Expected: PASS, full suite green (including all of `named.rs`'s existing coverage — behavior is unchanged since `named.rs` already had this order).
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core source_defined_interface_wins_over_a_known_pattern_shortcut -- --nocapture` then `cargo test -p oxc-react-docgen-core` Expected: PASS, full suite green (including all of `named.rs`'s existing coverage — behavior is unchanged since `named.rs` already had this order).
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/resolver/precedence.rs crates/core/src/resolver/mod.rs crates/core/src/resolver/named.rs
 git commit -m "refactor(resolver): extract shared source-before-known-pattern precedence into resolver::precedence"
@@ -1821,10 +1840,12 @@ git commit -m "refactor(resolver): extract shared source-before-known-pattern pr
 ### Task 8: Fix P0-1 — `chain.rs`'s extends-clause path checked known patterns before source
 
 **Files:**
+
 - Modify: `crates/core/src/resolver/chain.rs:20-178` (`resolve_props_chain`)
 - Test: inline in `crates/core/src/resolver/mod.rs`'s existing `mod tests`
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 // crates/core/src/resolver/mod.rs, inside `mod tests`
 
@@ -1899,13 +1920,12 @@ fn test_extends_clause_prefers_project_defined_sx_props_over_known_shortcut() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core test_extends_clause_prefers_project_defined_sx_props_over_known_shortcut -- --nocapture`
-Expected: FAIL — `entry.props` does not contain `customSx`; `resolve_props_chain`'s Step 2 (known-pattern check) matches `"SxProps"` via `resolve_known` before Step 3-5 (canonical/alias/interface) ever run, so the project's own interface is never even looked up.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core test_extends_clause_prefers_project_defined_sx_props_over_known_shortcut -- --nocapture` Expected: FAIL — `entry.props` does not contain `customSx`; `resolve_props_chain`'s Step 2 (known-pattern check) matches `"SxProps"` via `resolve_known` before Step 3-5 (canonical/alias/interface) ever run, so the project's own interface is never even looked up.
 
 - [ ] **Step 3: Write minimal implementation**
 
 In `crates/core/src/resolver/chain.rs`, replace Step 2 through Step 6 (lines 92-178) so source resolution runs before the known-pattern check, via `resolve_source_defined_or_known`:
+
 ```rust
     // ── Step 2: Try the project's own source before a known-pattern shortcut ─
     // See `resolver::precedence` — the shared, single-source-of-truth order
@@ -1985,17 +2005,18 @@ In `crates/core/src/resolver/chain.rs`, replace Step 2 through Step 6 (lines 92-
     ResolvedChain::empty_with_compose(type_name.to_owned())
 }
 ```
+
 Steps 0.5 and 1 (lines 46-90, the inline-utility-in-extends-position and the ts-utility-type silent no-op) stay exactly as they are, unchanged, above this block — they still run first, before the new Step 2.
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core test_extends_clause_prefers_project_defined_sx_props_over_known_shortcut -- --nocapture` then `cargo test -p oxc-react-docgen-core` and `cargo clippy -p oxc-react-docgen-core -- -D warnings`
-Expected: PASS, full suite green — including `test_sx_props_known_pattern` (Test 4, still passes since a project with no source-defined `SxProps` still falls through to the known-pattern shortcut) and `test_known_opaque_result_emits_diagnostic_at_chain_level` (Test 20, still passes since `ThemingProps` has no source declaration in that fixture either).
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core test_extends_clause_prefers_project_defined_sx_props_over_known_shortcut -- --nocapture` then `cargo test -p oxc-react-docgen-core` and `cargo clippy -p oxc-react-docgen-core -- -D warnings` Expected: PASS, full suite green — including `test_sx_props_known_pattern` (Test 4, still passes since a project with no source-defined `SxProps` still falls through to the known-pattern shortcut) and `test_known_opaque_result_emits_diagnostic_at_chain_level` (Test 20, still passes since `ThemingProps` has no source declaration in that fixture either).
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/resolver/chain.rs
 git commit -m "fix(resolver): check source-defined types before known-pattern shortcuts in extends chain (P0-1)"
 ```
+
 ---
 
 ## Part C: Extractor diagnostic channel + depth-tracking
@@ -2005,10 +2026,12 @@ I have all the file details needed. Now writing the task group.
 ### Task 1: `DiagnosticCode::SkippedCandidate` variant
 
 **Files:**
+
 - Modify: `crates/core/src/types/diagnostic.rs:57-78`
 - Test: inline `#[cfg(test)]` module in the same file
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
     #[test]
     fn skipped_candidate_code_serializes_screaming_snake_case() {
@@ -2016,13 +2039,13 @@ I have all the file details needed. Now writing the task group.
         assert_eq!(json, "\"SKIPPED_CANDIDATE\"");
     }
 ```
+
 Add this inside the existing `mod tests` block in `crates/core/src/types/diagnostic.rs` (after `io_read_error_reports_the_path_and_underlying_error`). Add `use serde_json;` is unnecessary since `serde_json::to_string` can be called via the fully qualified path already available as a dev-dependency (used elsewhere in the crate's tests — confirm `serde_json` is already a dependency before writing this; it's the standard round-trip check pattern for this enum).
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core skipped_candidate_code_serializes_screaming_snake_case -- --nocapture`
-Expected: FAIL with `no variant named SkippedCandidate found for enum DiagnosticCode` (compile error)
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core skipped_candidate_code_serializes_screaming_snake_case -- --nocapture` Expected: FAIL with `no variant named SkippedCandidate found for enum DiagnosticCode` (compile error)
 
 - [ ] **Step 3: Write minimal implementation**
+
 ```rust
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2056,11 +2079,10 @@ pub enum DiagnosticCode {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core skipped_candidate_code_serializes_screaming_snake_case -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core skipped_candidate_code_serializes_screaming_snake_case -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/types/diagnostic.rs
 git commit -m "feat(types): add DiagnosticCode::SkippedCandidate"
@@ -2069,10 +2091,12 @@ git commit -m "feat(types): add DiagnosticCode::SkippedCandidate"
 ### Task 2: `record_skip` helper on `SourceDataCollector`
 
 **Files:**
+
 - Modify: `crates/core/src/extractor/mod.rs:9-24` (imports), `crates/core/src/extractor/mod.rs:202-224` (`impl<'src> SourceDataCollector<'src>` block, right after `fn new`)
 - Test: inline `#[cfg(test)]` module in the same file (`crates/core/src/extractor/mod.rs`, existing `mod tests` block)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
     #[test]
     fn record_skip_pushes_an_info_diagnostic_with_the_given_code() {
@@ -2089,21 +2113,23 @@ git commit -m "feat(types): add DiagnosticCode::SkippedCandidate"
         assert_eq!(diag.file.as_deref(), Some("/test/skip.tsx"));
     }
 ```
+
 Add inside the existing `mod tests` block. Note: `SourceDataCollector::new` is `fn new(path: &Utf8Path, source: &'src str, is_tsx: bool) -> Self` (private, but the test module is `mod tests` nested inside the same file via `use super::*`, so it's visible).
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core record_skip_pushes_an_info_diagnostic_with_the_given_code -- --nocapture`
-Expected: FAIL with `no method named record_skip found for struct SourceDataCollector` (compile error)
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core record_skip_pushes_an_info_diagnostic_with_the_given_code -- --nocapture` Expected: FAIL with `no method named record_skip found for struct SourceDataCollector` (compile error)
 
 - [ ] **Step 3: Write minimal implementation**
 
 Add `oxc_span::Span` to the existing `use oxc_ast_visit::Visit;` import block:
+
 ```rust
 use oxc_span::{SourceType, Span};
 ```
+
 (replacing the existing `use oxc_span::SourceType;` at line 15).
 
 Add the method to the `impl<'src> SourceDataCollector<'src>` block, directly after `fn new`:
+
 ```rust
     /// Record that a recognized-but-malformed AST shape was skipped — distinct
     /// from "wrong shape, not a candidate at all" (which stays silent). Used by
@@ -2124,11 +2150,10 @@ Add the method to the `impl<'src> SourceDataCollector<'src>` block, directly aft
     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core record_skip_pushes_an_info_diagnostic_with_the_given_code -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core record_skip_pushes_an_info_diagnostic_with_the_given_code -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/extractor/mod.rs
 git commit -m "feat(extractor): add record_skip diagnostic helper"
@@ -2137,10 +2162,12 @@ git commit -m "feat(extractor): add record_skip diagnostic helper"
 ### Task 3: Wire `record_skip` into `classify_type_alias`'s Omit/Pick/Partial/Required arms
 
 **Files:**
+
 - Modify: `crates/core/src/extractor/alias.rs:12-133`
 - Test: inline `#[cfg(test)]` module — this file has no existing test module, so add one at the bottom following the convention in `crates/core/src/extractor/mod.rs`'s `mod tests`
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -2175,9 +2202,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core malformed_omit_missing_second_arg_records_skipped_candidate -- --nocapture`
-Expected: FAIL — `data.diagnostics` is empty, assertion `data.diagnostics.iter().any(...)` fails
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core malformed_omit_missing_second_arg_records_skipped_candidate -- --nocapture` Expected: FAIL — `data.diagnostics` is empty, assertion `data.diagnostics.iter().any(...)` fails
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -2451,11 +2476,10 @@ impl<'src> SourceDataCollector<'src> {
 
 Note: I'm not 100% certain `TSTypeParameterInstantiation` (the type of `tp`) exposes a `.span` field directly usable as `tp.span` — verify by reading `tr.type_arguments`'s type definition in the currently-vendored `oxc_ast` crate before compiling; if it doesn't have `.span`, fall back to `tr.span` for that arm's diagnostic instead.
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core malformed_omit_missing_second_arg_records_skipped_candidate -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core malformed_omit_missing_second_arg_records_skipped_candidate -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/extractor/alias.rs
 git commit -m "feat(extractor): record SkippedCandidate diagnostics for malformed Omit/Pick/Partial/Required/Readonly"
@@ -2464,10 +2488,12 @@ git commit -m "feat(extractor): record SkippedCandidate diagnostics for malforme
 ### Task 4: Wire `record_skip` into `visit.rs`'s PascalCase-binding detector chain
 
 **Files:**
+
 - Modify: `crates/core/src/extractor/visit.rs:227-260` (`visit_variable_declaration`)
 - Test: inline `#[cfg(test)]` module in `crates/core/src/extractor/mod.rs` (matches this crate's convention — `visit.rs` has no test module of its own, and `mod.rs`'s existing tests already exercise `visit_variable_declaration` end-to-end via `parse_file`)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
     #[test]
     fn pascal_case_binding_with_no_matching_detector_records_skipped_candidate() {
@@ -2493,15 +2519,15 @@ git commit -m "feat(extractor): record SkippedCandidate diagnostics for malforme
         );
     }
 ```
+
 Add inside the existing `mod tests` block in `crates/core/src/extractor/mod.rs`.
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core pascal_case_binding_with_no_matching_detector_records_skipped_candidate -- --nocapture`
-Expected: FAIL — `data.diagnostics` has no `SkippedCandidate` entry
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core pascal_case_binding_with_no_matching_detector_records_skipped_candidate -- --nocapture` Expected: FAIL — `data.diagnostics` has no `SkippedCandidate` entry
 
 - [ ] **Step 3: Write minimal implementation**
 
 Current code at `visit.rs:236-247`:
+
 ```rust
             if self.is_tsx {
                 if let Some(name) = self.extract_pascal_name(declarator) {
@@ -2517,7 +2543,9 @@ Current code at `visit.rs:236-247`:
                 }
             }
 ```
+
 Change to:
+
 ```rust
             if self.is_tsx {
                 if let Some(name) = self.extract_pascal_name(declarator) {
@@ -2551,6 +2579,7 @@ Change to:
 This requires `try_rename_identifier_wrapped_component` to report whether it matched. Read its current signature in `crates/core/src/extractor/component.rs` before editing — if it currently returns `()`, change its return type to `bool` (`true` when it renamed/aliased something, `false` otherwise) and update its body's early-return paths accordingly, then fix its one other call site (this one, in `visit.rs`) to use the new return value as shown above. Do not guess its exact current match arms — read the real function body first since its `bool`-conversion depends on exactly which internal branches currently return early vs. fall through.
 
 Also add `DiagnosticCode` to the `use crate::types::{...}` import list in `visit.rs`:
+
 ```rust
 use crate::types::{
     CollectedInterface, ComponentMapping, DiagnosticCode, EnumEntry, EnumValue, ExtendsRef, ImportBinding,
@@ -2558,11 +2587,10 @@ use crate::types::{
 };
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core pascal_case_binding_with_no_matching_detector_records_skipped_candidate -- --nocapture`
-Expected: PASS. Also re-run the full extractor suite to confirm the `try_rename_identifier_wrapped_component` signature change didn't break its existing callers/tests: `cargo test -p oxc-react-docgen-core extractor:: -- --nocapture`
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core pascal_case_binding_with_no_matching_detector_records_skipped_candidate -- --nocapture` Expected: PASS. Also re-run the full extractor suite to confirm the `try_rename_identifier_wrapped_component` signature change didn't break its existing callers/tests: `cargo test -p oxc-react-docgen-core extractor:: -- --nocapture`
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/extractor/visit.rs crates/core/src/extractor/component.rs crates/core/src/extractor/mod.rs
 git commit -m "feat(extractor): record SkippedCandidate when a PascalCase binding matches no component pattern"
@@ -2571,10 +2599,12 @@ git commit -m "feat(extractor): record SkippedCandidate when a PascalCase bindin
 ### Task 5: Wire `record_skip` into `visit.rs`'s `visit_function` detector chain
 
 **Files:**
+
 - Modify: `crates/core/src/extractor/visit.rs:262-293`
 - Test: inline `#[cfg(test)]` module in `crates/core/src/extractor/mod.rs`
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
     #[test]
     fn pascal_case_function_declaration_with_untyped_first_param_records_skipped_candidate() {
@@ -2602,13 +2632,12 @@ git commit -m "feat(extractor): record SkippedCandidate when a PascalCase bindin
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core pascal_case_function_declaration_with_untyped_first_param_records_skipped_candidate -- --nocapture`
-Expected: FAIL — no `SkippedCandidate` diagnostic present
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core pascal_case_function_declaration_with_untyped_first_param_records_skipped_candidate -- --nocapture` Expected: FAIL — no `SkippedCandidate` diagnostic present
 
 - [ ] **Step 3: Write minimal implementation**
 
 Current code at `visit.rs:262-293`:
+
 ```rust
     fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
         // Pattern 4: `function Button(props: ButtonProps) { ... }`
@@ -2643,7 +2672,9 @@ Current code at `visit.rs:262-293`:
         walk::walk_function(self, func, flags);
     }
 ```
+
 Change to:
+
 ```rust
     fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
         // Pattern 4: `function Button(props: ButtonProps) { ... }`
@@ -2696,11 +2727,10 @@ Change to:
 
 Note: I'm not 100% certain `FormalParameter` (the type of `first_param`) exposes `.span` directly by that name in the currently-vendored `oxc_ast` — verify before compiling; if absent, use `oxc_span::GetSpan` on `first_param` (`first_param.span()`) instead, matching the pattern already used elsewhere in this crate (e.g. `mod.rs:465`).
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core pascal_case_function_declaration_with_untyped_first_param_records_skipped_candidate -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core pascal_case_function_declaration_with_untyped_first_param_records_skipped_candidate -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/extractor/visit.rs crates/core/src/extractor/mod.rs
 git commit -m "feat(extractor): record SkippedCandidate in visit_function's component-detector chain"
@@ -2709,12 +2739,14 @@ git commit -m "feat(extractor): record SkippedCandidate in visit_function's comp
 ### Task 6: Thread a depth counter through `ts_type_to_collected` and its recursive siblings
 
 **Files:**
+
 - Modify: `crates/core/src/extractor/mod.rs:34-40` (constants), `:299-566` (`extract_type_args`, `ts_type_to_collected`, `ts_tuple_element_to_collected`, `ts_signature_to_object_field`, `collect_property_signature`), `crates/core/src/extractor/alias.rs` (call sites of `ts_type_to_collected`/`collect_omit_keys`), `crates/core/src/extractor/interface.rs` and `crates/core/src/extractor/defaults.rs` if they call `ts_type_to_collected` directly (check before editing)
 - Test: inline `#[cfg(test)]` module in `crates/core/src/extractor/mod.rs`
 
 This is the largest task in the group — every recursive call site of `ts_type_to_collected` (and its mutually-recursive siblings `ts_tuple_element_to_collected`, `ts_signature_to_object_field`, `collect_property_signature`, `extract_type_args`) must pass a `depth: u8` through, mirroring the resolver's `depth: u8` / `MAX_DEPTH` convention in `resolver/collected.rs:16-26`. Before writing the implementation, run `grep -n "ts_type_to_collected\|ts_tuple_element_to_collected\|ts_signature_to_object_field\|extract_type_args(" crates/core/src/extractor/*.rs` to enumerate every current call site — the signature change touches all of them, and any missed one is a compile error, not a silent bug, so the compiler will catch omissions on Step 4.
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
     #[test]
     fn deeply_chained_conditional_types_hit_the_depth_guard_not_the_bracket_heuristic() {
@@ -2752,13 +2784,12 @@ This is the largest task in the group — every recursive call site of `ts_type_
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core deeply_chained_conditional_types_hit_the_depth_guard_not_the_bracket_heuristic -- --nocapture`
-Expected: FAIL — either a stack overflow (test process aborts) or, if the machine's stack tolerates 600 levels, the assertion on `MaxDepthExceeded` fails because no depth counter exists yet to emit it
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core deeply_chained_conditional_types_hit_the_depth_guard_not_the_bracket_heuristic -- --nocapture` Expected: FAIL — either a stack overflow (test process aborts) or, if the machine's stack tolerates 600 levels, the assertion on `MaxDepthExceeded` fails because no depth counter exists yet to emit it
 
 - [ ] **Step 3: Write minimal implementation**
 
 Add the constant near `MAX_SOURCE_NESTING_DEPTH`:
+
 ```rust
 /// Maximum AST recursion depth for `ts_type_to_collected` and its mutually
 /// recursive siblings. `max_bracket_nesting_depth` bounds raw-text bracket
@@ -2974,6 +3005,7 @@ Change `ts_type_to_collected` and its direct recursive siblings to thread `depth
 ```
 
 `extract_type_args` (line 299-307) calls `ts_type_to_collected` — update it to call the depth-aware entry point at depth 0 (it's not itself in the hot recursive path, called once per type-argument list):
+
 ```rust
     pub(super) fn extract_type_args<'a>(
         &mut self,
@@ -2987,6 +3019,7 @@ Change `ts_type_to_collected` and its direct recursive siblings to thread `depth
 ```
 
 `ts_signature_to_object_field` (line 514-566) and `collect_property_signature` (line 674-729) both call `ts_type_to_collected` on top-level signature bodies (not deeply nested within `ts_type_to_collected` itself) — leave their own signatures as `pub(super) fn ts_signature_to_object_field<'a>(&mut self, member: &TSSignature<'a>) -> Option<CollectedObjectField>` (unchanged, called from `TSType::TSTypeLiteral`'s arm above via the new `_at_depth` variant, so add a matching `ts_signature_to_object_field_at_depth` wrapper):
+
 ```rust
     pub(super) fn ts_signature_to_object_field<'a>(
         &mut self,
@@ -3053,15 +3086,15 @@ Change `ts_type_to_collected` and its direct recursive siblings to thread `depth
 
 Leave `collect_property_signature`, `classify_type_alias`, `collect_omit_keys`, `extract_type_name_from_type`, and every other call site outside `ts_type_to_collected`'s own recursion untouched — they call the public `ts_type_to_collected`/`ts_tuple_element_to_collected` wrappers (now depth-0 entry points) exactly as before, so no other file's call sites need to change. Confirm this with the `grep` from before Step 1 — any call site the grep turns up that isn't inside `ts_type_to_collected_at_depth`'s own match arms or the two wrapper functions above should be left calling the public, depth-0 wrapper unchanged.
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core deeply_chained_conditional_types_hit_the_depth_guard_not_the_bracket_heuristic -- --nocapture`
-Expected: PASS. If it still stack-overflows before hitting the guard, lower `MAX_TYPE_COLLECT_DEPTH` and/or increase the test's chained-conditional count proportionally, then re-run. Also run the full extractor + snapshot suite to confirm no regression from the depth-threading refactor: `cargo test -p oxc-react-docgen-core -- --nocapture` and `/snapshot` if any snapshot fixture's output changed.
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core deeply_chained_conditional_types_hit_the_depth_guard_not_the_bracket_heuristic -- --nocapture` Expected: PASS. If it still stack-overflows before hitting the guard, lower `MAX_TYPE_COLLECT_DEPTH` and/or increase the test's chained-conditional count proportionally, then re-run. Also run the full extractor + snapshot suite to confirm no regression from the depth-threading refactor: `cargo test -p oxc-react-docgen-core -- --nocapture` and `/snapshot` if any snapshot fixture's output changed.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/extractor/mod.rs
 git commit -m "feat(extractor): thread depth counter through ts_type_to_collected, guard against deep conditional-type chains"
 ```
+
 ---
 
 ## Part D: Pipeline discovery/merge fixes
@@ -3069,6 +3102,7 @@ git commit -m "feat(extractor): thread depth counter through ts_type_to_collecte
 ### Task 1: `discover_files` reports diagnostics for `ignore::Walk` errors instead of dropping them
 
 **Files:**
+
 - Modify: `crates/core/src/pipeline/discover.rs:1-56`
 - Modify: `crates/core/src/pipeline/mod.rs:251-253` (call site), `crates/core/src/pipeline/mod.rs:533-569` (existing tests using the old signature)
 - Test: inline `#[cfg(test)] mod tests` in `crates/core/src/pipeline/mod.rs` (existing convention — `discover_files` is re-exported via `use discover::{discover_files, should_skip};` at the top of `mod.rs` and all its current tests already live in that module, e.g. `test_discover_files` at line 533)
@@ -3114,9 +3148,7 @@ git commit -m "feat(extractor): thread depth counter through ts_type_to_collecte
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core test_discover_files_reports_diagnostic_for_permission_denied_subtree -- --nocapture`
-Expected: FAIL — compile error. `discover_files` currently returns `Vec<Utf8PathBuf>`, so `let (files, diagnostics) = discover_files(...)` mismatches types (`expected Vec<Utf8PathBuf>, found tuple`).
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core test_discover_files_reports_diagnostic_for_permission_denied_subtree -- --nocapture` Expected: FAIL — compile error. `discover_files` currently returns `Vec<Utf8PathBuf>`, so `let (files, diagnostics) = discover_files(...)` mismatches types (`expected Vec<Utf8PathBuf>, found tuple`).
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -3230,11 +3262,10 @@ And fix the two existing tests that call `discover_files` directly:
 
 (apply this same destructuring edit to both `test_discover_files` and `test_exclude_stories`).
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core test_discover_files_reports_diagnostic_for_permission_denied_subtree -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core test_discover_files_reports_diagnostic_for_permission_denied_subtree -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/pipeline/discover.rs crates/core/src/pipeline/mod.rs
 git commit -m "fix(pipeline): report ignore::Walk errors as diagnostics instead of dropping them"
@@ -3243,6 +3274,7 @@ git commit -m "fix(pipeline): report ignore::Walk errors as diagnostics instead 
 ### Task 2: `discover_files` reports a diagnostic for non-UTF8 filenames
 
 **Files:**
+
 - Modify: `crates/core/src/pipeline/discover.rs` (the `if let Ok(utf8) = Utf8PathBuf::from_path_buf(...)` block from Task 1)
 - Test: inline `#[cfg(test)] mod tests` in `crates/core/src/pipeline/mod.rs`
 
@@ -3282,9 +3314,7 @@ git commit -m "fix(pipeline): report ignore::Walk errors as diagnostics instead 
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core test_discover_files_reports_diagnostic_for_non_utf8_filename -- --nocapture`
-Expected: FAIL — compiles fine (Task 1 already returns the tuple), but `diagnostics.iter().any(|d| d.code == DiagnosticCode::IoError)` is `false`: the non-UTF8 branch currently has no `else`, so nothing is pushed.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core test_discover_files_reports_diagnostic_for_non_utf8_filename -- --nocapture` Expected: FAIL — compiles fine (Task 1 already returns the tuple), but `diagnostics.iter().any(|d| d.code == DiagnosticCode::IoError)` is `false`: the non-UTF8 branch currently has no `else`, so nothing is pushed.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -3313,11 +3343,10 @@ In `crates/core/src/pipeline/discover.rs`, change:
             }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core test_discover_files_reports_diagnostic_for_non_utf8_filename -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core test_discover_files_reports_diagnostic_for_non_utf8_filename -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/pipeline/discover.rs
 git commit -m "fix(pipeline): report a diagnostic for non-UTF8 filenames instead of dropping them"
@@ -3326,6 +3355,7 @@ git commit -m "fix(pipeline): report a diagnostic for non-UTF8 filenames instead
 ### Task 3: Empty `src_dirs` produces a diagnostic instead of a silent zero-file run
 
 **Files:**
+
 - Modify: `crates/core/src/pipeline/mod.rs:218-245`
 - Test: inline `#[cfg(test)] mod tests` in `crates/core/src/pipeline/mod.rs`
 
@@ -3367,9 +3397,7 @@ git commit -m "fix(pipeline): report a diagnostic for non-UTF8 filenames instead
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core test_extract_empty_src_dirs_produces_diagnostic -- --nocapture`
-Expected: FAIL — `.expect(...)` panics: `output.diagnostics` is empty because the current guard's `&&` short-circuit skips both branches when `src_dirs` is empty.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core test_extract_empty_src_dirs_produces_diagnostic -- --nocapture` Expected: FAIL — `.expect(...)` panics: `output.diagnostics` is empty because the current guard's `&&` short-circuit skips both branches when `src_dirs` is empty.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -3416,11 +3444,10 @@ In `crates/core/src/pipeline/mod.rs`, replace the Phase 0 guard:
     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core test_extract_empty_src_dirs_produces_diagnostic -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core test_extract_empty_src_dirs_produces_diagnostic -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/pipeline/mod.rs
 git commit -m "fix(pipeline): emit a diagnostic when src_dirs is explicitly empty"
@@ -3429,6 +3456,7 @@ git commit -m "fix(pipeline): emit a diagnostic when src_dirs is explicitly empt
 ### Task 4: `components.insert` collision (same key, different entry) emits a diagnostic
 
 **Files:**
+
 - Modify: `crates/core/src/pipeline/mod.rs:384-388`
 - Test: inline `#[cfg(test)] mod tests` in `crates/core/src/pipeline/mod.rs`
 
@@ -3476,9 +3504,7 @@ git commit -m "fix(pipeline): emit a diagnostic when src_dirs is explicitly empt
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core test_overlapping_src_dirs_causing_a_key_collision_emits_a_diagnostic -- --nocapture`
-Expected: FAIL — `.expect(...)` panics: `components.insert(key, entry)`'s return value is discarded, so no collision diagnostic is ever pushed even though the 3rd resolution silently overwrote the 2nd.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core test_overlapping_src_dirs_causing_a_key_collision_emits_a_diagnostic -- --nocapture` Expected: FAIL — `.expect(...)` panics: `components.insert(key, entry)`'s return value is discarded, so no collision diagnostic is ever pushed even though the 3rd resolution silently overwrote the 2nd.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -3518,15 +3544,15 @@ with:
         diagnostics.extend(diags);
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core test_overlapping_src_dirs_causing_a_key_collision_emits_a_diagnostic -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core test_overlapping_src_dirs_causing_a_key_collision_emits_a_diagnostic -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/pipeline/mod.rs
 git commit -m "fix(pipeline): emit a diagnostic on component-key insert collisions"
 ```
+
 ---
 
 ## Part E: Allocation caps + LSP scaffold hardening
@@ -3538,6 +3564,7 @@ Now writing the task group.
 ### Task 1: Cap template-literal Cartesian-product expansion
 
 **Files:**
+
 - Modify: `crates/core/src/resolver/template.rs:44-107`
 - Test: inline `#[cfg(test)] mod tests` in the same file (this crate's convention per `resolver/mod.rs:399`, `resolver/import.rs:22`, `resolver/react.rs:210` — `template.rs` currently has no test module, so this adds one)
 
@@ -3598,9 +3625,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core --lib resolver::template::tests -- --nocapture`
-Expected: FAIL — `test_try_expand_template_literal_returns_none_past_cap` fails because today's unbounded loop actually computes all 100,000 combinations and returns `Some(...)` instead of `None` (slow and non-degrading, not the capped behavior); `test_template_literal_expansion_caps_and_degrades_to_opaque` fails because `result` is a `PropType::LiteralUnion` with 100,000 members, not `Opaque`.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core --lib resolver::template::tests -- --nocapture` Expected: FAIL — `test_try_expand_template_literal_returns_none_past_cap` fails because today's unbounded loop actually computes all 100,000 combinations and returns `Some(...)` instead of `None` (slow and non-degrading, not the capped behavior); `test_template_literal_expansion_caps_and_degrades_to_opaque` fails because `result` is a `PropType::LiteralUnion` with 100,000 members, not `Opaque`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -3636,11 +3661,10 @@ const MAX_TEMPLATE_LITERAL_EXPANSIONS: usize = 4096;
 
 (insert the `const` above `try_expand_template_literal`'s doc comment at `template.rs:42`; replace the existing Cartesian-product loop at `template.rs:94-104` with the capped version above — `resolve_template_literal` at `template.rs:22-39` already handles `None` by emitting `PropType::Opaque { raw, reason: OpaqueReason::TemplateLiteral { .. } }` plus a `TemplateLiteralOpaque` diagnostic, so no change is needed there.)
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core --lib resolver::template::tests -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core --lib resolver::template::tests -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/resolver/template.rs
 git commit -m "fix(resolver): cap template-literal Cartesian expansion to prevent unbounded allocation"
@@ -3649,6 +3673,7 @@ git commit -m "fix(resolver): cap template-literal Cartesian expansion to preven
 ### Task 2: Cap LSP `Content-Length` before allocating the receive buffer
 
 **Files:**
+
 - Modify: `crates/cli/src/commands/lsp.rs:1-93`
 - Test: inline `#[cfg(test)] mod tests` in the same file (new module — `lsp.rs` has no tests today; `crates/cli/tests/` holds `trycmd`-style CLI integration tests per `crates/cli/tests/cmd/`, not the right place for a pure-function unit test)
 
@@ -3673,9 +3698,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture`
-Expected: FAIL with a compile error — `check_content_length` and `MAX_LSP_MESSAGE_BYTES` don't exist yet.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture` Expected: FAIL with a compile error — `check_content_length` and `MAX_LSP_MESSAGE_BYTES` don't exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -3711,11 +3734,10 @@ Wire it in at the existing allocation site (`lsp.rs:32-36`):
         let mut buf = vec![0u8; len];
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/cli/src/commands/lsp.rs
 git commit -m "fix(lsp): reject oversized Content-Length before allocating the receive buffer"
@@ -3724,6 +3746,7 @@ git commit -m "fix(lsp): reject oversized Content-Length before allocating the r
 ### Task 3: Stop advertising `hoverProvider: true` with no hover handler
 
 **Files:**
+
 - Modify: `crates/cli/src/commands/lsp.rs` (the `initialize` arm, originally at lines 48-66)
 - Test: same inline `mod tests` from Task 2
 
@@ -3744,9 +3767,7 @@ Note: chose "stop advertising the capability" per the assignment's recommendatio
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture`
-Expected: FAIL with a compile error — `initialize_result` doesn't exist yet (the capabilities object is currently inlined directly in the `"initialize"` match arm with `hoverProvider: true`).
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture` Expected: FAIL with a compile error — `initialize_result` doesn't exist yet (the capabilities object is currently inlined directly in the `"initialize"` match arm with `hoverProvider: true`).
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -3788,11 +3809,10 @@ Update the `"initialize"` arm to use it:
                 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/cli/src/commands/lsp.rs
 git commit -m "fix(lsp): stop advertising hoverProvider with no hover handler behind it"
@@ -3801,6 +3821,7 @@ git commit -m "fix(lsp): stop advertising hoverProvider with no hover handler be
 ### Task 4: Resync (don't silently `continue`) past a malformed/headerless frame
 
 **Files:**
+
 - Modify: `crates/cli/src/commands/lsp.rs` (the header-reading loop, originally at lines 15-34)
 - Test: same inline `mod tests` from Task 2/3
 
@@ -3835,9 +3856,7 @@ Depends on Task 2 (`check_content_length`) and Task 3 (`initialize_result`) havi
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture`
-Expected: FAIL with a compile error — `read_content_length` doesn't exist yet (the header-reading loop is still inlined directly in `cmd_lsp`'s outer `loop`).
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture` Expected: FAIL with a compile error — `read_content_length` doesn't exist yet (the header-reading loop is still inlined directly in `cmd_lsp`'s outer `loop`).
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -3899,15 +3918,15 @@ Replace `cmd_lsp`'s inner header loop and the `content_length` handling (`lsp.rs
 
 (`check_content_length` is Task 2's function; the rest of the loop body — `read_exact`, the `serde_json::from_slice` match, the method dispatch — is unchanged.)
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-cli --lib commands::lsp::tests -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/cli/src/commands/lsp.rs
 git commit -m "fix(lsp): close the connection on a malformed header block instead of desyncing the stream"
 ```
+
 ---
 
 ## Part F: TOON truncation + schema drift + CLI exit-code contract
@@ -3917,10 +3936,12 @@ Now I have everything needed. Here are the tasks.
 ### Task 1: TOON — shared truncate-with-indicator helper for Union/Intersection
 
 **Files:**
+
 - Modify: `crates/core/src/toon.rs:95-145` (the `format_type_compact` function and its `LiteralUnion`/`Union`/`Intersection` branches)
 - Test: inline `#[cfg(test)] mod tests` in `crates/core/src/toon.rs` (existing convention — see `test_format_type_compact_complex_types`)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[test]
 fn test_format_type_compact_union_truncates_with_indicator() {
@@ -3950,12 +3971,10 @@ fn test_format_type_compact_intersection_truncates_with_indicator() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core test_format_type_compact_union_truncates_with_indicator -- --nocapture`
-Expected: FAIL — current `Union` branch does `members.iter().take(4).map(format_type_compact).collect::<Vec<_>>().join("|")` with no `"...(+N)"` marker, so `out` is `"\"a\"|\"b\"|\"c\"|\"d\""` and does not contain `"...(+2)"`.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core test_format_type_compact_union_truncates_with_indicator -- --nocapture` Expected: FAIL — current `Union` branch does `members.iter().take(4).map(format_type_compact).collect::<Vec<_>>().join("|")` with no `"...(+N)"` marker, so `out` is `"\"a\"|\"b\"|\"c\"|\"d\""` and does not contain `"...(+2)"`.
 
-- [ ] **Step 3: Write minimal implementation**
-Add the helper (built from the existing `LiteralUnion` logic) and route all three branches through it:
+- [ ] **Step 3: Write minimal implementation** Add the helper (built from the existing `LiteralUnion` logic) and route all three branches through it:
+
 ```rust
 /// Truncate `parts` to `limit` items, appending a `"...(+N)"` marker for the
 /// remainder instead of silently dropping them. Shared by every
@@ -3969,10 +3988,13 @@ fn truncate_with_indicator(parts: &[String], limit: usize, sep: &str) -> String 
     shown.join(sep)
 }
 ```
+
 Replace the three branches inside `format_type_compact`:
+
 ```rust
         PropType::LiteralUnion { members, .. } => truncate_with_indicator(members, 6, "|"),
 ```
+
 ```rust
         PropType::Union(members) => {
             let formatted: Vec<String> = members.iter().map(format_type_compact).collect();
@@ -3984,11 +4006,10 @@ Replace the three branches inside `format_type_compact`:
         }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core toon:: -- --nocapture`
-Expected: PASS — all `toon.rs` tests pass, including the two new ones and the pre-existing `test_format_type_compact_complex_types` (which asserts `"a|b|c|d|e|f|...(+2)"` for an 8-member `LiteralUnion`, still exact-matching through the new helper).
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core toon:: -- --nocapture` Expected: PASS — all `toon.rs` tests pass, including the two new ones and the pre-existing `test_format_type_compact_complex_types` (which asserts `"a|b|c|d|e|f|...(+2)"` for an 8-member `LiteralUnion`, still exact-matching through the new helper).
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/toon.rs
 git commit -m "fix(toon): show truncation indicator on Union/Intersection like LiteralUnion already does"
@@ -3999,10 +4020,12 @@ git commit -m "fix(toon): show truncation indicator on Union/Intersection like L
 **Note on approach:** Considered deriving `schemars::JsonSchema` (root-cause-analysis.md's proposed ADR-0006) but rejected it here: `schemars` isn't a dependency anywhere in the workspace today (`grep schemars Cargo.toml` — nothing), and doing it properly means hand-writing `JsonSchema` impls for `PropType` (16 variants, ~250 lines in its existing hand-written `Serialize` impl alone), `CollectedType`, and `OpaqueReason`, mirroring ADR-0002's precedent. That's a multi-day addition, not a bite-sized fix, and this cluster is grouped with two unrelated small fixes. Taking the floor-level option instead: a drift-detection test that serializes a real `ExtractionOutput` and checks every field name it produces shows up somewhere in `schema.rs`'s hand-written schema. No ADR — root-cause-analysis.md's own text says ADR only applies if option (a) is taken.
 
 **Files:**
+
 - Modify: `crates/cli/src/commands/schema.rs` (whole file — extract the `json!()` literal out of `cmd_schema` into a `schema_value()` function, then fix the drift the new test finds)
 - Test: inline `#[cfg(test)] mod tests` in `crates/cli/src/commands/schema.rs` (existing convention — the file already has one test there)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[test]
 fn schema_covers_every_field_name_the_real_output_serializes() {
@@ -4102,12 +4125,10 @@ fn schema_covers_every_field_name_the_real_output_serializes() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-cli schema_covers_every_field_name -- --nocapture`
-Expected: FAIL — first on compilation, because `schema_value()` doesn't exist yet (`cmd_schema` builds the `json!()` literal inline and returns `Result<()>`); after that function is extracted it still FAILs the assertion, reporting real fields missing from `schema.rs`'s hand-written schema: `tags`, `methods` (on the component), `tags`, `parent`, `declarations` (on the prop), `typeName`/`fileName`/`omitted`/`htmlElement`/`totalProps` (inheritance has no `items` schema at all today), `line`, `column`, `help` (on diagnostics), and `componentsSkipped`, `dtsFilesParsed`, `tier1Count`, `tier3Count`, `opaqueCount` (on stats).
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-cli schema_covers_every_field_name -- --nocapture` Expected: FAIL — first on compilation, because `schema_value()` doesn't exist yet (`cmd_schema` builds the `json!()` literal inline and returns `Result<()>`); after that function is extracted it still FAILs the assertion, reporting real fields missing from `schema.rs`'s hand-written schema: `tags`, `methods` (on the component), `tags`, `parent`, `declarations` (on the prop), `typeName`/`fileName`/`omitted`/`htmlElement`/`totalProps` (inheritance has no `items` schema at all today), `line`, `column`, `help` (on diagnostics), and `componentsSkipped`, `dtsFilesParsed`, `tier1Count`, `tier3Count`, `opaqueCount` (on stats).
 
-- [ ] **Step 3: Write minimal implementation**
-Replace the whole file's non-test content:
+- [ ] **Step 3: Write minimal implementation** Replace the whole file's non-test content:
+
 ```rust
 use miette::Result;
 
@@ -4227,11 +4248,10 @@ mod tests {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-cli -p oxc-react-docgen-core schema:: -- --nocapture` (or simply `cargo test -p oxc-react-docgen-cli`)
-Expected: PASS — both `test_cmd_schema_valid_json` and `schema_covers_every_field_name_the_real_output_serializes` pass.
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-cli -p oxc-react-docgen-core schema:: -- --nocapture` (or simply `cargo test -p oxc-react-docgen-cli`) Expected: PASS — both `test_cmd_schema_valid_json` and `schema_covers_every_field_name_the_real_output_serializes` pass.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/cli/src/commands/schema.rs
 git commit -m "fix(cli): close ComponentEntry/ExtractionStats/Diagnostic drift in the hand-written schema, guard it with a drift test"
@@ -4240,10 +4260,12 @@ git commit -m "fix(cli): close ComponentEntry/ExtractionStats/Diagnostic drift i
 ### Task 3: `ExtractionOutput::max_severity()` / `exit_code()`
 
 **Files:**
+
 - Modify: `crates/core/src/types/output.rs:1-25` (imports and the `ExtractionOutput` struct — add the impl block right after it, before `InheritedLayer`)
 - Test: inline `#[cfg(test)] mod tests` in `crates/core/src/types/output.rs` (existing convention)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[test]
 fn exit_code_is_zero_with_no_diagnostics() {
@@ -4298,15 +4320,14 @@ fn exit_code_is_one_only_when_strict_and_a_warning_is_present() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core exit_code_is -- --nocapture`
-Expected: FAIL to compile — `ExtractionOutput` has no `exit_code` method yet.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core exit_code_is -- --nocapture` Expected: FAIL to compile — `ExtractionOutput` has no `exit_code` method yet.
 
-- [ ] **Step 3: Write minimal implementation**
-Change the top-of-file import and add the impl block right after the `ExtractionOutput` struct definition:
+- [ ] **Step 3: Write minimal implementation** Change the top-of-file import and add the impl block right after the `ExtractionOutput` struct definition:
+
 ```rust
 use super::diagnostic::{Diagnostic, DiagnosticSeverity};
 ```
+
 ```rust
 impl ExtractionOutput {
     /// Highest-severity diagnostic present, if any — `Error` outranks
@@ -4341,11 +4362,10 @@ impl ExtractionOutput {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core exit_code_is -- --nocapture`
-Expected: PASS — all three new tests pass.
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core exit_code_is -- --nocapture` Expected: PASS — all three new tests pass.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/types/output.rs
 git commit -m "feat(core): add ExtractionOutput::exit_code, the shared CLI exit-code contract"
@@ -4354,22 +4374,20 @@ git commit -m "feat(core): add ExtractionOutput::exit_code, the shared CLI exit-
 ### Task 4: Route `extract.rs` and `check.rs` through `exit_code()`
 
 **Files:**
+
 - Modify: `crates/cli/src/commands/extract.rs:67-73`
 - Modify: `crates/cli/src/commands/check.rs:20-40`
 
 Depends on Task 3. This is a pure refactor — no behavior change — proven by the two files' existing tests passing unmodified.
 
-- [ ] **Step 1: Write the failing test**
-No new test — the existing tests already pin the exact behavior this refactor must preserve:
+- [ ] **Step 1: Write the failing test** No new test — the existing tests already pin the exact behavior this refactor must preserve:
 - `crates/cli/src/commands/extract.rs`'s `json_mode_still_returns_the_error_exit_code` and `non_json_mode_returns_the_same_error_exit_code`
 - `crates/cli/src/commands/check.rs`'s `json_mode_still_returns_the_error_exit_code`
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-cli -- --nocapture`
-Expected: PASS as-is right now (nothing changed yet) — this step confirms the baseline the refactor must not break.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-cli -- --nocapture` Expected: PASS as-is right now (nothing changed yet) — this step confirms the baseline the refactor must not break.
 
-- [ ] **Step 3: Write minimal implementation**
-In `extract.rs`, replace:
+- [ ] **Step 3: Write minimal implementation** In `extract.rs`, replace:
+
 ```rust
     // Must run regardless of --json — this is the one thing CI actually
     // depends on the exit code for.
@@ -4380,13 +4398,17 @@ In `extract.rs`, replace:
 
     Ok(if has_errors { 2 } else { 0 })
 ```
+
 with:
+
 ```rust
     // Must run regardless of --json — this is the one thing CI actually
     // depends on the exit code for.
     Ok(output.exit_code(false))
 ```
+
 In `check.rs`, replace:
+
 ```rust
     let errors: Vec<_> = output
         .diagnostics
@@ -4415,7 +4437,9 @@ In `check.rs`, replace:
 
     Ok(0)
 ```
+
 with:
+
 ```rust
     if args.json {
         println!("{}", serde_json::to_string(&output.diagnostics).into_diagnostic()?);
@@ -4427,11 +4451,10 @@ with:
     Ok(output.exit_code(args.strict))
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-cli -- --nocapture`
-Expected: PASS — same three tests, unmodified, still pass, proving the refactor changed nothing observable.
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-cli -- --nocapture` Expected: PASS — same three tests, unmodified, still pass, proving the refactor changed nothing observable.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/cli/src/commands/extract.rs crates/cli/src/commands/check.rs
 git commit -m "refactor(cli): collapse extract/check's inline exit-code checks onto ExtractionOutput::exit_code"
@@ -4440,6 +4463,7 @@ git commit -m "refactor(cli): collapse extract/check's inline exit-code checks o
 ### Task 5: `cmd_watch` surfaces the exit code instead of hardcoding 0
 
 **Files:**
+
 - Modify: `crates/cli/src/commands/watch.rs` (whole file)
 - Modify: `crates/cli/src/main.rs:190-193` (the `Command::Watch` dispatch arm)
 - Test: inline `#[cfg(test)] mod tests` in `crates/cli/src/commands/watch.rs` (new — file currently has no test module)
@@ -4447,6 +4471,7 @@ git commit -m "refactor(cli): collapse extract/check's inline exit-code checks o
 Depends on Task 3. `cmd_watch` itself blocks on a `watchexec` event loop and spawns threads (it cannot be driven end-to-end in a unit test — the crate has never had a test for it for the same reason), so the new test targets the one piece of this change that is pure and testable: computing the exit code from an `ExtractionOutput`.
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -4481,12 +4506,10 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-cli watch_exit_code -- --nocapture`
-Expected: FAIL to compile — `watch_exit_code` doesn't exist yet in `watch.rs`.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-cli watch_exit_code -- --nocapture` Expected: FAIL to compile — `watch_exit_code` doesn't exist yet in `watch.rs`.
 
-- [ ] **Step 3: Write minimal implementation**
-Add the seam function near the top of `watch.rs` (module-private, called from `cmd_watch`):
+- [ ] **Step 3: Write minimal implementation** Add the seam function near the top of `watch.rs` (module-private, called from `cmd_watch`):
+
 ```rust
 /// Watch mode never runs `--strict` — there's no CLI flag for it — so this
 /// is always `exit_code(false)`. Named seam so `cmd_watch`'s wiring has
@@ -4495,19 +4518,27 @@ fn watch_exit_code(output: &oxc_react_docgen_core::types::ExtractionOutput) -> i
     output.exit_code(false)
 }
 ```
+
 Change the signature and thread an `AtomicI32` through the update loop:
+
 ```rust
 pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>) -> Result<i32> {
 ```
+
 After `let first = session.initialize();`:
+
 ```rust
     let exit_code = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(watch_exit_code(&first)));
 ```
+
 Before the `Watchexec::new(move |action| {` closure (alongside the other `_inner`/`_clone` captures), clone it in:
+
 ```rust
         let exit_code_inner = exit_code.clone();
 ```
+
 Inside the closure, right after `let update = session_inner.update_file(&utf8);`, add:
+
 ```rust
                         exit_code_inner.store(
                             oxc_react_docgen_core::types::ExtractionOutput {
@@ -4520,31 +4551,37 @@ Inside the closure, right after `let update = session_inner.update_file(&utf8);`
                             std::sync::atomic::Ordering::Relaxed,
                         );
 ```
+
 And at the very end of the function, replace:
+
 ```rust
     running.store(false, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
 ```
+
 with:
+
 ```rust
     running.store(false, std::sync::atomic::Ordering::Relaxed);
     Ok(exit_code.load(std::sync::atomic::Ordering::Relaxed))
 }
 ```
+
 Update `main.rs`'s dispatch arm:
+
 ```rust
         Command::Watch(args) => cmd_watch(args, cli.quiet, cli.config.as_deref())?,
 ```
+
 (replacing the old `{ cmd_watch(...)?; 0 }` block.)
 
 Note: `IncrementalUpdate`'s exact field set wasn't fully re-verified beyond `diagnostics: Vec<Diagnostic>` (confirmed at `crates/core/src/pipeline/mod.rs:119-122`) — if `ExtractionOutput`'s other required fields don't default-construct as shown, wrap `update.diagnostics.clone()` through `oxc_react_docgen_core::types::Diagnostic::exit_code`-equivalent logic directly instead (i.e. reuse `watch_exit_code`'s severity-ranking match inline over `&update.diagnostics`) rather than fabricating a placeholder `ExtractionOutput`.
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-cli watch_exit_code -- --nocapture && cargo build -p oxc-react-docgen-cli`
-Expected: PASS — the unit test passes and the crate builds clean with `cmd_watch: Result<i32>` wired through `main.rs`.
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-cli watch_exit_code -- --nocapture && cargo build -p oxc-react-docgen-cli` Expected: PASS — the unit test passes and the crate builds clean with `cmd_watch: Result<i32>` wired through `main.rs`.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/cli/src/commands/watch.rs crates/cli/src/main.rs
 git commit -m "fix(cli): stop hardcoding exit 0 for watch mode, surface real diagnostic severity"
@@ -4553,6 +4590,7 @@ git commit -m "fix(cli): stop hardcoding exit 0 for watch mode, surface real dia
 ### Task 6: `cmd_inspect` surfaces the exit code from diagnostics elsewhere in the tree
 
 **Files:**
+
 - Modify: `crates/cli/src/commands/inspect.rs` (whole file — signature + return)
 - Modify: `crates/cli/src/main.rs:194-197` (the `Command::Inspect` dispatch arm)
 - Test: inline `#[cfg(test)] mod tests` in `crates/cli/src/commands/inspect.rs` (new — file currently has no test module; follow `extract.rs`'s tempfile+camino fixture convention)
@@ -4560,6 +4598,7 @@ git commit -m "fix(cli): stop hardcoding exit 0 for watch mode, surface real dia
 Depends on Task 3.
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -4597,42 +4636,47 @@ export interface BrokenProps {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-cli inspect_surfaces_error_exit_code -- --nocapture`
-Expected: FAIL to compile — `cmd_inspect` currently returns `Result<()>`, so `.expect(...)` binds `code: ()` and `assert_eq!(code, 2)` is a type error; after fixing the signature it still FAILs the assertion since `cmd_inspect` never checks `output.diagnostics` and always implicitly returns without an exit code.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-cli inspect_surfaces_error_exit_code -- --nocapture` Expected: FAIL to compile — `cmd_inspect` currently returns `Result<()>`, so `.expect(...)` binds `code: ()` and `assert_eq!(code, 2)` is a type error; after fixing the signature it still FAILs the assertion since `cmd_inspect` never checks `output.diagnostics` and always implicitly returns without an exit code.
 
-- [ ] **Step 3: Write minimal implementation**
-Change the signature:
+- [ ] **Step 3: Write minimal implementation** Change the signature:
+
 ```rust
 pub fn cmd_inspect(args: crate::InspectArgs, config_path: Option<&str>) -> Result<i32> {
 ```
+
 Replace the final lines of the function:
+
 ```rust
     println!();
     Ok(())
 }
 ```
+
 with:
+
 ```rust
     println!();
     Ok(output.exit_code(false))
 }
 ```
+
 Update `main.rs`'s dispatch arm:
+
 ```rust
         Command::Inspect(args) => cmd_inspect(args, cli.config.as_deref())?,
 ```
+
 (replacing the old `{ cmd_inspect(...)?; 0 }` block.)
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-cli inspect_surfaces_error_exit_code -- --nocapture`
-Expected: PASS.
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-cli inspect_surfaces_error_exit_code -- --nocapture` Expected: PASS.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/cli/src/commands/inspect.rs crates/cli/src/main.rs
 git commit -m "fix(cli): make inspect surface a nonzero exit code when the tree has an error diagnostic"
 ```
+
 ---
 
 ## Part G: Standalone fixes
@@ -4642,6 +4686,7 @@ All source verified. Writing the final task group now.
 ### Task 1: Diagnose unfilled generic type parameters in `build_substitution`
 
 **Files:**
+
 - Modify: `crates/core/src/resolver/substitute.rs:18-43` (imports + `build_substitution`)
 - Modify: `crates/core/src/resolver/substitute.rs:57-72` (`apply_generic_args` — add `diagnostics` param)
 - Modify: `crates/core/src/resolver/chain.rs:152` (call site)
@@ -4651,6 +4696,7 @@ All source verified. Writing the final task group now.
 - Test: inline `#[cfg(test)]` module in `crates/core/src/resolver/substitute.rs` (file currently has no test module — this project's convention is inline tests, per `crates/core/CLAUDE.md`)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -4689,13 +4735,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core build_substitution_diagnoses_unfilled_trailing_type_params -- --nocapture`
-Expected: FAIL to compile — `build_substitution` currently takes 3 args (`params`, `args`, `origin_file`), not 4; there's no `diagnostics` parameter yet.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core build_substitution_diagnoses_unfilled_trailing_type_params -- --nocapture` Expected: FAIL to compile — `build_substitution` currently takes 3 args (`params`, `args`, `origin_file`), not 4; there's no `diagnostics` parameter yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
 In `crates/core/src/types/diagnostic.rs`, add a new variant just after `UnresolvableImport` (around line 61):
+
 ```rust
 pub enum DiagnosticCode {
     UnresolvableImport,
@@ -4710,9 +4755,11 @@ pub enum DiagnosticCode {
 ```
 
 In `crates/core/src/resolver/substitute.rs`, update the import and `build_substitution`:
+
 ```rust
 use crate::types::{CollectedObjectField, CollectedType, CollectedTypeAlias, Diagnostic, DiagnosticCode, DiagnosticSeverity};
 ```
+
 ```rust
 /// Build a `Substitution` from declared parameter names and the caller's
 /// arguments, tagging each argument with `origin_file` — the file the *caller*
@@ -4755,6 +4802,7 @@ pub(super) fn build_substitution<'a>(
 ```
 
 Update `apply_generic_args` to take and forward `diagnostics`:
+
 ```rust
 pub(super) fn apply_generic_args(
     alias: CollectedTypeAlias,
@@ -4777,16 +4825,19 @@ pub(super) fn apply_generic_args(
 ```
 
 Update the call in `generic_alias_with_structured_args` (line ~105) to pass its existing `diagnostics` param through:
+
 ```rust
     let subst = build_substitution(params, args, consuming_file, diagnostics);
 ```
 
 Update `crates/core/src/resolver/chain.rs:152` (inside `resolve_props_chain`, where `state.diagnostics` is already in scope):
+
 ```rust
         let alias = super::substitute::apply_generic_args(alias, &matched_key, type_args, consuming_file, ctx, &mut state.diagnostics);
 ```
 
 Update `crates/core/src/resolver/primitives.rs:144` (inside the interface-field lookup branch, where `state.diagnostics` is already in scope):
+
 ```rust
                     Some(params) if !params.is_empty() && !obj_args.is_empty() => {
                         let subst = build_substitution(params, obj_args, consuming_file, &mut state.diagnostics);
@@ -4794,11 +4845,10 @@ Update `crates/core/src/resolver/primitives.rs:144` (inside the interface-field 
                     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core build_substitution -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core build_substitution -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/resolver/substitute.rs crates/core/src/resolver/chain.rs crates/core/src/resolver/primitives.rs crates/core/src/types/diagnostic.rs
 git commit -m "fix(resolver): diagnose generic aliases called with too few type args"
@@ -4809,10 +4859,12 @@ git commit -m "fix(resolver): diagnose generic aliases called with too few type 
 ### Task 2: Make `watch --out` writes visible-on-failure and atomic
 
 **Files:**
+
 - Modify: `crates/cli/src/commands/watch.rs:107-112` (the `--out` write inside the `Watchexec::new` closure)
 - Test: inline `#[cfg(test)]` module in `crates/cli/src/commands/watch.rs` (no test module exists there yet; matches this crate's convention of colocated tests per `crates/core/CLAUDE.md`'s inline-test norm)
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -4839,13 +4891,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-cli write_atomic -- --nocapture`
-Expected: FAIL to compile — `write_atomic` does not exist yet in `watch.rs`.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-cli write_atomic -- --nocapture` Expected: FAIL to compile — `write_atomic` does not exist yet in `watch.rs`.
 
 - [ ] **Step 3: Write minimal implementation**
 
 Add a private helper above `cmd_watch` in `crates/cli/src/commands/watch.rs`:
+
 ```rust
 /// Writes `contents` to `path` via a same-directory temp file + rename, so a
 /// mid-write failure (disk full, permission revoked) can never leave `path`
@@ -4871,6 +4922,7 @@ fn write_atomic(path: &str, contents: &str) -> std::io::Result<()> {
 ```
 
 Replace the silent write at the current `if let Some(ref p) = out_path { ... }` block (currently `let _ = std::fs::write(p, json);`):
+
 ```rust
                         if let Some(ref p) = out_path {
                             let snapshot = session_inner.snapshot();
@@ -4891,13 +4943,13 @@ Replace the silent write at the current `if let Some(ref p) = out_path { ... }` 
                             }
                         }
 ```
+
 (`print_diagnostics` is already imported at the top of this file — `use crate::output::{print_diagnostics, print_summary};` — and is this crate's established way of surfacing an error from inside a non-`Result`-returning closure, matching how `extract.rs`'s `--out` failure is wrapped via `wrap_err` in the top-level `Result`-returning path — this closure can't propagate `?` since `Watchexec::new`'s callback must return `action`, not a `Result`.)
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-cli write_atomic -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-cli write_atomic -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/cli/src/commands/watch.rs
 git commit -m "fix(cli): surface watch --out write failures instead of discarding them"
@@ -4908,6 +4960,7 @@ git commit -m "fix(cli): surface watch --out write failures instead of discardin
 ### Task 3: `ParsedProp::new` normalizes `required` when a default value is present
 
 **Files:**
+
 - Modify: `crates/core/src/types/output.rs:81-99` (struct fields → `pub(crate)`, add `ParsedProp::new`)
 - Modify: `crates/core/src/known.rs:296-306` (`simple_prop`)
 - Modify: `crates/core/src/resolver/chain.rs:244-253`
@@ -4918,6 +4971,7 @@ git commit -m "fix(cli): surface watch --out write failures instead of discardin
 - Test: inline `#[cfg(test)]` module in `crates/core/src/types/output.rs`
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[cfg(test)]
 mod parsed_prop_tests {
@@ -4958,15 +5012,14 @@ mod parsed_prop_tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core new_normalizes_required_false_when_default_value_present -- --nocapture`
-Expected: FAIL to compile — `ParsedProp::new` does not exist yet.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core new_normalizes_required_false_when_default_value_present -- --nocapture` Expected: FAIL to compile — `ParsedProp::new` does not exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
-`[corrected from the original draft]` — the original draft made `ParsedProp`'s fields `pub(crate)`, which does not work: `crates/cli` (`extract.rs`, `inspect.rs`) reads `ParsedProp`'s fields directly across the crate boundary, so `pub(crate)` is a hard compile error there. And even ignoring that, `pub(crate)` grants visibility to every same-crate call site — including the exact ones (`chain.rs`, `alias.rs`, `mod.rs`, `known.rs`) that are the actual problem — so it wouldn't stop the misuse it's meant to stop. Use a **sealed-field** pattern instead: keep the real fields `pub` (so all existing reads, same-crate and cross-crate, keep compiling unchanged), and add one private zero-sized "seal" field that only this module can construct, so a bare struct literal from *any* other module — including ones in this same crate — no longer compiles; only `ParsedProp::new(...)` can build one.
+`[corrected from the original draft]` — the original draft made `ParsedProp`'s fields `pub(crate)`, which does not work: `crates/cli` (`extract.rs`, `inspect.rs`) reads `ParsedProp`'s fields directly across the crate boundary, so `pub(crate)` is a hard compile error there. And even ignoring that, `pub(crate)` grants visibility to every same-crate call site — including the exact ones (`chain.rs`, `alias.rs`, `mod.rs`, `known.rs`) that are the actual problem — so it wouldn't stop the misuse it's meant to stop. Use a **sealed-field** pattern instead: keep the real fields `pub` (so all existing reads, same-crate and cross-crate, keep compiling unchanged), and add one private zero-sized "seal" field that only this module can construct, so a bare struct literal from _any_ other module — including ones in this same crate — no longer compiles; only `ParsedProp::new(...)` can build one.
 
 In `crates/core/src/types/output.rs`:
+
 ```rust
 pub struct ParsedProp {
     /// Prop name
@@ -5020,9 +5073,11 @@ impl ParsedProp {
     }
 }
 ```
+
 (Match `Seal`'s derives to whatever `ParsedProp` itself derives — if `ParsedProp` derives `Serialize`/`Deserialize` directly rather than going through `PropType`'s manual `to_json_value`, confirm `#[serde(skip)]` combined with `Seal: Default` lets deserialization construct a `ParsedProp` without needing `Seal` in the wire data; add `#[serde(default)]` alongside `#[serde(skip)]` on the field if the derive requires it explicitly.)
 
 Update `crates/core/src/known.rs` `simple_prop`:
+
 ```rust
 fn simple_prop(name: &str, prop_type: PropType, required: bool, description: &str) -> ParsedProp {
     ParsedProp::new(name.to_owned(), prop_type, required, None, description.to_owned(), Default::default(), None, vec![])
@@ -5030,6 +5085,7 @@ fn simple_prop(name: &str, prop_type: PropType, required: bool, description: &st
 ```
 
 Update `crates/core/src/resolver/chain.rs:244` (the `chain.props.push(ParsedProp { ... })` after the default-value merge logic):
+
 ```rust
         chain.props.push(ParsedProp::new(
             raw_prop.name.clone(),
@@ -5044,6 +5100,7 @@ Update `crates/core/src/resolver/chain.rs:244` (the `chain.props.push(ParsedProp
 ```
 
 Update `crates/core/src/resolver/alias.rs:181`:
+
 ```rust
                 chain.props.push(ParsedProp::new(
                     field.name.clone(),
@@ -5058,6 +5115,7 @@ Update `crates/core/src/resolver/alias.rs:181`:
 ```
 
 Update `crates/core/src/resolver/mod.rs:295-310` (notable-attr synthesis):
+
 ```rust
                 notable_inherited.insert(
                     attr_name.to_string(),
@@ -5078,6 +5136,7 @@ Update `crates/core/src/resolver/mod.rs:295-310` (notable-attr synthesis):
 ```
 
 Update the two test literals in `crates/core/src/resolver/mod.rs` (lines ~827 and ~840):
+
 ```rust
                 vec![ParsedProp::new(
                     "variant".into(),
@@ -5090,6 +5149,7 @@ Update the two test literals in `crates/core/src/resolver/mod.rs` (lines ~827 an
                     vec![],
                 )],
 ```
+
 ```rust
                 vec![ParsedProp::new(
                     "variant".into(),
@@ -5104,6 +5164,7 @@ Update the two test literals in `crates/core/src/resolver/mod.rs` (lines ~827 an
 ```
 
 Update the test literal in `crates/core/src/toon.rs:165-181`:
+
 ```rust
         props.insert(
             "variant".to_string(),
@@ -5120,11 +5181,10 @@ Update the test literal in `crates/core/src/toon.rs:165-181`:
         );
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core parsed_prop_tests -- --nocapture && cargo test -p oxc-react-docgen-core`
-Expected: PASS, and the full `crates/core` test suite (including `resolver::mod` and `toon` tests) still compiles and passes after the call-site rewrites.
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core parsed_prop_tests -- --nocapture && cargo test -p oxc-react-docgen-core` Expected: PASS, and the full `crates/core` test suite (including `resolver::mod` and `toon` tests) still compiles and passes after the call-site rewrites.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/types/output.rs crates/core/src/known.rs crates/core/src/resolver/chain.rs crates/core/src/resolver/alias.rs crates/core/src/resolver/mod.rs crates/core/src/toon.rs
 git commit -m "fix(types): force ParsedProp construction through a required/default-normalizing constructor"
@@ -5135,11 +5195,13 @@ git commit -m "fix(types): force ParsedProp construction through a required/defa
 ### Task 4: Document `DiagnosticCode::Unknown` as reserved headroom (doc comment only, no test)
 
 **Files:**
+
 - Modify: `crates/core/src/types/diagnostic.rs` (the `Unknown` variant, immediately after Task 1's new `GenericArgumentMismatch` variant if done in the same branch — otherwise right after `UnresolvableImport`/`OpaqueType`/`MaxDepthExceeded`)
 
 No test step: this is a documentation-only change to an intentionally-unused `#[non_exhaustive]` enum variant. There is no behavior to assert against — the only verifiable outcome is that the comment exists, checked by reading the file back.
 
 - [ ] **Step 1: Add the doc comment**
+
 ```rust
 pub enum DiagnosticCode {
     UnresolvableImport,
@@ -5157,11 +5219,10 @@ pub enum DiagnosticCode {
     // ...unchanged...
 ```
 
-- [ ] **Step 2: Verify**
-Run: `cargo doc -p oxc-react-docgen-core --no-deps 2>&1 | tail -5` (or just re-read the file) — confirm the comment renders and no `-D warnings` clippy lint fires for it.
-Expected: doc builds cleanly; comment is present on `Unknown`.
+- [ ] **Step 2: Verify** Run: `cargo doc -p oxc-react-docgen-core --no-deps 2>&1 | tail -5` (or just re-read the file) — confirm the comment renders and no `-D warnings` clippy lint fires for it. Expected: doc builds cleanly; comment is present on `Unknown`.
 
 - [ ] **Step 3: Commit**
+
 ```bash
 git add crates/core/src/types/diagnostic.rs
 git commit -m "docs(diagnostic): explain why DiagnosticCode::Unknown is unused but kept"
@@ -5172,6 +5233,7 @@ git commit -m "docs(diagnostic): explain why DiagnosticCode::Unknown is unused b
 ### Task 5: Fix NaN/Infinity round-trip on `PropType::NumberLiteral`
 
 **Files:**
+
 - Modify: `crates/core/src/types/output.rs:314` (`to_tagged_value`'s `NumberLiteral` arm)
 - Modify: `crates/core/src/types/output.rs:423-425` (`from_tagged_value`'s `numberLiteral` arm)
 - Test: inline `#[cfg(test)]` module in `crates/core/src/types/output.rs`
@@ -5179,6 +5241,7 @@ git commit -m "docs(diagnostic): explain why DiagnosticCode::Unknown is unused b
 Chose a real fix over a comment-only punt: `serde_json::json!({"value": n})` on a non-finite `f64` already silently serializes to `null` (`serde_json::Number` can't represent NaN/Infinity), and `from_tagged_value` can't tell "field was null" apart from "field was absent", so it always falls back to `0.0`. Since the fix is small (tag non-finite values as strings instead of numbers) and the existing code already special-cases this variant, doing it properly is cheaper than documenting the gap and better than accepting silent data loss.
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[cfg(test)]
 mod number_literal_roundtrip_tests {
@@ -5219,13 +5282,12 @@ mod number_literal_roundtrip_tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core nan_number_literal_round_trips_as_nan_not_zero -- --nocapture`
-Expected: FAIL — `n.is_nan()` is false because the round-trip currently produces `0.0` (NaN serialized to JSON `null`, then `as_f64().unwrap_or(0.0)` on read).
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core nan_number_literal_round_trips_as_nan_not_zero -- --nocapture` Expected: FAIL — `n.is_nan()` is false because the round-trip currently produces `0.0` (NaN serialized to JSON `null`, then `as_f64().unwrap_or(0.0)` on read).
 
 - [ ] **Step 3: Write minimal implementation**
 
 In `to_tagged_value` (around line 314):
+
 ```rust
             PropType::NumberLiteral(n) => {
                 // `serde_json::Number` cannot represent NaN/Infinity (they'd
@@ -5247,6 +5309,7 @@ In `to_tagged_value` (around line 314):
 ```
 
 In `from_tagged_value` (around line 423):
+
 ```rust
             "numberLiteral" | "number_literal" => {
                 let n = match v.get("value") {
@@ -5263,11 +5326,10 @@ In `from_tagged_value` (around line 423):
             }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core number_literal_roundtrip_tests -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core number_literal_roundtrip_tests -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/types/output.rs
 git commit -m "fix(types): round-trip NaN/Infinity NumberLiteral values instead of silently zeroing them"
@@ -5278,12 +5340,14 @@ git commit -m "fix(types): round-trip NaN/Infinity NumberLiteral values instead 
 ### Task 6: Exclude zero/one-member `LiteralUnion`s from the RDT "enum" shape
 
 **Files:**
+
 - Modify: `crates/core/src/types/output.rs:210-219` (`PropType::is_literal_union`)
 - Test: inline `#[cfg(test)]` module in `crates/core/src/types/output.rs`
 
 Chose the exclude-and-fall-back fix over a comment: `is_literal_union` is the single source of truth `rdt_type_json` (`crates/cli/src/commands/extract.rs:84`) branches on, so fixing it here fixes the RDT `{"name":"enum","value":[]}` output for free without touching the CLI. A one-member "enum" is equally not a meaningful `<select>`, so both are excluded — falls back to plain `raw_string()` output via the existing `_ =>` branch in `rdt_type_json`.
 
 - [ ] **Step 1: Write the failing test**
+
 ```rust
 #[cfg(test)]
 mod is_literal_union_tests {
@@ -5309,11 +5373,10 @@ mod is_literal_union_tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-Run: `cargo test -p oxc-react-docgen-core empty_literal_union_is_not_treated_as_an_enum -- --nocapture`
-Expected: FAIL — the current `PropType::LiteralUnion { .. } => true` arm ignores `members.len()` entirely, so an empty (or single-member) union is unconditionally reported as a literal union.
+- [ ] **Step 2: Run test to verify it fails** Run: `cargo test -p oxc-react-docgen-core empty_literal_union_is_not_treated_as_an_enum -- --nocapture` Expected: FAIL — the current `PropType::LiteralUnion { .. } => true` arm ignores `members.len()` entirely, so an empty (or single-member) union is unconditionally reported as a literal union.
 
 - [ ] **Step 3: Write minimal implementation**
+
 ```rust
     /// True if this type is a pure literal union (all members are literals).
     /// Used by serializers to choose between "enum" and "union" in RDT output.
@@ -5334,11 +5397,10 @@ Expected: FAIL — the current `PropType::LiteralUnion { .. } => true` arm ignor
     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-Run: `cargo test -p oxc-react-docgen-core is_literal_union_tests -- --nocapture`
-Expected: PASS
+- [ ] **Step 4: Run test to verify it passes** Run: `cargo test -p oxc-react-docgen-core is_literal_union_tests -- --nocapture` Expected: PASS
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add crates/core/src/types/output.rs
 git commit -m "fix(types): don't treat a 0- or 1-member LiteralUnion as an RDT enum shape"
@@ -5349,11 +5411,13 @@ git commit -m "fix(types): don't treat a 0- or 1-member LiteralUnion as an RDT e
 ### Task 7: Document the mtime+size cache's same-tick staleness limitation (doc comment only, no test)
 
 **Files:**
+
 - Modify: `crates/core/src/cache.rs:181-191` (`DtsCache::key_for`)
 
 No test step: per `docs/root-cause-analysis.md`, a content-hash fix is an explicit scoped follow-up, not something to implement now — it would change the cache's performance/complexity tradeoff. This task only documents the known limitation so it isn't rediscovered as a surprise later; there is no new behavior to assert against.
 
 - [ ] **Step 1: Add the doc comment**
+
 ```rust
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -5381,11 +5445,10 @@ No test step: per `docs/root-cause-analysis.md`, a content-hash fix is an explic
     }
 ```
 
-- [ ] **Step 2: Verify**
-Run: `cargo doc -p oxc-react-docgen-core --no-deps 2>&1 | tail -5` (or re-read the file) — confirm the comment is present on `key_for` and doc build is clean.
-Expected: doc builds cleanly; comment present.
+- [ ] **Step 2: Verify** Run: `cargo doc -p oxc-react-docgen-core --no-deps 2>&1 | tail -5` (or re-read the file) — confirm the comment is present on `key_for` and doc build is clean. Expected: doc builds cleanly; comment present.
 
 - [ ] **Step 3: Commit**
+
 ```bash
 git add crates/core/src/cache.rs
 git commit -m "docs(cache): document the mtime+size same-tick staleness limitation"

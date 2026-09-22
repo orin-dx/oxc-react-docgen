@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 #![recursion_limit = "256"]
 
 mod commands;
@@ -121,9 +120,9 @@ pub enum OutputFormat {
 
 #[derive(clap::ValueEnum, Clone, Copy)]
 pub enum HtmlAttributeModeArg {
-    /// ~15-20 curated, commonly-documented attributes per element [default]
+    /// ~15-20 curated, commonly-documented attributes per element (default)
     Curated,
-    /// All of @types/react's real attributes for the element (matches RDT)
+    /// All of `@types/react`'s real attributes for the element (matches RDT)
     Full,
     /// No inherited HTML attributes at all — own props only
     None,

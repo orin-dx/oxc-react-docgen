@@ -903,6 +903,55 @@ type OnSelectHandler<T> = (selected: T, triggerDate: Date) => void;
     }
 
     #[test]
+    fn string_literal_union_alias_stores_bare_member_values() {
+        let path = Utf8Path::new("/fixtures/literal-alias.ts");
+        let data = parse_file(path, r#"type Size = "sm" | "md";"#);
+
+        let key = format!("{path}:Size");
+        match data.type_aliases.get(&key) {
+            Some(CollectedTypeAlias::LiteralUnion { members, .. }) => {
+                assert_eq!(members, &vec!["sm".to_owned(), "md".to_owned()]);
+            }
+            other => panic!("expected LiteralUnion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn undefined_member_is_dropped_from_literal_union_alias() {
+        let path = Utf8Path::new("/fixtures/literal-alias-undefined.ts");
+        let data = parse_file(path, r#"type Size = "sm" | "md" | undefined;"#);
+
+        let key = format!("{path}:Size");
+        match data.type_aliases.get(&key) {
+            Some(CollectedTypeAlias::LiteralUnion { members, .. }) => {
+                assert_eq!(members, &vec!["sm".to_owned(), "md".to_owned()]);
+            }
+            other => panic!("expected LiteralUnion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn null_member_keeps_alias_out_of_literal_union() {
+        let path = Utf8Path::new("/fixtures/literal-alias-null.ts");
+        let data = parse_file(path, r#"type Size = "sm" | "md" | null;"#);
+
+        let key = format!("{path}:Size");
+        match data.type_aliases.get(&key) {
+            Some(CollectedTypeAlias::Union { members, .. }) => {
+                assert!(
+                    matches!(
+                        members.as_slice(),
+                        [CollectedType::StringLiteral(a), CollectedType::StringLiteral(b), CollectedType::Null]
+                            if a == "sm" && b == "md"
+                    ),
+                    "expected [\"sm\", \"md\", null] members, got {members:?}"
+                );
+            }
+            other => panic!("expected Union, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_array_type_alias_not_silently_dropped() {
         // Storybook's real pattern: `type API_KeyCollection = string[]` — a bare
         // array type as the alias body. Same silent-vanishing bug as the function-

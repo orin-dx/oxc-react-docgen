@@ -5,6 +5,7 @@
 Email **security@orin-dx.com** — don't open a public issue for anything that could be exploited before a fix ships.
 
 Include:
+
 - Which crate or package is affected (`crates/core`, `crates/binding`, `crates/cli`, `@oxc-react-docgen/napi`, `@oxc-react-docgen/vite-plugin`, `@oxc-react-docgen/cli`)
 - The concrete failure scenario — what an attacker could do, and how
 - A minimal reproduction, ideally a TSX/JSX snippet if the issue is parser-triggered

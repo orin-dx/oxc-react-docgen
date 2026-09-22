@@ -14,10 +14,11 @@ env:
   CARGO_INCREMENTAL: "0"
   RUST_BACKTRACE: 1
   # Single source of truth for the version 5 jobs below all pin to (was
-  # hardcoded in each dtolnay/rust-toolchain@1.96.0 ref separately, drifting
-  # from .prototools's own rust = "1.96.0" pin the same way pnpm's version
-  # once drifted across this repo -- see fix/proto-only-toolchain-setup).
-  RUST_VERSION: "1.96.0"
+  # hardcoded in each dtolnay/rust-toolchain ref separately, drifting from
+  # .prototools's own `rust` pin the same way pnpm's version once drifted
+  # across this repo -- see fix/proto-only-toolchain-setup). Keep in lockstep
+  # with `.prototools`.
+  RUST_VERSION: "1.98.1"
 
 jobs:
   # Computes which projects (per moon's project graph, including transitive

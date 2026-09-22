@@ -96,6 +96,15 @@ deny:
 typos:
     typos
 
+# Everything the moon-managed pre-commit hook runs. `.moon/workspace.yml`
+# calls this recipe rather than repeating the commands, so the hook and
+# `just ci` can't drift apart.
+pre-commit:
+    cargo fmt --check
+    cargo clippy --workspace --exclude oxc-react-docgen-napi --locked -- -D warnings
+    typos
+    cargo deny check
+
 # Simulate full CI locally (lint → test → deny → typos → doc-check → machete → ts tests)
 ci: lint test deny typos doc-check machete test-ts
 

@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.10.7-nightly.202609200623.81a05d785",
+  "checkpoint_id": "01M351QWTF2QP705WJ9A41T3RP",
+  "strategy": "manual-commit",
+  "branch": "fix/proto-only-toolchain-setup",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    ".moon/toolchains.yml",
+    ".moon/workspace.yml",
+    ".prototools",
+    "crates/core/src/resolver/template.rs",
+    "justfile"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 350,
+    "cache_creation_tokens": 633368,
+    "cache_read_tokens": 31685140,
+    "output_tokens": 114850,
+    "api_call_count": 175
+  }
+}

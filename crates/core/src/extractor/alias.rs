@@ -191,20 +191,31 @@ impl<'src> SourceDataCollector<'src> {
                 }
             }
             TSType::TSUnionType(u) => {
-                // Check if all members are string/number literals → LiteralUnion
+                // `undefined` is dropped from the literal set, as `resolve_union` does —
+                // optionality lives in `required`. `null` is a real value a string-only
+                // `LiteralUnion` can't hold, so it keeps the alias a plain `Union`.
                 let all_string_literals = u.types.iter().all(|t| match t {
                     TSType::TSLiteralType(lit) => {
                         matches!(lit.literal, TSLiteral::StringLiteral(_))
                     }
-                    TSType::TSUndefinedKeyword(_) | TSType::TSNullKeyword(_) => true,
+                    TSType::TSUndefinedKeyword(_) => true,
                     _ => false,
                 });
 
                 let members: Vec<CollectedType> = u.types.iter().map(|t| self.ts_type_to_collected(t)).collect();
 
                 if all_string_literals {
-                    let member_strs: Vec<String> = members.iter().map(|m| m.to_raw_string()).collect();
-                    return Some(CollectedTypeAlias::LiteralUnion { members: member_strs, file_path: fp });
+                    // Bare values, not `to_raw_string()`: every serializer quotes
+                    // `LiteralUnion` members itself, so a pre-quoted member renders as `""sm""`.
+                    let values: Vec<String> = members
+                        .iter()
+                        .filter_map(
+                            |m| if let CollectedType::StringLiteral(s) = m { Some(s.to_string()) } else { None },
+                        )
+                        .collect();
+                    if !values.is_empty() {
+                        return Some(CollectedTypeAlias::LiteralUnion { members: values, file_path: fp });
+                    }
                 }
                 Some(CollectedTypeAlias::Union { members, file_path: fp })
             }

@@ -918,6 +918,45 @@ mod tests {
         );
     }
 
+    // ── literal-union alias props: bare members, never pre-quoted ────────────
+
+    #[test]
+    fn literal_union_alias_props_keep_bare_members_through_resolution_and_templates() {
+        let tmp = TempDir::new().unwrap();
+        write_file(
+            &tmp,
+            "Chip.tsx",
+            r#"
+type Size = "sm" | "md";
+interface ChipProps {
+  size?: Size;
+  density?: `compact-${Size}`;
+}
+export function Chip(props: ChipProps) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+
+        let output = extract(&options);
+        let chip = output.components.get("Chip").expect("Chip component not found");
+
+        let size = &chip.props["size"].prop_type;
+        assert_eq!(*size, PropType::LiteralUnion { members: vec!["sm".into(), "md".into()], has_default: false });
+        assert_eq!(size.raw_string(), r#""sm" | "md""#);
+
+        let density = &chip.props["density"].prop_type;
+        assert_eq!(
+            *density,
+            PropType::LiteralUnion { members: vec!["compact-sm".into(), "compact-md".into()], has_default: false }
+        );
+    }
+
     // ── ambient files contribute types, not components ───────────────────────
 
     /// Full mode merges the real `@types/react` (which declares `class PureComponent<P, S, SS>

@@ -333,11 +333,11 @@ expression: value
               {
                 "kind": "literalUnion",
                 "members": [
-                  "\"xs\"",
-                  "\"sm\"",
-                  "\"md\"",
-                  "\"lg\"",
-                  "\"xl\""
+                  "xs",
+                  "sm",
+                  "md",
+                  "lg",
+                  "xl"
                 ],
                 "hasDefault": false
               },
@@ -397,22 +397,22 @@ expression: value
               {
                 "kind": "literalUnion",
                 "members": [
-                  "\"xs\"",
-                  "\"sm\"",
-                  "\"md\"",
-                  "\"lg\"",
-                  "\"xl\""
+                  "xs",
+                  "sm",
+                  "md",
+                  "lg",
+                  "xl"
                 ],
                 "hasDefault": false
               },
               {
                 "kind": "literalUnion",
                 "members": [
-                  "compact-\"xs\"",
-                  "compact-\"sm\"",
-                  "compact-\"md\"",
-                  "compact-\"lg\"",
-                  "compact-\"xl\""
+                  "compact-xs",
+                  "compact-sm",
+                  "compact-md",
+                  "compact-lg",
+                  "compact-xl"
                 ],
                 "hasDefault": false
               }
@@ -1480,11 +1480,11 @@ expression: value
               {
                 "kind": "literalUnion",
                 "members": [
-                  "\"xs\"",
-                  "\"sm\"",
-                  "\"md\"",
-                  "\"lg\"",
-                  "\"xl\""
+                  "xs",
+                  "sm",
+                  "md",
+                  "lg",
+                  "xl"
                 ],
                 "hasDefault": false
               },
@@ -1690,11 +1690,11 @@ expression: value
           "type": {
             "kind": "literalUnion",
             "members": [
-              "\"xs\"",
-              "\"sm\"",
-              "\"md\"",
-              "\"lg\"",
-              "\"xl\""
+              "xs",
+              "sm",
+              "md",
+              "lg",
+              "xl"
             ],
             "hasDefault": false
           },

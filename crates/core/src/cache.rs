@@ -26,7 +26,10 @@ use crate::types::{Diagnostic, DiagnosticCode, DiagnosticSeverity, SourceData};
 /// Also bumped for the mtime+size -> content-hash key change (P0-2 fix):
 /// `SerializableCacheKey`'s own shape changed, so pre-existing on-disk cache
 /// files must be discarded rather than misread under the new field layout.
-const CACHE_SCHEMA_VERSION: u32 = 3;
+/// Also bumped when the extractor produces different `SourceData` for byte-identical
+/// input — the content-hash key can't notice that, so a stale entry would be served
+/// forever (v4: `LiteralUnion` alias members are stored bare instead of quote-wrapped).
+const CACHE_SCHEMA_VERSION: u32 = 4;
 
 // ─── Internal key type ────────────────────────────────────────────────────────
 

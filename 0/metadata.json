@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.10.7-nightly.202609200623.81a05d785",
+  "checkpoint_id": "01M351SW2WNHDE0KV2NYJBKT08",
+  "session_id": "fbf53f93-25aa-45a8-8240-7526750c3c36",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-22T17:14:51.223502Z",
+  "branch": "fix/proto-only-toolchain-setup",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".changeset/ambient-dts-types-not-components.md",
+    ".changeset/literal-union-bare-members.md",
+    ".changeset/rdt-skip-undocumented-children.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5[1m]",
+  "turn_id": "e22aff6c4fae",
+  "checkpoint_transcript_start": 1555,
+  "transcript_lines_at_start": 1555,
+  "compact_transcript_start": 181,
+  "token_usage": {
+    "input_tokens": 4,
+    "cache_creation_tokens": 2793,
+    "cache_read_tokens": 623675,
+    "output_tokens": 1599,
+    "api_call_count": 2
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-22T17:14:51.162518Z",
+    "agent_lines": 17,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 17,
+    "total_lines_changed": 17,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}

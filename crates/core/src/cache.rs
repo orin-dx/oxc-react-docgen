@@ -222,14 +222,8 @@ impl DtsCache {
     }
 }
 
-/// Write `bytes` to `dir/name` via a temp file and rename, so a reader never
-/// sees a half-written file.
-///
-/// The temp name is unique per process and per call. Several processes share
-/// one cache dir in practice -- parallel test binaries, or the CLI and the Vite
-/// plugin in the same project -- and with a fixed temp name they overwrite each
-/// other's temp file, so whichever renames second fails with ENOENT. Last
-/// rename wins, which is fine: every writer's file is complete.
+/// Write via temp file + rename so readers never see a partial file. The temp name is unique per process and call:
+/// processes sharing a cache dir (CLI + Vite plugin, parallel tests) would otherwise clobber each other's temp file.
 fn write_atomic(dir: &Utf8Path, name: &str, bytes: &[u8]) -> Result<(), String> {
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -239,7 +233,6 @@ fn write_atomic(dir: &Utf8Path, name: &str, bytes: &[u8]) -> Result<(), String> 
     let result = std::fs::write(tmp_path.as_std_path(), bytes)
         .and_then(|()| std::fs::rename(tmp_path.as_std_path(), final_path.as_std_path()));
     if result.is_err() {
-        // Best-effort: don't leave an orphaned temp file behind.
         let _ = std::fs::remove_file(tmp_path.as_std_path());
     }
     result.map_err(|e| e.to_string())
@@ -478,7 +471,7 @@ mod tests {
 
     #[test]
     fn concurrent_saves_to_one_cache_dir_all_succeed_and_leave_no_temp_files() {
-        // Separate DtsCache instances on one dir, as separate processes would be.
+        // One DtsCache per thread, as separate processes would have.
         let tmp = temp_dir("concurrent");
         let cache_dir = tmp.join("cache");
         let writers = 16;
@@ -506,9 +499,7 @@ mod tests {
         leftovers.sort();
         assert_eq!(leftovers, vec!["dts-v1.msgpack".to_owned(), "manifest.json".to_owned()]);
 
-        // Last rename wins, and it is a complete, decodable file. It can hold
-        // more than one writer's entry: a writer that loads after another has
-        // saved starts from that file.
+        // Last rename wins. It may hold several writers' entries: a later writer's load starts from an earlier save.
         let reloaded = DtsCache::load_from_disk(Some(&cache_dir));
         let written: std::collections::BTreeSet<String> = (0..writers).map(|i| format!("/virtual/t{i}.d.ts")).collect();
         let loaded: std::collections::BTreeSet<String> =

@@ -58,41 +58,43 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
         // Don't walk children — we've handled everything
     }
 
+    /// `export { Foo }`: local specifiers, no source.
     fn visit_export_named_declaration(&mut self, node: &ExportNamedDeclaration<'a>) {
-        if let Some(source) = &node.source {
-            // Re-exports: `export { X } from "./y"`
-            let src = source.value.as_str().to_owned();
-            for spec in &node.specifiers {
-                self.data.exports.push(LexedExport::ReExportNamed {
-                    // local_name is what we call it here; source_name is the original
-                    local_name: spec.exported.name().as_str().to_owned(),
-                    source_name: spec.local.name().as_str().to_owned(),
-                    source_specifier: src.clone(),
-                    is_type_only: node.export_kind.is_type() || spec.export_kind.is_type(),
-                });
-            }
-        } else {
-            // Local exports: `export interface Foo / export type Bar / export const X`
-            if let Some(decl) = &node.declaration {
-                let decl_name = declaration_name(decl);
-                if let Some(name) = decl_name {
-                    self.data.exports.push(LexedExport::LocalDeclaration {
-                        name: name.to_owned(),
-                        is_type_only: node.export_kind.is_type(),
-                    });
-                }
-            }
-            // Also handle `export { Foo }` without a source (local)
-            for spec in &node.specifiers {
-                self.data.exports.push(LexedExport::LocalDeclaration {
-                    name: spec.exported.name().as_str().to_owned(),
-                    is_type_only: node.export_kind.is_type() || spec.export_kind.is_type(),
-                });
-            }
+        for spec in &node.specifiers {
+            self.data.exports.push(LexedExport::LocalDeclaration {
+                name: spec.exported.name().as_str().to_owned(),
+                is_type_only: node.export_kind.is_type() || spec.export_kind.is_type(),
+            });
+        }
+
+        walk::walk_export_named_declaration(self, node);
+    }
+
+    /// `export { X } from "./y"`.
+    fn visit_export_from_declaration(&mut self, node: &ExportFromDeclaration<'a>) {
+        let src = node.source.value.as_str().to_owned();
+        for spec in &node.specifiers {
+            self.data.exports.push(LexedExport::ReExportNamed {
+                // local_name is what we call it here; source_name is the original
+                local_name: spec.exported.name().as_str().to_owned(),
+                source_name: spec.local.name().as_str().to_owned(),
+                source_specifier: src.clone(),
+                is_type_only: node.export_kind.is_type() || spec.export_kind.is_type(),
+            });
+        }
+
+        walk::walk_export_from_declaration(self, node);
+    }
+
+    /// `export interface Foo` / `export const X`. `is_type_only` is always false: `export_kind` only marks
+    /// `export type { A }`, and `export enum` declares a runtime value.
+    fn visit_export_declaration(&mut self, node: &ExportDeclaration<'a>) {
+        if let Some(name) = declaration_name(&node.declaration) {
+            self.data.exports.push(LexedExport::LocalDeclaration { name: name.to_owned(), is_type_only: false });
         }
 
         // Walk the declaration so sub-visitors (interface, type alias, etc.) fire
-        walk::walk_export_named_declaration(self, node);
+        walk::walk_export_declaration(self, node);
     }
 
     fn visit_export_all_declaration(&mut self, node: &ExportAllDeclaration<'a>) {
@@ -172,23 +174,12 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
         }
     }
 
-    fn visit_ts_module_declaration(&mut self, node: &TSModuleDeclaration<'a>) {
-        // `declare module "foo"` (string-literal id) isn't a dotted-name namespace
-        // like `namespace Foo { ... }` — its members aren't referenced as `foo.Bar`,
-        // so only push an identifier-named namespace onto the qualifying stack.
-        let pushed = match &node.id {
-            TSModuleDeclarationName::Identifier(id) => {
-                self.namespace_stack.push(id.name.as_str().into());
-                true
-            }
-            TSModuleDeclarationName::StringLiteral(_) => false,
-        };
-
-        walk::walk_ts_module_declaration(self, node);
-
-        if pushed {
-            self.namespace_stack.pop();
-        }
+    /// `namespace Foo {}` qualifies inner names as `Foo.Bar`. `declare module "x"` and `declare global` are separate
+    /// nodes and qualify nothing.
+    fn visit_ts_namespace_declaration(&mut self, node: &TSNamespaceDeclaration<'a>) {
+        self.namespace_stack.push(node.id.name.as_str().into());
+        walk::walk_ts_namespace_declaration(self, node);
+        self.namespace_stack.pop();
     }
 
     fn visit_ts_enum_declaration(&mut self, node: &TSEnumDeclaration<'a>) {
@@ -350,7 +341,7 @@ impl<'a, 'src> Visit<'a> for SourceDataCollector<'src> {
                     if let Some(family) = self.super_class_is_component_family(class) {
                         if let Some(mapping) = self.try_class_component(class, name) {
                             self.data.component_mappings.push(mapping);
-                        } else if class.super_type_arguments.is_some() {
+                        } else if class.heritage.as_ref().is_some_and(|h| h.type_arguments.is_some()) {
                             // Extends Component/PureComponent WITH type args, but the
                             // props argument itself is an exotic shape
                             // extract_type_name_from_type doesn't match. No type args

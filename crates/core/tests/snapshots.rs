@@ -37,14 +37,8 @@ fn run_fixture(library: &str) -> serde_json::Value {
     serde_json::from_str(&json_str).expect("round-trip must parse")
 }
 
-/// Replace pnpm virtual-store versions with `[VERSION]`.
-///
-/// Types resolved out of `node_modules` carry their real path, and under pnpm
-/// that path embeds the exact dependency version:
-/// `node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react/index.d.ts`.
-/// Without this, every routine `@types/react` bump rewrites every snapshot
-/// that references a React builtin — noise that would bury a real extraction
-/// change in a dependency-update PR.
+/// Replace pnpm store versions (`.pnpm/@types+react@19.2.17/`) with `[VERSION]`, so dependency bumps don't rewrite
+/// every snapshot that references a React builtin.
 fn redact_pnpm_versions(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
@@ -53,14 +47,10 @@ fn redact_pnpm_versions(s: &str) -> String {
         out.push_str(before);
         let (segment, tail) = match after.find('/') {
             Some(end) => after.split_at(end),
-            // A trailing `.pnpm/<segment>` with no following separator.
             None => (after, ""),
         };
-        // The version starts at the first `@` after index 0: a scoped package
-        // encodes as `@types+react@19.2.17`, where the leading `@` is the
-        // scope marker, and a peer-suffixed segment
-        // (`react-dom@19.3.0_react@19.3.0`) carries further `@`s that belong
-        // to the version span, not to the name.
+        // Version starts at the first `@` after index 0: skips a scope's leading `@`, and keeps peer suffixes
+        // (`react-dom@19.3.0_react@19.3.0`) inside the redacted span.
         match segment[1..].find('@').map(|at| at + 1) {
             Some(at) => {
                 out.push_str(&segment[..at]);
@@ -172,25 +162,23 @@ fn snapshot_rdt_compat() {
 
 #[test]
 fn pnpm_version_redaction_covers_scoped_peer_and_repeated_segments() {
-    // Scoped package: the version starts at the LAST `@`, not the `@types` one.
+    // Scoped: the leading `@` is the scope, not the version.
     assert_eq!(
         redact_pnpm_versions("[ROOT]/node_modules/.pnpm/@types+react@19.3.0/node_modules/@types/react/index.d.ts"),
         "[ROOT]/node_modules/.pnpm/@types+react@[VERSION]/node_modules/@types/react/index.d.ts"
     );
-    // Peer-suffixed segment: the whole version-and-peers span is one redaction.
+    // Peer suffix is part of the version span.
     assert_eq!(
         redact_pnpm_versions(
             "[ROOT]/node_modules/.pnpm/react-dom@19.3.0_react@19.3.0/node_modules/react-dom/index.d.ts"
         ),
         "[ROOT]/node_modules/.pnpm/react-dom@[VERSION]/node_modules/react-dom/index.d.ts"
     );
-    // Nested store paths: every `.pnpm/` segment is redacted, not just the first.
+    // Every `.pnpm/` segment, not just the first.
     assert_eq!(
         redact_pnpm_versions(".pnpm/a@1.0.0/node_modules/.pnpm/b@2.0.0/node_modules/b.d.ts"),
         ".pnpm/a@[VERSION]/node_modules/.pnpm/b@[VERSION]/node_modules/b.d.ts"
     );
-    // A path with no store segment is returned byte-for-byte.
     assert_eq!(redact_pnpm_versions("[ROOT]/fixtures/radix/button.tsx"), "[ROOT]/fixtures/radix/button.tsx");
-    // A versionless segment (`@` only as the scope marker) is left alone.
     assert_eq!(redact_pnpm_versions(".pnpm/@scope+pkg/node_modules/x.d.ts"), ".pnpm/@scope+pkg/node_modules/x.d.ts");
 }

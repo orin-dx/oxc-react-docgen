@@ -67,8 +67,7 @@ pub(super) fn try_expand_template_literal(
             }
             CollectedType::Named { name, .. } => {
                 // Look up in global type aliases for a LiteralUnion.
-                // `?` here means "can't expand" -- the caller reads None as
-                // "this template literal has no finite string expansion".
+                // `None`: this template literal has no finite string expansion.
                 per_part.push(resolve_named_to_string_literals(name.as_str(), consuming_file, ctx, state, depth + 1)?);
             }
             _ => {

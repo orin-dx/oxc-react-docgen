@@ -1,0 +1,5 @@
+resolve conflicts please: https://github.com/orin-dx/oxc-react-docgen/pull/6
+
+---
+
+Ditto: https://github.com/orin-dx/oxc-react-docgen/pull/7

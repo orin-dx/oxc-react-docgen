@@ -1,0 +1,11 @@
+<task-notification>
+<task-id>bqjk97bp4</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/fbf53f93-25aa-45a8-8240-7526750c3c36/tasks/bqjk97bp4.output</output-file>
+<status>completed</status>
+<summary>Monitor "PR #7 CI" stream ended</summary>
+<event>Test: failure
+Coverage: failure
+DONE: 2 failures</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>

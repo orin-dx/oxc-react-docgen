@@ -21,16 +21,21 @@
     "artifacts": "napi artifacts",
     "prepublishOnly": "napi prepublish --tag-style npm"
   },
-  "files": ["index.js", "index.d.ts", "binding.d.ts", "*.node"],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "binding.d.ts",
+    "*.node"
+  ],
   "optionalDependencies": {
     "@oxc-react-docgen/napi-darwin-arm64": "0.1.0",
     "@oxc-react-docgen/napi-darwin-x64": "0.1.0",
+    "@oxc-react-docgen/napi-linux-arm64-gnu": "0.1.0",
     "@oxc-react-docgen/napi-linux-x64-gnu": "0.1.0",
-    "@oxc-react-docgen/napi-win32-x64-msvc": "0.1.0",
-    "@oxc-react-docgen/napi-linux-arm64-gnu": "0.1.0"
+    "@oxc-react-docgen/napi-win32-x64-msvc": "0.1.0"
   },
   "devDependencies": {
-    "@napi-rs/cli": "^3.0.0"
+    "@napi-rs/cli": "^3.10.4"
   },
   "license": "AGPL-3.0-or-later"
 }

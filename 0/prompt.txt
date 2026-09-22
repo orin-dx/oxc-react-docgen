@@ -1,0 +1,15 @@
+<task-notification>
+<task-id>bwrk109gf</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/fbf53f93-25aa-45a8-8240-7526750c3c36/tasks/bwrk109gf.output</output-file>
+<status>completed</status>
+<summary>Monitor "PR #3/#4 CI after cache fix" stream ended</summary>
+<event>ALL DONE, failures: 0</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+Are the comments necessary in? https://github.com/orin-dx/oxc-react-docgen/pull/4/changes
+
+Keep only what adds value but be succinct and avoid wordy prose. Ensure our rsdocs also follow that and everything wraps at 120 at the minimum (don't wrap PR descriptions, markdown files EVER)

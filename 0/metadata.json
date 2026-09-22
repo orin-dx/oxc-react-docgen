@@ -1,0 +1,71 @@
+{
+  "cli_version": "0.11.1-nightly.202609221728.e2db95f836",
+  "checkpoint_id": "01M35D1ASWBC7VF299BCTEV8SY",
+  "session_id": "fbf53f93-25aa-45a8-8240-7526750c3c36",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-22T20:31:10.31754Z",
+  "branch": "fix/proto-only-toolchain-setup",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "crates/core/src/resolver/template.rs"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5[1m]",
+  "turn_id": "c53a2b948af9",
+  "checkpoint_transcript_start": 2598,
+  "transcript_lines_at_start": 2598,
+  "compact_transcript_start": 311,
+  "token_usage": {
+    "input_tokens": 32,
+    "cache_creation_tokens": 433464,
+    "cache_read_tokens": 6270680,
+    "output_tokens": 12358,
+    "api_call_count": 15
+  },
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-22T20:31:10.221366Z",
+    "agent_lines": 1,
+    "agent_removed": 2,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1,
+    "total_lines_changed": 3,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 964,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".agents/skills/adr/SKILL.md": 33,
+        ".agents/skills/entire-search/SKILL.md": 22,
+        ".agents/skills/rust-style/SKILL.md": 63,
+        ".agents/skills/rust-types/SKILL.md": 21,
+        ".agents/skills/rustdoc/SKILL.md": 36,
+        ".agents/skills/source-command-check/SKILL.md": 20,
+        ".agents/skills/source-command-snapshot/SKILL.md": 19,
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 8,
+        ".claude/skills/entire-search/SKILL.md": 22,
+        ".codex/hooks.json": 77,
+        ".cursor/hooks.json": 40,
+        ".cursor/skills/entire-search/SKILL.md": 22,
+        ".gemini/settings.json": 141,
+        ".gemini/skills/entire-search/SKILL.md": 22,
+        ".github/hooks/entire.json": 61,
+        ".github/skills/entire-search/SKILL.md": 22,
+        ".opencode/plugins/entire.ts": 269,
+        ".opencode/skills/entire-search/SKILL.md": 22,
+        "AGENTS.md": 43
+      }
+    }
+  ]
+}

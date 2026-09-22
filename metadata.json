@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.10.7-nightly.202609200623.81a05d785",
+  "checkpoint_id": "01M351NKGED8JFQC6KXD7G11CG",
+  "strategy": "manual-commit",
+  "branch": "fix/proto-only-toolchain-setup",
+  "checkpoints_count": 10,
+  "files_touched": [
+    "crates/core/src/cache.rs",
+    "crates/core/src/extractor/alias.rs",
+    "crates/core/src/extractor/mod.rs",
+    "crates/core/src/resolver/alias.rs",
+    "crates/core/tests/snapshots/snapshots__snapshot_mantine.snap"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 312,
+    "cache_creation_tokens": 925250,
+    "cache_read_tokens": 45509658,
+    "output_tokens": 218639,
+    "api_call_count": 155
+  }
+}

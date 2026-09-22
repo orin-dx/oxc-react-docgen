@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.10.7-nightly.202609200623.81a05d785",
+  "checkpoint_id": "01M351S153HJGDY4540V9N0HTA",
+  "strategy": "manual-commit",
+  "branch": "fix/proto-only-toolchain-setup",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "Cargo.lock",
+    "Cargo.toml",
+    "apps/validate/package.json",
+    "crates/core/tests/snapshots.rs",
+    "crates/core/tests/snapshots/snapshots__snapshot_chakra.snap",
+    "crates/core/tests/snapshots/snapshots__snapshot_mui.snap",
+    "crates/core/tests/snapshots/snapshots__snapshot_panda.snap",
+    "crates/core/tests/snapshots/snapshots__snapshot_radix.snap",
+    "crates/core/tests/snapshots/snapshots__snapshot_rdt_compat.snap",
+    "crates/core/tests/snapshots/snapshots__snapshot_shadcn.snap",
+    "deny.toml",
+    "packages/napi/package.json",
+    "packages/vite-plugin/package.json",
+    "pnpm-lock.yaml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 356,
+    "cache_creation_tokens": 636024,
+    "cache_read_tokens": 32613410,
+    "output_tokens": 117133,
+    "api_call_count": 178
+  }
+}

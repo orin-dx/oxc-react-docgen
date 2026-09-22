@@ -4,6 +4,9 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege at workflow scope; each job opts into exactly what it needs.
+permissions: {}
+
 # Cancel in-progress runs for the same branch/PR.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,16 +32,19 @@ jobs:
   # is a much worse failure mode than an unnecessary one.
   detect-changes:
     name: Detect affected projects
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.detect.outputs.rust }}
       typescript: ${{ steps.detect.outputs.typescript }}
       docs: ${{ steps.detect.outputs.docs }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: moonrepo/setup-toolchain@v0
+          persist-credentials: false
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
       - id: detect
         run: |
           set +e
@@ -105,10 +111,14 @@ jobs:
     name: Lint
     needs: detect-changes
     if: needs.detect-changes.outputs.rust == 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: orin-dx/actions/setup-rust@v1.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: orin-dx/actions/setup-rust@2521888266780dabc7f5fd4c32b02d6ab82849db # v1.1
         with:
           toolchain: ${{ env.RUST_VERSION }}
           components: clippy,rustfmt
@@ -119,13 +129,28 @@ jobs:
     name: Test
     needs: detect-changes
     if: needs.detect-changes.outputs.rust == 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: orin-dx/actions/setup-rust@v1.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: orin-dx/actions/setup-rust@2521888266780dabc7f5fd4c32b02d6ab82849db # v1.1
         with:
           toolchain: ${{ env.RUST_VERSION }}
-      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@94c31af3204a9f15ab40b35ad084410b905bbc73 # v2.87.17
+        with:
+          tool: cargo-nextest
+      # crates/cli's config tests spawn `node --import=tsx/esm` to evaluate a
+      # real docgen.config.ts, and tsx is a devDependency of apps/validate --
+      # not hoisted to the root -- so these jobs need an installed workspace,
+      # not just a Rust toolchain.
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+      - uses: orin-dx/actions/setup-pnpm-cache@2521888266780dabc7f5fd4c32b02d6ab82849db # v1.1
+      - run: pnpm install --frozen-lockfile
       - run: cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked
       # nextest doesn't run doctests — paired with a plain `cargo test --doc`.
       - run: cargo test --doc --workspace --exclude oxc-react-docgen-napi
@@ -134,38 +159,80 @@ jobs:
     name: Hygiene (doc-check · unused deps)
     needs: detect-changes
     if: needs.detect-changes.outputs.rust == 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: orin-dx/actions/setup-rust@v1.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: orin-dx/actions/setup-rust@2521888266780dabc7f5fd4c32b02d6ab82849db # v1.1
         with:
           toolchain: ${{ env.RUST_VERSION }}
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace --exclude oxc-react-docgen-napi
-      - uses: taiki-e/install-action@cargo-machete
+      - uses: taiki-e/install-action@94c31af3204a9f15ab40b35ad084410b905bbc73 # v2.87.17
+        with:
+          tool: cargo-machete
       - run: cargo machete
 
   deny:
     name: Deny (licenses · advisories · bans)
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+
+  # Workflow-file linting: catches credential persistence, over-broad job
+  # permissions, and mutable action references. Unconditional -- a workflow
+  # change is exactly the kind of edit no language-specific job would catch.
+  actions:
+    name: Actions (zizmor)
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@94c31af3204a9f15ab40b35ad084410b905bbc73 # v2.87.17
+        with:
+          tool: zizmor@1.29.0
+      # Kept identical to `just zizmor`.
+      - run: zizmor --offline --strict-collection .
 
   coverage:
     name: Coverage
     needs: detect-changes
     if: needs.detect-changes.outputs.rust == 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: orin-dx/actions/setup-rust@v1.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: orin-dx/actions/setup-rust@2521888266780dabc7f5fd4c32b02d6ab82849db # v1.1
         with:
           toolchain: ${{ env.RUST_VERSION }}
           components: llvm-tools-preview
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@94c31af3204a9f15ab40b35ad084410b905bbc73 # v2.87.17
+        with:
+          tool: cargo-llvm-cov,cargo-nextest
+      # crates/cli's config tests spawn `node --import=tsx/esm` to evaluate a
+      # real docgen.config.ts, and tsx is a devDependency of apps/validate --
+      # not hoisted to the root -- so these jobs need an installed workspace,
+      # not just a Rust toolchain.
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+      - uses: orin-dx/actions/setup-pnpm-cache@2521888266780dabc7f5fd4c32b02d6ab82849db # v1.1
+      - run: pnpm install --frozen-lockfile
       - run: cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --lcov --output-path lcov.info
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: lcov.info
           fail_ci_if_error: false
@@ -173,15 +240,19 @@ jobs:
   bench:
     name: Benchmarks
     needs: detect-changes
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && needs.detect-changes.outputs.rust == 'true'
     steps:
-      - uses: actions/checkout@v4
-      - uses: orin-dx/actions/setup-rust@v1.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: orin-dx/actions/setup-rust@2521888266780dabc7f5fd4c32b02d6ab82849db # v1.1
         with:
           toolchain: ${{ env.RUST_VERSION }}
       - run: cargo bench --workspace --exclude oxc-react-docgen-napi 2>&1 | tee bench-results.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bench-results
           path: bench-results.txt
@@ -192,13 +263,17 @@ jobs:
     name: Format & lint check
     needs: detect-changes
     if: needs.detect-changes.outputs.typescript == 'true' || needs.detect-changes.outputs.docs == 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: moonrepo/setup-toolchain@v0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
-      - uses: orin-dx/actions/setup-pnpm-cache@v1.1
+      - uses: orin-dx/actions/setup-pnpm-cache@2521888266780dabc7f5fd4c32b02d6ab82849db # v1.1
       - run: pnpm install --frozen-lockfile
       - if: needs.detect-changes.outputs.typescript == 'true'
         run: >-
@@ -223,6 +298,8 @@ jobs:
     name: TypeScript / Node ${{ matrix.node }}
     needs: detect-changes
     if: needs.detect-changes.outputs.typescript == 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -231,11 +308,13 @@ jobs:
     env:
       PROTO_NODE_VERSION: ${{ matrix.node }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: moonrepo/setup-toolchain@v0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
-      - uses: orin-dx/actions/setup-pnpm-cache@v1.1
+      - uses: orin-dx/actions/setup-pnpm-cache@2521888266780dabc7f5fd4c32b02d6ab82849db # v1.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @oxc-react-docgen/vite-plugin test
 
@@ -245,6 +324,8 @@ jobs:
     name: Install / Node ${{ matrix.node }} / ${{ matrix.pm }}
     needs: detect-changes
     if: needs.detect-changes.outputs.typescript == 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -254,16 +335,21 @@ jobs:
     env:
       PROTO_NODE_VERSION: ${{ matrix.node }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: moonrepo/setup-toolchain@v0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         with:
           auto-install: true
-      - uses: orin-dx/actions/setup-pnpm-cache@v1.1
+      - uses: orin-dx/actions/setup-pnpm-cache@2521888266780dabc7f5fd4c32b02d6ab82849db # v1.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @oxc-react-docgen/vite-plugin build
       - run: pnpm --filter @oxc-react-docgen/vite-plugin pack --out-dir /tmp/packed
 
       - name: Install via ${{ matrix.pm }}
+        # zizmor: ignore[adhoc-packages] installing the freshly packed tarball
+        # outside a lockfile is the point of this job -- it proves a real
+        # consumer gets @oxc-react-docgen/napi as a transitive dependency.
         run: |
           mkdir /tmp/install-test && cd /tmp/install-test
           if [ "${{ matrix.pm }}" = "npm" ]; then

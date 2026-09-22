@@ -1,0 +1,61 @@
+# Dependency updates. Every ecosystem is grouped into a single routine PR per
+# week so the queue stays reviewable, with security updates kept in their own
+# group so an advisory fix is never hidden inside a large routine bump.
+#
+# `cooldown` deliberately lags fresh releases: this repo pins GitHub Actions
+# by commit SHA, and a week is long enough for a yanked crate or a pulled
+# action release to surface before it lands in a PR here.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    groups:
+      routine-actions:
+        applies-to: version-updates
+        patterns: ["*"]
+      security-actions:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      # The oxc_* crates are released in lockstep and their minor releases
+      # carry breaking API changes; keeping them in one PR means the
+      # extractor and resolver are updated together or not at all.
+      oxc:
+        applies-to: version-updates
+        patterns: ["oxc_*"]
+      routine-cargo:
+        applies-to: version-updates
+        patterns: ["*"]
+        exclude-patterns: ["oxc_*"]
+      security-cargo:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    groups:
+      routine-npm:
+        applies-to: version-updates
+        patterns: ["*"]
+      security-npm:
+        applies-to: security-updates
+        patterns: ["*"]

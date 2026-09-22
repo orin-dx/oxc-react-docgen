@@ -96,6 +96,12 @@ deny:
 typos:
     typos
 
+# Lint GitHub Actions workflows for permission, credential, and supply-chain
+# issues. --strict-collection fails on a workflow it cannot parse instead of
+# skipping it, so a malformed file can never pass by being ignored.
+zizmor:
+    zizmor --offline --strict-collection .
+
 # Everything the moon-managed pre-commit hook runs. `.moon/workspace.yml`
 # calls this recipe rather than repeating the commands, so the hook and
 # `just ci` can't drift apart.
@@ -105,8 +111,8 @@ pre-commit:
     typos
     cargo deny check
 
-# Simulate full CI locally (lint → test → deny → typos → doc-check → machete → ts tests)
-ci: lint test deny typos doc-check machete test-ts
+# Simulate full CI locally (lint → test → deny → typos → zizmor → doc-check → machete → ts tests)
+ci: lint test deny typos zizmor doc-check machete test-ts
 
 # Run moon compare task (accuracy vs react-docgen + react-docgen-typescript)
 compare:

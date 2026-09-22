@@ -355,8 +355,7 @@ impl<'src> SourceDataCollector<'src> {
     /// (bare or `React.`-qualified). Returns the matched bare name for use in
     /// diagnostic messages.
     pub(super) fn super_class_is_component_family<'a>(&self, class: &Class<'a>) -> Option<&'static str> {
-        let super_class = class.super_class.as_ref()?;
-        let super_name = self.expression_to_ident_name(super_class);
+        let super_name = self.expression_to_ident_name(&class.heritage.as_ref()?.expression);
         let bare = super_name.strip_prefix("React.").unwrap_or(&super_name);
         match bare {
             "Component" => Some("Component"),
@@ -374,7 +373,7 @@ impl<'src> SourceDataCollector<'src> {
     /// contract — callers decide whether and how to surface a diagnostic.
     pub(super) fn try_class_component<'a>(&mut self, class: &Class<'a>, name: &str) -> Option<ComponentMapping> {
         self.super_class_is_component_family(class)?;
-        let type_args = class.super_type_arguments.as_ref()?;
+        let type_args = class.heritage.as_ref()?.type_arguments.as_ref()?;
         let props_type = type_args.params.first()?;
         let (props_name, props_type_args) = self.extract_type_name_from_type(props_type)?;
         let (description, tags) = self.find_jsdoc_with_tags(class.span.start);

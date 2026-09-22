@@ -140,10 +140,9 @@ pub fn parse_file(path: &Utf8Path, source: &str) -> SourceData {
     let is_tsx = source_type.is_jsx() || source_type.is_typescript_definition();
     let mut collector = SourceDataCollector::new(path, source, is_tsx);
 
-    // oxc_parser is error-recovering: `ret.program` is still usable even when
-    // `ret.errors` is non-empty. Surface each error as a diagnostic instead of
-    // silently treating the source as if it parsed cleanly.
-    for err in &ret.errors {
+    // oxc_parser recovers from errors: `ret.program` is usable even with diagnostics, so surface them rather than
+    // treat the source as clean.
+    for err in &ret.diagnostics {
         collector.data.diagnostics.push(Diagnostic {
             severity: DiagnosticSeverity::Error,
             message: err.to_string(),
@@ -706,7 +705,7 @@ impl<'src> SourceDataCollector<'src> {
     // ─── TSInterfaceHeritage → ExtendsRef ────────────────────────────────────
 
     pub(super) fn collect_extends<'a>(&mut self, ext: &TSInterfaceHeritage<'a>) -> ExtendsRef {
-        let name = self.expression_to_ident_name(&ext.expression);
+        let name = self.ts_type_name_str(&ext.type_name);
         let type_args = self.extract_type_args(&ext.type_arguments);
         self.classify_extends(&name, type_args)
     }
@@ -808,10 +807,8 @@ pub(super) fn declaration_name<'a>(decl: &Declaration<'a>) -> Option<&'a str> {
         Declaration::TSTypeAliasDeclaration(ta) => Some(ta.id.name.as_str()),
         Declaration::TSInterfaceDeclaration(iface) => Some(iface.id.name.as_str()),
         Declaration::TSEnumDeclaration(e) => Some(e.id.name.as_str()),
-        Declaration::TSModuleDeclaration(m) => match &m.id {
-            TSModuleDeclarationName::Identifier(id) => Some(id.name.as_str()),
-            TSModuleDeclarationName::StringLiteral(s) => Some(s.value.as_str()),
-        },
+        Declaration::TSNamespaceDeclaration(ns) => Some(ns.id.name.as_str()),
+        Declaration::TSExternalModuleDeclaration(m) => Some(m.id.value.as_str()),
         _ => None,
     }
 }
@@ -1486,6 +1483,77 @@ interface ButtonProps {
         assert!(!data.exports.is_empty(), "No exports collected");
         assert!(data.exports.iter().any(|e| matches!(e, LexedExport::ReExportAll { .. })), "ReExportAll not found");
         assert!(data.exports.iter().any(|e| matches!(e, LexedExport::ReExportNamed { .. })), "ReExportNamed not found");
+    }
+
+    #[test]
+    fn every_export_form_lands_in_the_right_lexed_export_variant() {
+        // Exact sets, not presence: a specifier list misclassified as a re-export would pass a presence check.
+        let source = r#"
+            const Local = 1;
+            export { Local };
+            export { Button } from "./button";
+            export type { ButtonProps } from "./button";
+            export * from "./types";
+            export interface CardProps { a: string }
+            export type Size = "sm";
+            export enum Color { Red }
+            export const VERSION = "1";
+        "#;
+        let data = parse_file(Utf8Path::new("/test/index.ts"), source);
+
+        let mut locals: Vec<(&str, bool)> = data
+            .exports
+            .iter()
+            .filter_map(|e| match e {
+                LexedExport::LocalDeclaration { name, is_type_only } => Some((name.as_str(), *is_type_only)),
+                _ => None,
+            })
+            .collect();
+        locals.sort();
+        // `export_kind` only marks `export type { A }`; inline declarations are always value exports.
+        assert_eq!(
+            locals,
+            vec![("CardProps", false), ("Color", false), ("Local", false), ("Size", false), ("VERSION", false),]
+        );
+
+        let mut re_exports: Vec<(&str, &str, bool)> = data
+            .exports
+            .iter()
+            .filter_map(|e| match e {
+                LexedExport::ReExportNamed { local_name, source_specifier, is_type_only, .. } => {
+                    Some((local_name.as_str(), source_specifier.as_str(), *is_type_only))
+                }
+                _ => None,
+            })
+            .collect();
+        re_exports.sort();
+        assert_eq!(re_exports, vec![("Button", "./button", false), ("ButtonProps", "./button", true)]);
+
+        let star: Vec<&str> = data
+            .exports
+            .iter()
+            .filter_map(|e| match e {
+                LexedExport::ReExportAll { source_specifier, .. } => Some(source_specifier.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(star, vec!["./types"]);
+    }
+
+    #[test]
+    fn only_an_identifier_named_namespace_qualifies_the_types_declared_inside_it() {
+        let source = r#"
+            namespace Theme { export type Size = "sm"; }
+            declare module "pkg" { export type Ambient = "a"; }
+            declare global { type Global = "g"; }
+        "#;
+        let path = Utf8Path::new("/test/ns.ts");
+        let data = parse_file(path, source);
+
+        let mut keys: Vec<&str> = data.type_aliases.keys().map(String::as_str).collect();
+        keys.sort();
+        let expected = [format!("{path}:Ambient"), format!("{path}:Global"), format!("{path}:Theme.Size")];
+        assert_eq!(keys, expected.iter().map(String::as_str).collect::<Vec<_>>());
     }
 
     #[test]

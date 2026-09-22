@@ -358,6 +358,10 @@ jobs:
         # it still arrives only because vite-plugin depends on it. pnpm 11 reads
         # overrides from pnpm-workspace.yaml, not package.json.
         run: |
+          # proto resolves pnpm from .prototools, which /tmp/install-test is
+          # outside of; carry the repo's pinned version across the cd.
+          PROTO_PNPM_VERSION="$(pnpm --version)"
+          export PROTO_PNPM_VERSION
           mkdir /tmp/install-test && cd /tmp/install-test
           napi=$(ls /tmp/packed/oxc-react-docgen-napi-*.tgz)
           plugin=$(ls /tmp/packed/oxc-react-docgen-vite-plugin-*.tgz)

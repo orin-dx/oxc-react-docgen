@@ -344,28 +344,46 @@ jobs:
       - uses: orin-dx/actions/setup-pnpm-cache@2521888266780dabc7f5fd4c32b02d6ab82849db # v1.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @oxc-react-docgen/vite-plugin build
-      - run: pnpm --filter @oxc-react-docgen/vite-plugin pack --out-dir /tmp/packed
+      # pnpm 11 removed `pack --out-dir`; `--pack-destination` replaces it.
+      - run: pnpm --filter @oxc-react-docgen/napi --filter @oxc-react-docgen/vite-plugin pack --pack-destination /tmp/packed
 
       - name: Install via ${{ matrix.pm }}
         # zizmor: ignore[adhoc-packages] installing the freshly packed tarball
         # outside a lockfile is the point of this job -- it proves a real
         # consumer gets @oxc-react-docgen/napi as a transitive dependency.
+        env:
+          PM: ${{ matrix.pm }}
+        # @oxc-react-docgen/napi isn't on the registry until the first release,
+        # so a plain install 404s. An override serves it from its own tarball;
+        # it still arrives only because vite-plugin depends on it. pnpm 11 reads
+        # overrides from pnpm-workspace.yaml, not package.json.
         run: |
           mkdir /tmp/install-test && cd /tmp/install-test
-          if [ "${{ matrix.pm }}" = "npm" ]; then
-            npm install /tmp/packed/*.tgz
+          napi=$(ls /tmp/packed/oxc-react-docgen-napi-*.tgz)
+          plugin=$(ls /tmp/packed/oxc-react-docgen-vite-plugin-*.tgz)
+          if [ "$PM" = "npm" ]; then
+            printf '{"private":true,"overrides":{"@oxc-react-docgen/napi":"file:%s"}}\n' "$napi" > package.json
+            npm install "$plugin"
           else
-            pnpm add /tmp/packed/*.tgz
+            echo '{"private":true}' > package.json
+            printf 'overrides:\n  "@oxc-react-docgen/napi": "file:%s"\n' "$napi" > pnpm-workspace.yaml
+            pnpm add "$plugin"
           fi
 
+      # Resolve napi the way vite-plugin's own `require` would, not by a fixed
+      # top-level path: pnpm doesn't hoist transitive deps into node_modules/.
       - name: Verify napi is a transitive dependency
+        working-directory: /tmp/install-test
+        # ESM resolution: vite-plugin's `exports` has only an `import` condition
+        # and doesn't expose ./package.json, so require.resolve can't reach it.
         run: |
-          node -e "
-            const fs = require('fs');
-            const base = '/tmp/install-test/node_modules';
-            if (!fs.existsSync(base + '/@oxc-react-docgen/vite-plugin/package.json'))
-              throw new Error('vite-plugin not installed');
-            if (!fs.existsSync(base + '/@oxc-react-docgen/napi/package.json'))
-              throw new Error('@oxc-react-docgen/napi not installed as transitive dep');
+          node --input-type=module -e "
+            import { createRequire } from 'node:module';
+            import { readFileSync } from 'node:fs';
+            const { dependencies = {} } = JSON.parse(readFileSync('package.json', 'utf8'));
+            if (dependencies['@oxc-react-docgen/napi'])
+              throw new Error('napi is a direct dependency; the check proves nothing');
+            const plugin = import.meta.resolve('@oxc-react-docgen/vite-plugin');
+            createRequire(plugin).resolve('@oxc-react-docgen/napi/package.json');
             console.log('OK');
           "

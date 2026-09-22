@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.11.1-nightly.202609221728.e2db95f836",
+  "checkpoint_id": "01M35D89ZAYBPE9M6NV56NPEZ6",
+  "strategy": "manual-commit",
+  "branch": "feat/oxc-0.151",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "crates/core/src/cache.rs",
+    "crates/core/src/resolver/template.rs",
+    "crates/core/tests/snapshots.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 12,
+    "cache_creation_tokens": 4662,
+    "cache_read_tokens": 2810258,
+    "output_tokens": 4010,
+    "api_call_count": 6
+  }
+}

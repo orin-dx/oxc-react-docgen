@@ -32,5 +32,9 @@
     "vite": "^8.0.0",
     "vitest": "^5.0.0"
   },
-  "license": "AGPL-3.0-or-later"
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/orin-dx/oxc-react-docgen.git"
+  }
 }

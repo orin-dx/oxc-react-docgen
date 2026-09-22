@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.10.7-nightly.202609200623.81a05d785",
+  "checkpoint_id": "01M351Q0Y3P1FZBMF2M9AG9DX1",
+  "strategy": "manual-commit",
+  "branch": "fix/proto-only-toolchain-setup",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".github/workflows/release.yml",
+    "callisto.toml",
+    "package.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 346,
+    "cache_creation_tokens": 630865,
+    "cache_read_tokens": 31072197,
+    "output_tokens": 112832,
+    "api_call_count": 173
+  }
+}

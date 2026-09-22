@@ -18,8 +18,7 @@
   },
   "scripts": {
     "build:napi": "napi build --platform --release --manifest-path ../../crates/binding/Cargo.toml --output-dir . --dts binding.d.ts",
-    "artifacts": "napi artifacts",
-    "prepublishOnly": "napi prepublish --tag-style npm"
+    "artifacts": "napi artifacts"
   },
   "files": [
     "index.js",

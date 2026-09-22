@@ -1,0 +1,32 @@
+<task-notification>
+<task-id>bw2mu0axc</task-id>
+<summary>Monitor event: "PR #3 and #4 CI check results"</summary>
+<event>#3 Actions (zizmor): pass
+#3 Benchmarks: skipping
+#3 Deny (licenses · advisories · bans): pass
+#3 Detect affected projects: pass
+#4 Actions (zizmor): pass</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bw2mu0axc</task-id>
+<summary>Monitor event: "PR #3 and #4 CI check results"</summary>
+<event>#3 Format &amp; lint check: pass
+#3 Hygiene (doc-check · unused deps): pass
+#3 Install / Node 24 / npm: pass
+#3 Install / Node 24 / pnpm: fail
+#3 Install / Node 26 / npm: pass
+#3 Install / Node 26 / pnpm: fail
+#3 Lint: pass
+#3 TypeScript / Node 24: pass
+#3 TypeScript / Node 26: pass
+#4 Benchmarks: skipping
+#4 Deny (licenses · advisories · bans): pass
+#4 Detect affected projects: pass
+#4 Format &amp; lint check: pass
+#4 TypeScript / Node 26: pass</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>

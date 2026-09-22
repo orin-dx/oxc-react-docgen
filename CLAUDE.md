@@ -33,7 +33,7 @@ No reverse dependencies. `pub(crate)` for implementation modules; `pub` only for
 
 Two habits that repeatedly caught real bugs during the 2026-08-12 spec-validation pass (a stale-by-one-edit watch mode, always-zero watch stats — both had zero test coverage despite extensive existing suites):
 
-1. **Sibling-path parity.** When a function parallels an already-tested one (e.g. `WatchSession::update_file` mirrors `extract()`'s resolve/panic-containment logic; `create_session`'s guard boundary mirrors `initialize_session`/`extract_file_incremental`'s), the new path needs a test asserting the *same* contract, not just "it runs without error." A sibling path is exactly where coverage silently lapses.
+1. **Sibling-path parity.** When a function parallels an already-tested one (e.g. `WatchSession::update_file` mirrors `extract()`'s resolve/panic-containment logic; `create_session`'s guard boundary mirrors `initialize_session`/`extract_file_incremental`'s), the new path needs a test asserting the _same_ contract, not just "it runs without error." A sibling path is exactly where coverage silently lapses.
 2. **Assert content, not presence.** Prefer `assert_eq!` against an exact expected value over `contains(...)`/`is_some()`/liveness checks wherever the cost is comparable. A test asserting "component X exists" survives X's props resolving to stale or wrong data; a test asserting X's exact prop set does not.
 
 ## Crate guide

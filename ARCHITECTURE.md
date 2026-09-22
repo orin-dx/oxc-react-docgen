@@ -24,27 +24,13 @@ Each `parse_file()` call gets its own OXC allocator. No AST node escapes the fun
 
 The watch path reuses analysis across file changes. A single-file update calls `parse_file()` on the changed file and re-resolves only the affected components.
 
-The current `WatchSession` publishes related state through separate containers:
-`ArcSwap<GlobalSourceData>`, `ArcSwap<ReverseDeps>`, a mutex-protected named-type
-index, and `DashMap`s for source data, components, and diagnostics. Individual
-updates are synchronized, but `snapshot()` can combine values from different
-moments because there is no aggregate revision identity or single publication
-point. Create/delete/rename also remains a documented session-rebuild path.
+The current `WatchSession` publishes related state through separate containers: `ArcSwap<GlobalSourceData>`, `ArcSwap<ReverseDeps>`, a mutex-protected named-type index, and `DashMap`s for source data, components, and diagnostics. Individual updates are synchronized, but `snapshot()` can combine values from different moments because there is no aggregate revision identity or single publication point. Create/delete/rename also remains a documented session-rebuild path.
 
 ### Target watch publication invariant
 
-Move all query-visible watch state into one immutable `WatchRevision`: global
-source data, named-type indexes, component cache, diagnostics, and
-revision/content identity. An update builds the replacement off to the side and
-publishes one `Arc<WatchRevision>` only after every stage succeeds. A failed
-update leaves the prior complete revision published.
+Move all query-visible watch state into one immutable `WatchRevision`: global source data, named-type indexes, component cache, diagnostics, and revision/content identity. An update builds the replacement off to the side and publishes one `Arc<WatchRevision>` only after every stage succeeds. A failed update leaves the prior complete revision published.
 
-Gate that target with clean/incremental equivalence. Generated modify,
-edit-revert, repeated-edit, and session-rebuild create/delete/rename sequences
-must produce the same canonical components, enums, resolution outcomes, and
-diagnostics as a fresh extraction over the resulting files. Concurrent tests
-must prove readers receive an old-complete or new-complete revision, never a
-mixture. Per-run timing counters are excluded from canonical comparison.
+Gate that target with clean/incremental equivalence. Generated modify, edit-revert, repeated-edit, and session-rebuild create/delete/rename sequences must produce the same canonical components, enums, resolution outcomes, and diagnostics as a fresh extraction over the resulting files. Concurrent tests must prove readers receive an old-complete or new-complete revision, never a mixture. Per-run timing counters are excluded from canonical comparison.
 
 ## Crate and package graph
 
@@ -162,11 +148,7 @@ Not shared between threads — rayon creates one per component.
 
 ### `GlobalSourceData`
 
-The merged view across all parsed files: component declarations, type aliases,
-interface definitions, import bindings. Today `WatchSession` publishes this map
-independently via `ArcSwap`. Under the target watch invariant above it becomes
-one member of the immutable aggregate `WatchRevision`, so readers load one
-coherent published revision.
+The merged view across all parsed files: component declarations, type aliases, interface definitions, import bindings. Today `WatchSession` publishes this map independently via `ArcSwap`. Under the target watch invariant above it becomes one member of the immutable aggregate `WatchRevision`, so readers load one coherent published revision.
 
 ## Design decisions
 

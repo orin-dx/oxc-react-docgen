@@ -1,0 +1,11 @@
+<pasted_content id="c73b">
+We've published callisto v0.8 and we need to adjust our repo for it now
+</pasted_content id="c73b">
+
+---
+
+Fixing the callisto issue, can you address everything else we need? Any rust updates, crate updates, moon, just, etc? Actions we need to update? Do we need to setup dependabot? Check the callisto repo for inspiration
+
+---
+
+With all of these changes should we make a PR? Then make a PR to move oxc?

@@ -89,6 +89,12 @@ fn rdt_type_json(prop_type: &oxc_react_docgen_core::types::PropType) -> serde_js
     serde_json::json!({ "name": prop_type.raw_string() })
 }
 
+/// RDT's default `skipChildrenPropWithoutDoc`: an undocumented `children` says nothing a
+/// prop table can show, so RDT never emits it. Canonical output keeps it.
+fn rdt_omits(prop: &oxc_react_docgen_core::types::ParsedProp) -> bool {
+    prop.name == "children" && prop.description.is_empty()
+}
+
 /// `methods` is always `[]` — this tool doesn't extract class methods, and RDT
 /// consumers (Storybook's docgen addon) only ever read it for class components.
 pub fn serialize_rdt(output: &oxc_react_docgen_core::types::ExtractionOutput) -> String {
@@ -97,6 +103,7 @@ pub fn serialize_rdt(output: &oxc_react_docgen_core::types::ExtractionOutput) ->
         let props: serde_json::Map<String, serde_json::Value> = entry
             .props
             .iter()
+            .filter(|(_, prop)| !rdt_omits(prop))
             .map(|(k, prop)| {
                 let obj = serde_json::json!({
                     "name": prop.name,
@@ -488,6 +495,69 @@ export function Comp(props: CompProps) { return null; }
         let rdt_json = serialize_rdt(&output);
         let parsed: serde_json::Value = serde_json::from_str(&rdt_json).unwrap();
         assert_eq!(parsed["Widget"]["composes"], serde_json::json!(["BaseA", "BaseB"]));
+    }
+
+    // ── RDT's default `skipChildrenPropWithoutDoc`: an undocumented `children`
+    // never appears in `--format rdt`, a documented one does, canonical keeps both.
+
+    fn component_with_props(name: &str, props: Vec<(&str, &str)>) -> oxc_react_docgen_core::types::ComponentEntry {
+        use oxc_react_docgen_core::types::{ComponentEntry, ParsedProp};
+        ComponentEntry {
+            display_name: name.to_string(),
+            file_path: format!("{name}.tsx").into(),
+            description: String::new(),
+            props: props
+                .into_iter()
+                .map(|(prop_name, description)| {
+                    let prop = ParsedProp::new(
+                        prop_name.to_string(),
+                        PropType::ReactNode,
+                        false,
+                        None,
+                        description.to_string(),
+                        Default::default(),
+                        None,
+                        vec![],
+                    );
+                    (prop_name.to_string(), prop)
+                })
+                .collect(),
+            inheritance: vec![],
+            notable_inherited: Default::default(),
+            discriminant_prop: None,
+            composes: vec![],
+            tags: Default::default(),
+            methods: vec![],
+        }
+    }
+
+    #[test]
+    fn serialize_rdt_omits_undocumented_children_but_keeps_documented_ones() {
+        let mut components = std::collections::BTreeMap::new();
+        components.insert("Bare".to_string(), component_with_props("Bare", vec![("children", ""), ("label", "")]));
+        components.insert(
+            "Documented".to_string(),
+            component_with_props("Documented", vec![("children", "Slot content."), ("label", "")]),
+        );
+        let output = oxc_react_docgen_core::types::ExtractionOutput {
+            components,
+            enums: Default::default(),
+            diagnostics: vec![],
+            stats: Default::default(),
+        };
+
+        let parsed: serde_json::Value = serde_json::from_str(&serialize_rdt(&output)).unwrap();
+        let prop_names = |component: &str| -> Vec<String> {
+            let mut names: Vec<String> = parsed[component]["props"].as_object().unwrap().keys().cloned().collect();
+            names.sort();
+            names
+        };
+        assert_eq!(prop_names("Bare"), vec!["label".to_string()]);
+        assert_eq!(prop_names("Documented"), vec!["children".to_string(), "label".to_string()]);
+        assert_eq!(parsed["Documented"]["props"]["children"]["description"], "Slot content.");
+
+        // Canonical output is untouched: the undocumented `children` is still there.
+        assert!(output.components["Bare"].props.contains_key("children"));
     }
 
     // ── SPEC-SERIALIZATION-001 AC-10: end-to-end — a props interface

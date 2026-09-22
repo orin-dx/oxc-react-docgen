@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.10.7-nightly.202609200623.81a05d785",
+  "checkpoint_id": "01M3526V9HGRNC08D83X4C0Y41",
+  "strategy": "manual-commit",
+  "branch": "feat/oxc-0.151",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "Cargo.lock",
+    "Cargo.toml",
+    "crates/core/src/extractor/component.rs",
+    "crates/core/src/extractor/mod.rs",
+    "crates/core/src/extractor/visit.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 74,
+    "cache_creation_tokens": 39389,
+    "cache_read_tokens": 12361750,
+    "output_tokens": 21266,
+    "api_call_count": 37
+  }
+}

@@ -365,6 +365,35 @@ mod tests {
     }
 
     #[test]
+    fn initialize_in_full_mode_does_not_emit_components_declared_in_merged_react_types() {
+        let tmp = tempfile::TempDir::new_in(camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+        std::fs::write(
+            tmp.path().join("Button.tsx"),
+            r#"
+import * as React from "react";
+export function Button(props: { variant?: "primary" | "secondary" } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return null;
+}
+"#,
+        )
+        .unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap()],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            html_attributes: crate::pipeline::HtmlAttributeMode::Full,
+            ..Default::default()
+        };
+
+        let session = WatchSession::new(options);
+        let initial = session.initialize();
+
+        let names: Vec<&str> = initial.components.keys().map(String::as_str).collect();
+        assert_eq!(names, vec!["Button"]);
+        let snapshot_names: Vec<String> = session.snapshot().components.keys().cloned().collect();
+        assert_eq!(snapshot_names, vec!["Button".to_owned()]);
+    }
+
+    #[test]
     fn initialize_is_idempotent() {
         let session = WatchSession::new(empty_options());
         let first = session.initialize();

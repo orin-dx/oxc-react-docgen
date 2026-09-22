@@ -544,6 +544,10 @@ fn merge_cached_dts_file(
         }
     };
     diagnostics.append(&mut data.diagnostics);
+    // These files exist to resolve types, not to document components: `@types/react`'s
+    // own `class PureComponent<P, ...> extends Component<P, ...>` otherwise matches the
+    // class-component detector and surfaces as a 0-prop component plus an unresolvable `P`.
+    data.component_mappings.clear();
     global.merge(path, data);
 }
 
@@ -912,6 +916,44 @@ mod tests {
             "expected the diagnostic to explain that no source directories were configured, got: {}",
             error.message
         );
+    }
+
+    // ── ambient files contribute types, not components ───────────────────────
+
+    /// Full mode merges the real `@types/react` (which declares `class PureComponent<P, S, SS>
+    /// extends Component<P, S, SS>`). Its component mappings must not leak into the output.
+    fn full_mode_options_for(tmp: &TempDir) -> PipelineOptions {
+        PipelineOptions {
+            src_dirs: vec![Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap()],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            html_attributes: HtmlAttributeMode::Full,
+            ..Default::default()
+        }
+    }
+
+    const BUTTON_SOURCE: &str = r#"
+import * as React from "react";
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary";
+}
+export function Button(props: ButtonProps) { return null; }
+"#;
+
+    #[test]
+    fn full_mode_does_not_emit_components_declared_in_merged_react_types() {
+        let tmp = TempDir::new_in(camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+        write_file(&tmp, "Button.tsx", BUTTON_SOURCE);
+
+        let output = extract(&full_mode_options_for(&tmp));
+
+        // `TrustedHTML` and friends are a separate, documented same-namespace-resolution gap;
+        // the ghost's own symptom is the unresolvable props parameter `P`.
+        let ghost_diagnostics: Vec<&Diagnostic> =
+            output.diagnostics.iter().filter(|d| d.message.contains("Cannot resolve type 'P'")).collect();
+        assert!(ghost_diagnostics.is_empty(), "unexpected diagnostics from the ghost component: {ghost_diagnostics:?}");
+
+        let names: Vec<&str> = output.components.keys().map(String::as_str).collect();
+        assert_eq!(names, vec!["Button"]);
     }
 
     // ── test_html_attribute_mode_full_resolves_real_button_attrs_end_to_end ───

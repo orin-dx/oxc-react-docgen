@@ -1,5 +1,5 @@
 {
-  "cli_version": "0.10.7-nightly.202609200623.81a05d785",
+  "cli_version": "0.11.1-nightly.202609221728.e2db95f836",
   "checkpoint_id": "01M3526V9HGRNC08D83X4C0Y41",
   "strategy": "manual-commit",
   "branch": "feat/oxc-0.151",
@@ -21,10 +21,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 74,
-    "cache_creation_tokens": 39389,
-    "cache_read_tokens": 12361750,
-    "output_tokens": 21266,
-    "api_call_count": 37
+    "input_tokens": 18,
+    "cache_creation_tokens": 10551,
+    "cache_read_tokens": 4152107,
+    "output_tokens": 7526,
+    "api_call_count": 9
   }
 }

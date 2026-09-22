@@ -1,6 +1,6 @@
 # Type Checker Integration: Future Work
 
-This document describes which resolver gaps genuinely require a TypeScript type checker, the state of the tsgo (TypeScript 7.0) ecosystem, and the integration plan for when the Corsa API is stable.
+This document describes which resolver gaps genuinely require a TypeScript type checker, the current TypeScript 7 ecosystem, and the two integration routes that must be evaluated before one is selected. “Corsa” was the native port's codename, not the name of a guaranteed drop-in compiler API.
 
 ---
 
@@ -31,35 +31,34 @@ The six fundamental gap patterns discovered during the RDT compatibility audit b
 
 ---
 
-## TypeScript 7.0 / tsgo ecosystem status (as of 2026-06-28)
+## TypeScript 7.0 ecosystem status (verified 2026-09-11)
 
 ### What happened
 
-TypeScript 7.0 RC shipped 2026-06-18. This is the Go rewrite of the compiler ("tsgo"), not a JavaScript refactor. The key changes:
+TypeScript 7.0 shipped 2026-07-08. This is the Go rewrite of the compiler and language service, not a JavaScript refactor. The key changes:
 
-- **TypeScript 6.0** = last JavaScript-based tsc (maintenance only)
-- **TypeScript 7.0** = Go rewrite; 10× build speed, same semantics
-- **Strada API** (ts.createProgram, checker.getTypeAtLocation, LanguageService) = **completely dropped** in TS 7.0 — no shim, no compatibility layer
-- **react-docgen-typescript** depends on Strada; it is **broken under TS 7.0**
+- **TypeScript 6.x** remains the JavaScript implementation and compatibility API for tools that require `ts.createProgram`/`TypeChecker`.
+- **TypeScript 7.0** is the native Go implementation; Microsoft reports roughly 10× build speed on many projects and ships a multi-threaded LSP language service.
+- **The Strada programmatic API is not supported by the native implementation.** TypeScript 7's curated programmatic API remains a separately evolving surface and must be inspected at implementation time rather than inferred from TypeScript 6 names.
+- A consumer can keep the TypeScript 6 API installed side-by-side for tooling while using TypeScript 7 for checking. `react-docgen-typescript` compatibility therefore depends on the installed API package and cannot be summarized as simply “broken under TypeScript 7.”
 
-### Corsa API
+### Programmatic API
 
-The tsgo team is building "Corsa" as the replacement public API. Status:
+The native team has described a curated, message-passing API rather than a complete port of the TypeScript 6 in-process surface. As of this verification pass:
 
-- Corsa API: **not yet stable** — targeting TypeScript 7.1 (estimated late 2026 / early 2027)
-- Current tsgo exports minimal surface: `check()`, `build()`, basic diagnostics
-- No `getTypeAtLocation` equivalent yet
-- Plugin system and language service extensions TBD
+- TypeScript 7 itself is stable and its LSP-backed editor surface includes definitions, references, rename, hover, call hierarchy, and other semantic operations.
+- A stable public programmatic contract for the exact per-node type queries this project needs is not assumed. API shape and availability must be re-read from the pinned release before a design names methods.
+- Dated quarter estimates and hypothetical `checker.*` calls are not requirements.
 
 ### tsgolint precedent (OXC team)
 
-The OXC team already tackled cross-language integration with `tsgolint`:
+The OXC team already ships `tsgolint` as a real semantic-analysis precedent:
 
-- Spawns `tsgo` as a subprocess
-- Communicates via JSON IPC using tsgo's internal (unstable) shims
-- This pattern works but depends on internal APIs that will break when Corsa lands
+- It separates Oxlint's syntax/structural frontend from a TypeScript-native semantic backend.
+- It proves semantic analysis can be added without replacing the fast structural default.
+- Its integration boundary is optimized for lint rules and is not a stable library contract for arbitrary prop-type queries.
 
-We should NOT follow the tsgolint approach — it creates maintenance debt on an unstable internal API. Wait for Corsa.
+Do not copy private/internal interfaces. Study its process and data boundary, then depend only on a published contract or isolate a pinned backend behind this project's own optional adapter.
 
 ### Why oxc-react-docgen is unaffected by TS 7.0
 
@@ -67,9 +66,18 @@ We parse TypeScript with OXC (Rust), not tsc. We have no dependency on the Strad
 
 ---
 
-## Integration architecture (when Corsa is stable)
+## Integration architecture
 
-The integration should be **opt-in**, not always-on. Most projects need only the structural analysis for prop documentation. The type checker adds latency (~100-500ms cold start) and a Node.js process dependency that many CI environments won't want.
+The integration remains **opt-in**, not always-on. Most projects need only structural prop documentation. A semantic backend adds project loading, a warm process/session, toolchain compatibility, failure modes, and memory cost that must be measured locally rather than asserted from an external benchmark.
+
+Two routes are credible:
+
+| Route | Benefit | Cost/risk | Gate |
+| --- | --- | --- | --- |
+| Stable TypeScript 7 programmatic/message API | Purpose-built queries and potentially lower protocol overhead | Exact API and stability for per-node type materialization remain release-dependent | Compile/behavior spike against a pinned public release |
+| Warm TypeScript 7 language service over LSP | Available semantic operations, explicit capability negotiation, strong editor precedent | Protocol operations may not expose the exact expanded type shape; needs document-version binding, timeout/crash supervision, and lifecycle ownership | Capability probe plus fault and accuracy suite |
+
+The existing `oxc-react-docgen lsp` command is an **outward-facing server scaffold** for editors. A semantic backend would be an **inward-facing client** to a TypeScript service. They share protocol vocabulary but not responsibility, state, or process ownership.
 
 ### Proposed design
 
@@ -82,53 +90,43 @@ The integration should be **opt-in**, not always-on. Most projects need only the
 └──────────────────────────┬──────────────────────────────┘
                            │ optional
                   ─────────▼─────────
-                 │  Corsa enrichment  │
-                 │  (future opt-in)   │
+                 │ semantic enrichment│
+                 │  (optional backend)│
                  │                   │
                  │  For each prop     │
                  │  with opaque/Named │
-                 │  type: call Corsa  │
-                 │  getTypeAtLocation │
+                 │  type: query the   │
+                 │  selected backend  │
                  │  → replace with    │
                  │  resolved PropType │
                   ───────────────────
 ```
 
-**CLI flag:** `--with-type-checker` (default: off) **Config key:** `docgen.config.ts → typeChecker: true | { path: string }` **Node requirement:** Node 22+ (tsgo ships as npm package)
+The eventual CLI/config shape is not specified here. It must be added in the implementation spec after a backend wins the evaluation; this document does not invent stable flags or runtime requirements.
 
-### Specific Corsa operations needed
+### Semantic operations needed
 
-When the Corsa API is available, the following operations unblock the deferred gaps:
+Whichever backend is selected must expose the following operations without relying on hypothetical method names:
 
-| Operation                                  | Corsa API (expected)                      | Gap resolved               |
-| ------------------------------------------ | ----------------------------------------- | -------------------------- |
-| Resolve generic type argument at call site | `checker.getTypeArguments(typeRef)`       | Generic param substitution |
-| Evaluate conditional type                  | `checker.resolveConditionalType(node)`    | Conditional opaque         |
-| Expand mapped type                         | `checker.getIndexedAccessType(type, key)` | Mapped opaque              |
-| Follow `typeof expr`                       | `checker.getTypeOfExpression(expr)`       | typeof depth               |
+| Operation | Required returned fact | Gap resolved |
+| --- | --- | --- |
+| Resolve generic type argument at call site | Concrete type arguments plus declaration/source identity | Generic param substitution |
+| Evaluate conditional type | Materialized result or an explicit unresolved/unsupported outcome | Conditional opaque |
+| Expand mapped/indexed type | Property keys and value types with provenance | Mapped opaque |
+| Follow `typeof expr` | Resolved expression type plus target identity | typeof depth |
 
-The integration point is `resolver/chain.rs:resolve_props_chain` — after step 5 fails to find the interface in our global map, step 6 currently emits an `UnresolvableImport` diagnostic. With Corsa, a step 5.5 would ask the type checker for the props instead.
+The integration point remains after structural resolution cannot materialize a type. The structural result is preserved, and an optional enrichment request may replace an `Opaque`/unresolved leaf only when the backend returns a content-bound answer. Backend absence, unsupported capability, timeout, stale response, or crash leaves the current diagnostic plus `OpaqueReason`; it does not fail extraction or fabricate a type.
 
-### File plan (future)
+### Boundary and ownership
 
-```
-crates/core/src/typechecker/          (new module, feature-gated)
-  mod.rs              — feature gate, public API surface
-  corsa_bridge.rs     — subprocess IPC with tsgo/Corsa
-  prop_enricher.rs    — walk ExtractionOutput, replace opaque props
-```
+`crates/core` keeps an I/O-free enrichment request/result contract over owned data. It does not spawn a compiler, own an LSP connection, depend on an async runtime, or retain protocol types. Process/session ownership belongs in an optional backend crate or the CLI/binding layer, which converts backend responses into the core contract.
 
-Feature gate: `cargo build --features=type-checker` — keeps the no-Node-dependency build path as the default.
+The selected adapter remains feature-gated and off by default. The feature/crate name is chosen in the implementation spec, not here.
 
 ---
 
-## Timeline
+## Evaluation and decision gates
 
-| Milestone                               | When              | What it unlocks                                      |
-| --------------------------------------- | ----------------- | ---------------------------------------------------- |
-| TS 7.0 RC                               | 2026-06-18 (done) | Confirms Strada is dropped; competitive window opens |
-| TS 7.1 release candidate                | ~Q4 2026          | Corsa API draft; begin bridge prototype              |
-| TS 7.1 stable + Corsa stable            | ~Q1 2027          | Implement generic substitution, `typeof` depth       |
-| Public release of `--with-type-checker` | ~Q1 2027          | Feature-complete RDT replacement                     |
+Before selecting either route, freeze fixtures for each deferred type class and compare structural-only, programmatic API, and LSP arms when available. Report semantic correctness against a direct TypeScript checker oracle separately from compatibility with `react-docgen-typescript`; neither comparator is the other's ground truth.
 
-Until then: fix the 5 structural gaps (see implementation plan), ship, and let users migrate to oxc-react-docgen during the TS 7 disruption window.
+The LSP arm also must pass absent executable, unsupported capability, initialization/request timeout, stale document version, malformed/oversized frame, crash/restart, restart-storm, partial project failure, and shutdown/reaping fixtures. Record cold/warm latency and peak RSS. Until a route clears both accuracy and lifecycle gates, structural analysis plus explicit `OpaqueReason` remains the correct product behavior.

@@ -3,7 +3,7 @@
   "checkpoint_id": "01M351J1MTYPMAC23BYKGYABWW",
   "strategy": "manual-commit",
   "branch": "fix/proto-only-toolchain-setup",
-  "checkpoints_count": 10,
+  "checkpoints_count": 12,
   "files_touched": [
     "crates/core/src/pipeline/mod.rs",
     "crates/core/src/pipeline/watch.rs"
@@ -15,14 +15,21 @@
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
       "prompt": "/0/prompt.txt"
+    },
+    {
+      "metadata": "/1/metadata.json",
+      "transcript": "/1/full.jsonl",
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "prompt": "/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 312,
-    "cache_creation_tokens": 925250,
-    "cache_read_tokens": 45509658,
-    "output_tokens": 218639,
-    "api_call_count": 155,
+    "input_tokens": 634,
+    "cache_creation_tokens": 1543208,
+    "cache_read_tokens": 72985365,
+    "output_tokens": 323418,
+    "api_call_count": 316,
     "subagent_tokens": {
       "input_tokens": 338,
       "cache_creation_tokens": 812402,

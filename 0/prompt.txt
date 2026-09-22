@@ -1,0 +1,50 @@
+<task-notification>
+<task-id>bw2mu0axc</task-id>
+<summary>Monitor event: "PR #3 and #4 CI check results"</summary>
+<event>#3 Coverage: pass
+#3 Test: pass
+#4 Hygiene (doc-check · unused deps): pass
+#4 Install / Node 24 / npm: pass
+#4 Install / Node 24 / pnpm: fail
+#4 Install / Node 26 / npm: pass
+#4 Install / Node 26 / pnpm: fail
+#4 Lint: pass
+#4 Test: pass
+#4 TypeScript / Node 24: pass</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b2xb1vkmm</task-id>
+<summary>Monitor event: "PR #3/#4 CI on new heads"</summary>
+<event>#3 Install / Node 24 / npm: success
+#3 Install / Node 24 / pnpm: success
+#3 Install / Node 26 / npm: success
+#3 Install / Node 26 / pnpm: success
+#4 Install / Node 24 / npm: success
+#4 Install / Node 24 / pnpm: success
+#4 Install / Node 26 / npm: success</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b2xb1vkmm</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gabe-Projects-oxc-react-codegen/fbf53f93-25aa-45a8-8240-7526750c3c36/tasks/b2xb1vkmm.output</output-file>
+<status>completed</status>
+<summary>Monitor "PR #3/#4 CI on new heads" stream ended</summary>
+<event>#3 Coverage: success
+#3 Format &amp; lint check: success
+#3 Test: success
+#4 Coverage: failure
+#4 Format &amp; lint check: success
+#4 Install / Node 26 / pnpm: success
+#4 Test: success
+FAILURES: 1
+ALL DONE</event>
+If this event is something the user would act on now, send a PushNotification. Routine or benign output doesn't need one.
+</task-notification>

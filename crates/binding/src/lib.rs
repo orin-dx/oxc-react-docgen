@@ -113,9 +113,8 @@ pub struct JsExtractOptions {
 // ─── TryFrom<JsExtractOptions> for PipelineOptions ────────────────────────────
 
 impl TryFrom<JsExtractOptions> for PipelineOptions {
-    /// Names the bad `reactVersion` value — a typo (or a caller bypassing the
-    /// `'react18' | 'react19'` TS type, e.g. via `as any`) must not silently
-    /// fall back to react19 (CLAUDE.md non-negotiable #6).
+    /// Names the bad `reactVersion` or `htmlAttributes` value — a typo (or a caller bypassing the TS union, e.g. via
+    /// `as any`) must not silently fall back to a default (CLAUDE.md non-negotiable #6).
     type Error = String;
 
     fn try_from(js: JsExtractOptions) -> Result<Self, Self::Error> {
@@ -141,11 +140,8 @@ impl TryFrom<JsExtractOptions> for PipelineOptions {
             opts.variant_functions = fns;
         }
         if let Some(mode) = js.html_attributes.as_deref() {
-            opts.html_attributes = match mode {
-                "full" => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Full,
-                "none" => oxc_react_docgen_core::pipeline::HtmlAttributeMode::None,
-                _ => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Curated,
-            };
+            opts.html_attributes = oxc_react_docgen_core::pipeline::HtmlAttributeMode::parse(mode)
+                .map_err(|bad| format!("htmlAttributes is '{bad}', expected \"curated\", \"full\" or \"none\""))?;
         }
         if let Some(path) = js.tsconfig_path {
             opts.tsconfig_path = Some(path.into());
@@ -349,6 +345,31 @@ mod tests {
         assert_eq!(opts.html_attributes, defaults.html_attributes);
         assert_eq!(opts.vanilla_extract, defaults.vanilla_extract);
         assert_eq!(opts.resolve_complex_types, defaults.resolve_complex_types);
+    }
+
+    #[test]
+    fn html_attributes_names_map_onto_pipeline_options() {
+        use oxc_react_docgen_core::pipeline::HtmlAttributeMode;
+
+        for (name, expected) in [
+            ("curated", HtmlAttributeMode::Curated),
+            ("full", HtmlAttributeMode::Full),
+            ("none", HtmlAttributeMode::None),
+        ] {
+            let mut js = base_options();
+            js.html_attributes = Some(name.into());
+            assert_eq!(PipelineOptions::try_from(js).expect("should convert").html_attributes, expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn an_unrecognized_html_attributes_is_a_hard_error_naming_the_value_not_a_silent_default() {
+        let mut js = base_options();
+        js.html_attributes = Some("all".into());
+
+        let err = PipelineOptions::try_from(js).expect_err("a typo must not silently fall back to curated");
+
+        assert_eq!(err, "htmlAttributes is 'all', expected \"curated\", \"full\" or \"none\"");
     }
 
     #[test]

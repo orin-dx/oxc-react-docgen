@@ -65,6 +65,19 @@ pub enum HtmlAttributeMode {
     None,
 }
 
+impl HtmlAttributeMode {
+    /// The mode named by a config or binding string. `Err` carries the unrecognized value, so callers can name it
+    /// instead of silently falling back to a default.
+    pub fn parse(s: &str) -> Result<Self, &str> {
+        match s {
+            "curated" => Ok(Self::Curated),
+            "full" => Ok(Self::Full),
+            "none" => Ok(Self::None),
+            other => Err(other),
+        }
+    }
+}
+
 /// Configuration for a single extraction run.
 #[derive(Debug, Clone)]
 pub struct PipelineOptions {
@@ -593,6 +606,16 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn html_attribute_mode_parses_its_three_names_and_rejects_anything_else() {
+        assert_eq!(HtmlAttributeMode::parse("curated"), Ok(HtmlAttributeMode::Curated));
+        assert_eq!(HtmlAttributeMode::parse("full"), Ok(HtmlAttributeMode::Full));
+        assert_eq!(HtmlAttributeMode::parse("none"), Ok(HtmlAttributeMode::None));
+        for bad in ["all", "Full", "", "curated "] {
+            assert_eq!(HtmlAttributeMode::parse(bad), Err(bad));
+        }
+    }
 
     #[test]
     fn merge_cached_dts_file_does_not_drop_parse_diagnostics() {

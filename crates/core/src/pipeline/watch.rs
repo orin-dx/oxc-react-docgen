@@ -184,7 +184,9 @@ impl WatchSession {
                 String::new()
             }
         };
-        let new_data = crate::extractor::parse_file(changed, &source);
+        let mut new_data = crate::extractor::parse_file(changed, &source);
+        // Drained here as in the cold path's merge, so both paths cache and merge the same `SourceData`.
+        let parse_diagnostics = std::mem::take(&mut new_data.diagnostics);
         self.source_cache.insert(changed.to_owned(), new_data.clone());
 
         // 2. Patch GlobalSourceData atomically using rcu (read-copy-update).
@@ -280,7 +282,7 @@ impl WatchSession {
         let file_read_failed = io_diagnostic.is_some();
 
         let mut updated_components = Vec::new();
-        let mut diagnostics: Vec<Diagnostic> = io_diagnostic.into_iter().collect();
+        let mut diagnostics: Vec<Diagnostic> = io_diagnostic.into_iter().chain(parse_diagnostics).collect();
 
         // Evict every existing component_cache entry that belonged to this
         // file — by whatever key it was stored under, bare or disambiguated —
@@ -512,13 +514,61 @@ export function Button(props: { variant?: "primary" | "secondary" } & React.Butt
 
         // Same path now reads successfully — the stale IoError for this path
         // should be cleared, not accumulated alongside the new (empty) result.
-        std::fs::write(path.as_std_path(), "export const Widget = () => null;").expect("write fixture");
+        std::fs::write(path.as_std_path(), FIXED).expect("write fixture");
         let update = session.update_file(&path);
         assert!(update.diagnostics.is_empty());
         assert!(
             session.snapshot().diagnostics.is_empty(),
             "fixed file's stale diagnostic should be cleared, not linger"
         );
+    }
+
+    /// A src dir holding `Widget.tsx` and the options over it; the DTS cache lives beside it, outside the watched tree.
+    fn widget_project(source: &str) -> (tempfile::TempDir, Utf8PathBuf, PipelineOptions) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let src =
+            Utf8PathBuf::from_path_buf(tmp.path().canonicalize().expect("canonicalize")).expect("utf8").join("src");
+        std::fs::create_dir(&src).expect("create src");
+        let widget = src.join("Widget.tsx");
+        std::fs::write(&widget, source).expect("write Widget.tsx");
+        let options = PipelineOptions {
+            src_dirs: vec![src],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).expect("utf8")),
+            ..Default::default()
+        };
+        (tmp, widget, options)
+    }
+
+    const BROKEN: &str = "export const = ;\n";
+    const FIXED: &str = "export function Widget() { return null; }\n";
+
+    #[test]
+    fn update_file_reports_a_syntax_error_exactly_as_a_cold_extract_does() {
+        let (_tmp, widget, options) = widget_project(FIXED);
+        let session = WatchSession::new(options.clone());
+        let _ = session.initialize();
+
+        std::fs::write(&widget, BROKEN).expect("break Widget.tsx");
+        let update = session.update_file(&widget);
+
+        let cold = crate::pipeline::extract(&options);
+        assert_eq!(cold.diagnostics.len(), 1, "a cold extract reports the syntax error: {:?}", cold.diagnostics);
+        assert_eq!(cold.diagnostics[0].code, crate::types::DiagnosticCode::ParseError);
+        assert_eq!(update.diagnostics, cold.diagnostics);
+        assert_eq!(session.snapshot().diagnostics, cold.diagnostics);
+    }
+
+    #[test]
+    fn fixing_a_syntax_error_clears_it_from_the_update_and_the_snapshot() {
+        let (_tmp, widget, options) = widget_project(BROKEN);
+        let session = WatchSession::new(options);
+        let _ = session.initialize();
+
+        std::fs::write(&widget, FIXED).expect("fix Widget.tsx");
+        let update = session.update_file(&widget);
+
+        assert_eq!(update.diagnostics, vec![]);
+        assert_eq!(session.snapshot().diagnostics, vec![]);
     }
 
     #[test]

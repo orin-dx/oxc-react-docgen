@@ -1425,6 +1425,7 @@ dependencies = [
  "owo-colors",
  "oxc-react-docgen-core",
  "rstest",
+ "rustix 1.1.5",
  "serde",
  "serde_json",
  "tempfile",
@@ -1433,6 +1434,7 @@ dependencies = [
  "tracing-subscriber",
  "trycmd",
  "watchexec",
+ "watchexec-signals",
 ]
 
 [[package]]

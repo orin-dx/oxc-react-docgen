@@ -28,9 +28,11 @@ serde_json.workspace      = true
 camino.workspace          = true
 comfy-table               = "7.0"
 crossterm                 = "0.28"
+watchexec-signals         = "5"
 
 [dev-dependencies]
 insta.workspace           = true
 tempfile.workspace        = true
 rstest.workspace          = true
 trycmd.workspace          = true
+rustix                    = { version = "1", features = ["pty", "termios"] }

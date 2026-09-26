@@ -1,11 +1,13 @@
+use std::io::IsTerminal;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
 
-use crossterm::event::KeyCode;
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use miette::{IntoDiagnostic, Result};
 use oxc_react_docgen_core::pipeline::{PipelineOptions, WatchSession};
 use oxc_react_docgen_core::types::{Diagnostic, DiagnosticCode, DiagnosticSeverity, ExtractionOutput};
+use watchexec_signals::Signal;
 
 use crate::config::{build_options, BuildOptionsArgs};
 use crate::output::{print_diagnostics, print_summary, write_atomic};
@@ -15,10 +17,12 @@ fn watch_exit_code(output: &ExtractionOutput) -> i32 {
     output.exit_code(false)
 }
 
-/// Builds the options, prints the banner, and runs the first extraction.
+/// Builds the options, prints the banner, and runs the first extraction. Key shortcuts are advertised only when
+/// `interactive`.
 fn start_session(
     args: &crate::WatchArgs,
     quiet: bool,
+    interactive: bool,
     config_path: Option<&str>,
 ) -> Result<(PipelineOptions, Arc<WatchSession>, Arc<AtomicI32>)> {
     use indicatif::{ProgressBar, ProgressStyle};
@@ -36,12 +40,13 @@ fn start_session(
 
     if !quiet {
         println!();
+        let hint = if interactive { "  (press q to quit, r to re-extract)" } else { "" };
         println!(
-            "  {}  {} watching {}  {}",
+            "  {}  {} watching {}{}",
             "⚡".yellow(),
             "oxc-react-docgen".bold(),
             options.src_dirs.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(", ").cyan(),
-            "(press q to quit, r to re-extract)".dimmed()
+            hint.dimmed()
         );
         println!();
     }
@@ -71,11 +76,12 @@ fn start_session(
     Ok((options, session, exit_code))
 }
 
-/// `Some(exit code)` when `key` quits. `r` only refreshes the tracked exit code: past its first call `initialize()`
-/// returns the current snapshot without re-extracting.
-fn handle_key(key: KeyCode, session: &WatchSession, exit_code: &AtomicI32) -> Option<i32> {
-    match key {
-        KeyCode::Char('q') | KeyCode::Char('c') => Some(exit_code.load(Ordering::Relaxed)),
+/// `Some(exit code)` when `key` quits. Raw mode turns off ISIG, so Ctrl-C arrives here as a key, not SIGINT. `r` only
+/// refreshes the tracked exit code: past its first call `initialize()` returns the current snapshot.
+fn handle_key(key: KeyEvent, session: &WatchSession, exit_code: &AtomicI32) -> Option<i32> {
+    match key.code {
+        KeyCode::Char('q') => Some(exit_code.load(Ordering::Relaxed)),
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(exit_code.load(Ordering::Relaxed)),
         KeyCode::Char('r') => {
             exit_code.store(watch_exit_code(&session.initialize()), Ordering::Relaxed);
             None
@@ -84,22 +90,49 @@ fn handle_key(key: KeyCode, session: &WatchSession, exit_code: &AtomicI32) -> Op
     }
 }
 
-fn spawn_keyboard_thread(session: Arc<WatchSession>, exit_code: Arc<AtomicI32>, running: Arc<AtomicBool>) {
-    std::thread::spawn(move || {
-        use crossterm::event::{self, Event};
-        let _ = crossterm::terminal::enable_raw_mode();
-        while running.load(Ordering::Relaxed) {
-            if let Ok(Event::Key(key)) = event::read() {
-                if let Some(code) = handle_key(key.code, &session, &exit_code) {
-                    let _ = crossterm::terminal::disable_raw_mode();
-                    // watchexec has no graceful-quit handle reachable from this thread, so this hard-exits, with the
-                    // tracked code so a session that quit on an unresolved error still fails the shell.
-                    std::process::exit(code);
-                }
+/// Feeds key presses to `on_key` until it returns an exit code; `Err` once input can no longer be read.
+fn read_keys(
+    mut next: impl FnMut() -> std::io::Result<Event>,
+    mut on_key: impl FnMut(KeyEvent) -> Option<i32>,
+) -> std::io::Result<i32> {
+    loop {
+        if let Event::Key(key) = next()? {
+            if let Some(code) = on_key(key) {
+                return Ok(code);
             }
         }
+    }
+}
+
+fn spawn_keyboard_thread(session: Arc<WatchSession>, exit_code: Arc<AtomicI32>) {
+    std::thread::spawn(move || {
+        if let Err(error) = crossterm::terminal::enable_raw_mode() {
+            tracing::warn!("key shortcuts unavailable: {error}");
+            return;
+        }
+        let quit = read_keys(crossterm::event::read, |key| handle_key(key, &session, &exit_code));
         let _ = crossterm::terminal::disable_raw_mode();
+        match quit {
+            // watchexec has no graceful-quit handle reachable from this thread, so this hard-exits, with the tracked
+            // code so a session that quit on an unresolved error still fails the shell.
+            Ok(code) => std::process::exit(code),
+            Err(error) => tracing::warn!("key shortcuts stopped: {error}; stop watching with Ctrl-C"),
+        }
     });
+}
+
+/// watchexec swallows the signals its handler doesn't act on, so these must end the session explicitly.
+fn ends_session(signal: Signal) -> bool {
+    matches!(signal, Signal::Interrupt | Signal::Terminate | Signal::Hangup | Signal::Quit)
+}
+
+/// Puts the terminal back in cooked mode when the session ends, however it ends.
+struct RestoreTerminal;
+
+impl Drop for RestoreTerminal {
+    fn drop(&mut self) {
+        let _ = crossterm::terminal::disable_raw_mode();
+    }
 }
 
 /// Returns the diagnostic to report when the snapshot can't be written to `path`.
@@ -144,10 +177,14 @@ fn handle_change(session: &WatchSession, path: &Path, quiet: bool, out: Option<&
 }
 
 pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>) -> Result<i32> {
-    let (options, session, exit_code) = start_session(&args, quiet, config_path)?;
+    // Without a terminal on stdin (CI, a pipe, a service) there are no keys to read, and reading anyway fails at once.
+    let interactive = std::io::stdin().is_terminal();
+    let (options, session, exit_code) = start_session(&args, quiet, interactive, config_path)?;
 
-    let running = Arc::new(AtomicBool::new(true));
-    spawn_keyboard_thread(session.clone(), exit_code.clone(), running.clone());
+    let _restore_terminal = interactive.then_some(RestoreTerminal);
+    if interactive {
+        spawn_keyboard_thread(session.clone(), exit_code.clone());
+    }
 
     // watchexec's constructor is synchronous even though its event loop is async.
     let src_dirs: Vec<std::path::PathBuf> = options.src_dirs.iter().map(|p| p.as_std_path().to_owned()).collect();
@@ -157,7 +194,11 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
     rt.block_on(async move {
         use watchexec::Watchexec;
 
-        let wx = Watchexec::new(move |action| {
+        let wx = Watchexec::new(move |mut action| {
+            if action.signals().any(ends_session) {
+                action.quit();
+                return action;
+            }
             for event in action.events.iter() {
                 for (path, _) in event.paths() {
                     handle_change(&session, path, quiet, args.out.as_deref(), &handler_exit_code);
@@ -172,7 +213,6 @@ pub fn cmd_watch(args: crate::WatchArgs, quiet: bool, config_path: Option<&str>)
         Ok::<(), miette::Error>(())
     })?;
 
-    running.store(false, Ordering::Relaxed);
     Ok(exit_code.load(Ordering::Relaxed))
 }
 
@@ -292,6 +332,66 @@ mod tests {
         assert_eq!(write_snapshot(scratch.path().join("ok.json").to_str().unwrap(), &empty_output()), None);
     }
 
+    fn key(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn ctrl_c_quits_with_the_tracked_exit_code_but_a_bare_c_does_not() {
+        let (src, scratch) = (TempDir::new().unwrap(), TempDir::new().unwrap());
+        let session = session_over(&src, &scratch);
+        let _ = session.initialize();
+        let exit_code = AtomicI32::new(2);
+
+        assert_eq!(handle_key(key('c'), &session, &exit_code), None);
+        assert_eq!(handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL), &session, &exit_code), Some(2));
+    }
+
+    #[test]
+    fn keys_are_read_until_one_quits_and_other_events_are_skipped() {
+        let mut events =
+            vec![Ok(Event::Key(key('x'))), Ok(Event::FocusGained), Ok(Event::Key(key('q'))), Ok(Event::Key(key('z')))]
+                .into_iter();
+        let mut seen = vec![];
+
+        let code = read_keys(
+            || events.next().unwrap(),
+            |key| {
+                seen.push(key.code);
+                (key.code == KeyCode::Char('q')).then_some(3)
+            },
+        );
+
+        assert_eq!(code.unwrap(), 3);
+        assert_eq!(seen, vec![KeyCode::Char('x'), KeyCode::Char('q')]);
+    }
+
+    #[test]
+    fn reading_keys_stops_at_the_first_input_error_instead_of_retrying() {
+        let mut reads = 0;
+
+        let result = read_keys(
+            || {
+                reads += 1;
+                Err(std::io::Error::other("no terminal"))
+            },
+            |_| None,
+        );
+
+        assert_eq!(result.unwrap_err().to_string(), "no terminal");
+        assert_eq!(reads, 1);
+    }
+
+    #[test]
+    fn termination_signals_end_the_session_and_user_signals_do_not() {
+        for signal in [Signal::Interrupt, Signal::Terminate, Signal::Hangup, Signal::Quit] {
+            assert!(ends_session(signal), "{signal:?}");
+        }
+        for signal in [Signal::User1, Signal::User2] {
+            assert!(!ends_session(signal), "{signal:?}");
+        }
+    }
+
     #[test]
     fn q_quits_with_the_tracked_exit_code_and_other_keys_keep_running() {
         let (src, scratch) = (TempDir::new().unwrap(), TempDir::new().unwrap());
@@ -299,8 +399,8 @@ mod tests {
         let _ = session.initialize();
         let exit_code = AtomicI32::new(2);
 
-        assert_eq!(handle_key(KeyCode::Char('q'), &session, &exit_code), Some(2));
-        assert_eq!(handle_key(KeyCode::Char('x'), &session, &exit_code), None);
+        assert_eq!(handle_key(key('q'), &session, &exit_code), Some(2));
+        assert_eq!(handle_key(key('x'), &session, &exit_code), None);
         assert_eq!(exit_code.load(Ordering::Relaxed), 2);
     }
 
@@ -313,7 +413,7 @@ mod tests {
         handle_change(&session, &src.path().join("Missing.tsx"), true, None, &AtomicI32::new(0));
         let exit_code = AtomicI32::new(0);
 
-        assert_eq!(handle_key(KeyCode::Char('r'), &session, &exit_code), None);
+        assert_eq!(handle_key(key('r'), &session, &exit_code), None);
         assert_eq!(exit_code.load(Ordering::Relaxed), 2);
     }
 
@@ -325,7 +425,7 @@ mod tests {
             let dir = src.path().to_str().unwrap().to_owned();
             let args = crate::WatchArgs { src: vec![dir.clone()], out: None };
 
-            let (options, session, exit_code) = start_session(&args, quiet, None).unwrap();
+            let (options, session, exit_code) = start_session(&args, quiet, false, None).unwrap();
 
             assert_eq!(options.src_dirs, vec![Utf8PathBuf::from(dir)]);
             let components: Vec<String> = session.snapshot().components.keys().cloned().collect();

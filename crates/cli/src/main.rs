@@ -201,16 +201,19 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn init_tracing(verbose: u8) {
-    if verbose == 0 {
-        return;
+/// The tracing filter for `-v` given `verbose` times; none means no subscriber at all.
+fn log_filter(verbose: u8) -> Option<&'static str> {
+    match verbose {
+        0 => None,
+        1 => Some("info"),
+        2 => Some("debug"),
+        _ => Some("trace"),
     }
+}
+
+fn init_tracing(verbose: u8) {
+    let Some(filter) = log_filter(verbose) else { return };
     use tracing_subscriber::{fmt, EnvFilter};
-    let filter = match verbose {
-        1 => "info",
-        2 => "debug",
-        _ => "trace",
-    };
     // stderr, never stdout: `lsp` reserves stdout exclusively for
     // Content-Length-framed protocol messages — any other byte written there
     // (a tracing::error!/warn! call firing mid-session) corrupts the
@@ -221,6 +224,14 @@ fn init_tracing(verbose: u8) {
 
 #[cfg(test)]
 mod tests {
+    use super::log_filter;
+
+    #[test]
+    fn each_extra_v_raises_the_log_level_and_zero_installs_no_subscriber() {
+        let filters: Vec<Option<&str>> = [0, 1, 2, 3, u8::MAX].into_iter().map(log_filter).collect();
+        assert_eq!(filters, [None, Some("info"), Some("debug"), Some("trace"), Some("trace")]);
+    }
+
     // ── SPEC-CLI-001a AC-017: command handlers return their exit code from
     // cmd_extract/cmd_check/etc. rather than calling std::process::exit
     // directly, so main() is the sole place that terminates the process —

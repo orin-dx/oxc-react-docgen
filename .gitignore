@@ -48,3 +48,5 @@ lcov.info
 *.tmp
 *.temp
 .cache/
+# tempfile's default prefix; tests that need the real node_modules create these in-tree and a killed run leaves them
+.tmp*/

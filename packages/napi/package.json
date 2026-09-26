@@ -1,6 +1,6 @@
 {
   "name": "@oxc-react-docgen/napi",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Native Node.js bindings for oxc-react-docgen",
   "main": "index.js",
   "types": "index.d.ts",

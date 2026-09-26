@@ -71,8 +71,8 @@ fn start_session(
     Ok((options, session, exit_code))
 }
 
-/// `Some(exit code)` when `key` quits. `r` doesn't force a re-extraction — past its first call `initialize()` just returns
-/// the current snapshot — but it still refreshes the tracked exit code, as an automatic reload does.
+/// `Some(exit code)` when `key` quits. `r` only refreshes the tracked exit code: past its first call `initialize()`
+/// returns the current snapshot without re-extracting.
 fn handle_key(key: KeyCode, session: &WatchSession, exit_code: &AtomicI32) -> Option<i32> {
     match key {
         KeyCode::Char('q') | KeyCode::Char('c') => Some(exit_code.load(Ordering::Relaxed)),
@@ -117,7 +117,7 @@ fn write_snapshot(path: &str, snapshot: &ExtractionOutput) -> Option<Diagnostic>
     })
 }
 
-/// One file-change event: re-resolves `path` if it is TypeScript, tracks the exit code, prints the delta, rewrites `--out`.
+/// One file-change event: re-resolves a TypeScript `path`, tracks the exit code, prints the delta, rewrites `--out`.
 fn handle_change(session: &WatchSession, path: &Path, quiet: bool, out: Option<&str>, exit_code: &AtomicI32) {
     if !matches!(path.extension().and_then(|e| e.to_str()), Some("ts" | "tsx")) {
         return;

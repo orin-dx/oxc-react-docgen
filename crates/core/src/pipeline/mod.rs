@@ -367,19 +367,13 @@ pub(crate) fn extract_with_global(
         }
     }
 
-    // Phase 3.6: TypeScript's own lib.es5.d.ts/lib.dom.d.ts declare native/DOM
-    // ambient globals (Date, RegExp, Element, Node, ...) that never go through
-    // an import — nothing else ever has a reason to resolve them the way an
-    // import statement triggers @types/react above. Always attempted, not
-    // mode-gated: a native global showing up as a bare, unexpandable Named
-    // reference (exactly like HTMLAttributes already does) is correct for
-    // every user in every mode. Silent no-op when `typescript` isn't reachable
-    // (e.g. a project with no node_modules at all) — this is a best-effort
-    // enhancement the user never opted into, so failure isn't worth a
-    // diagnostic; the existing per-type "cannot resolve" diagnostics still
-    // fire exactly as before in that case.
+    // Phase 3.6: ambient globals (Date, Element, ...) live in TS's lib.es5.d.ts/lib.dom.d.ts and are never imported, so
+    // merge them in every mode. No `typescript` at all stays silent; an install missing a lib file (TS 7 without its
+    // platform package) is reported here, since the per-type "cannot resolve" warnings blame the type, not the install.
     if let Some(from_dir) = canonicalize_first_src_dir(&options.src_dirs) {
-        for lib_path in crate::resolver::resolve_ts_lib_paths(&from_dir) {
+        let libs = crate::resolver::resolve_ts_lib_paths(&from_dir);
+        diagnostics.extend(libs.diagnostic);
+        for lib_path in libs.paths {
             let lib_path = Utf8PathBuf::from(lib_path);
             merge_cached_dts_file(&lib_path, &cache, &mut global, &mut diagnostics);
         }

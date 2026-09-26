@@ -227,7 +227,7 @@ pub fn compute_ambient_global_files(options: &PipelineOptions) -> Vec<Utf8PathBu
         .first()
         .and_then(|dir| std::fs::canonicalize(dir).ok())
         .and_then(|p| Utf8PathBuf::from_path_buf(p).ok())
-        .map(|from_dir| resolve_ts_lib_paths(&from_dir).into_iter().map(Utf8PathBuf::from).collect())
+        .map(|from_dir| resolve_ts_lib_paths(&from_dir).paths.into_iter().map(Utf8PathBuf::from).collect())
         .unwrap_or_default()
 }
 
@@ -247,24 +247,96 @@ pub fn resolve_package_dts_path(from_dir: &camino::Utf8Path, package_name: &str)
     react::resolve_package_types_file(&resolver, from_dir, package_name)
 }
 
-/// Resolve TypeScript's own `lib.es5.d.ts`/`lib.dom.d.ts` — the files that
-/// declare native/DOM ambient globals (`Date`, `RegExp`, `Element`, `Node`, …).
-/// These never go through an import (they're ambient scripts, not modules),
-/// so nothing else ever has a reason to locate them the way an import
-/// statement triggers `@types/react` resolution. Returns whichever of the two
-/// are actually found — an empty `Vec` when the `typescript` package isn't
-/// reachable from `from_dir` at all (e.g. no real project), which is a
-/// legitimate, silent degradation, not an error.
-pub fn resolve_ts_lib_paths(from_dir: &camino::Utf8Path) -> Vec<String> {
-    let resolve_options = ResolveOptions { extensions: vec![".d.ts".into()], ..ResolveOptions::default() };
-    let resolver = Resolver::new(resolve_options);
-    ["lib.es5.d.ts", "lib.dom.d.ts"]
-        .into_iter()
-        .filter_map(|lib_file| {
-            let specifier = format!("typescript/lib/{lib_file}");
-            resolver.resolve(from_dir.as_std_path(), &specifier).ok().map(|r| r.path().to_string_lossy().into_owned())
-        })
-        .collect()
+/// Where TypeScript's lib files were found; see [`resolve_ts_lib_paths`].
+#[derive(Debug, Default, PartialEq)]
+pub struct TsLibs {
+    pub paths: Vec<String>,
+    /// Set when `typescript` is installed but lacks a lib file. Only the pipeline reports it, not the other callers.
+    pub diagnostic: Option<Diagnostic>,
+}
+
+const TS_LIB_FILES: [&str; 2] = ["lib.es5.d.ts", "lib.dom.d.ts"];
+
+/// Locate `lib.es5.d.ts`/`lib.dom.d.ts`, which declare the ambient globals (`Date`, `Element`, ...). TS ≤6 keeps them
+/// in `typescript/lib`; TS 7 moves them into an optional `@typescript/typescript-<platform>` package whose `exports`
+/// hide `lib/`, so they're read off disk. They're identical across platforms, so the first installed package (by name)
+/// with a file serves. No `typescript` is silent; one lacking a lib file sets `diagnostic`.
+pub fn resolve_ts_lib_paths(from_dir: &camino::Utf8Path) -> TsLibs {
+    let resolver = Resolver::new(ResolveOptions::default());
+    let Ok(manifest) = resolver.resolve(from_dir.as_std_path(), "typescript/package.json") else {
+        return TsLibs::default();
+    };
+    let Some(ts_dir) = manifest.path().parent() else {
+        return TsLibs::default();
+    };
+
+    let mut platform_dirs = None;
+    let mut paths = Vec::new();
+    let mut missing = Vec::new();
+    for file in TS_LIB_FILES {
+        let found = lib_file_in(ts_dir, file).or_else(|| {
+            platform_dirs
+                .get_or_insert_with(|| installed_platform_package_dirs(&resolver, ts_dir).unwrap_or_default())
+                .iter()
+                .find_map(|dir| lib_file_in(dir, file))
+        });
+        match found {
+            Some(path) => paths.push(path.to_string_lossy().into_owned()),
+            None => missing.push(file),
+        }
+    }
+
+    let diagnostic = (!missing.is_empty()).then(|| missing_lib_diagnostic(&missing, ts_dir));
+    TsLibs { paths, diagnostic }
+}
+
+fn lib_file_in(package_dir: &std::path::Path, file: &str) -> Option<std::path::PathBuf> {
+    let path = package_dir.join("lib").join(file);
+    path.is_file().then_some(path)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PackageManifest {
+    /// Sorted by name: declaration order would depend on `serde_json`'s `preserve_order` being unified on.
+    #[serde(default)]
+    optional_dependencies: BTreeMap<String, serde::de::IgnoredAny>,
+}
+
+fn installed_platform_package_dirs(resolver: &Resolver, ts_dir: &std::path::Path) -> Option<Vec<std::path::PathBuf>> {
+    let manifest: PackageManifest =
+        serde_json::from_str(&std::fs::read_to_string(ts_dir.join("package.json")).ok()?).ok()?;
+    Some(
+        manifest
+            .optional_dependencies
+            .keys()
+            .filter_map(|name| {
+                let platform_manifest = resolver.resolve(ts_dir, &format!("{name}/package.json")).ok()?;
+                platform_manifest.path().parent().map(std::path::Path::to_path_buf)
+            })
+            .collect(),
+    )
+}
+
+fn missing_lib_diagnostic(missing: &[&str], ts_dir: &std::path::Path) -> Diagnostic {
+    Diagnostic {
+        severity: DiagnosticSeverity::Warning,
+        message: format!(
+            "TypeScript's {} not found in '{}' or any installed platform package — native and DOM globals (Date, \
+             Element, …) will appear as unexpanded named references",
+            missing.join(", "),
+            ts_dir.display()
+        ),
+        file: None,
+        line: None,
+        column: None,
+        help: Some(
+            "TypeScript 7 ships its lib files in an optional dependency (@typescript/typescript-<os>-<arch>). Install \
+             with optional dependencies enabled (no --no-optional / --omit=optional)."
+                .into(),
+        ),
+        code: DiagnosticCode::UnresolvableImport,
+    }
 }
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
@@ -3005,5 +3077,162 @@ mod tests {
         );
         assert_eq!(diag.unwrap().severity, DiagnosticSeverity::Warning);
         assert_eq!(diag.unwrap().code, DiagnosticCode::OpaqueType);
+    }
+
+    // ── resolve_ts_lib_paths: TypeScript <= 6 and 7 package layouts ──────────
+
+    fn write(root: &std::path::Path, rel: &str, content: &str) {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, content).unwrap();
+    }
+
+    fn lib_paths_from(root: &std::path::Path) -> TsLibs {
+        let root = Utf8PathBuf::from_path_buf(root.canonicalize().unwrap()).unwrap();
+        resolve_ts_lib_paths(&root)
+    }
+
+    /// TS 7 as published: `exports` exposes only `package.json`; `optionalDependencies` lists the platforms.
+    fn write_typescript_7(root: &std::path::Path, platforms: &[&str]) {
+        let optional = platforms.iter().map(|p| format!(r#""@typescript/typescript-{p}":"7.0.2""#)).collect::<Vec<_>>();
+        write(
+            root,
+            "node_modules/typescript/package.json",
+            &format!(
+                r#"{{"name":"typescript","version":"7.0.2","exports":{{"./package.json":"./package.json"}},
+                    "optionalDependencies":{{{}}}}}"#,
+                optional.join(",")
+            ),
+        );
+    }
+
+    fn write_platform_package(root: &std::path::Path, platform: &str, libs: &[&str]) {
+        let dir = format!("node_modules/@typescript/typescript-{platform}");
+        write(
+            root,
+            &format!("{dir}/package.json"),
+            &format!(
+                r#"{{"name":"@typescript/typescript-{platform}","version":"7.0.2",
+                    "exports":{{"./package.json":"./package.json"}}}}"#
+            ),
+        );
+        for lib in libs {
+            write(root, &format!("{dir}/lib/{lib}"), "");
+        }
+    }
+
+    fn canonical(root: &std::path::Path, rel: &str) -> String {
+        root.canonicalize().unwrap().join(rel).to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn ts_lib_paths_resolve_from_typescript_6_lib_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write(tmp.path(), "node_modules/typescript/package.json", r#"{"name":"typescript","version":"5.9.3"}"#);
+        write(tmp.path(), "node_modules/typescript/lib/lib.es5.d.ts", "");
+        write(tmp.path(), "node_modules/typescript/lib/lib.dom.d.ts", "");
+
+        assert_eq!(
+            lib_paths_from(tmp.path()),
+            TsLibs {
+                paths: vec![
+                    canonical(tmp.path(), "node_modules/typescript/lib/lib.es5.d.ts"),
+                    canonical(tmp.path(), "node_modules/typescript/lib/lib.dom.d.ts"),
+                ],
+                diagnostic: None,
+            }
+        );
+    }
+
+    #[test]
+    fn ts_lib_paths_resolve_from_typescript_7_platform_package() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Two declared platforms, only one installed.
+        write_typescript_7(tmp.path(), &["missing", "here"]);
+        write_platform_package(tmp.path(), "here", &["lib.es5.d.ts", "lib.dom.d.ts"]);
+
+        assert_eq!(
+            lib_paths_from(tmp.path()),
+            TsLibs {
+                paths: vec![
+                    canonical(tmp.path(), "node_modules/@typescript/typescript-here/lib/lib.es5.d.ts"),
+                    canonical(tmp.path(), "node_modules/@typescript/typescript-here/lib/lib.dom.d.ts"),
+                ],
+                diagnostic: None,
+            }
+        );
+    }
+
+    #[test]
+    fn ts_lib_paths_skip_platform_packages_without_the_file_and_ignore_declaration_order() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // `a` has a `lib/` but not the files (a stale or partial install); `b` and `c` both have them.
+        write_typescript_7(tmp.path(), &["c", "b", "a"]);
+        write_platform_package(tmp.path(), "a", &["tsc"]);
+        write_platform_package(tmp.path(), "b", &["lib.es5.d.ts", "lib.dom.d.ts"]);
+        write_platform_package(tmp.path(), "c", &["lib.es5.d.ts", "lib.dom.d.ts"]);
+
+        assert_eq!(
+            lib_paths_from(tmp.path()).paths,
+            vec![
+                canonical(tmp.path(), "node_modules/@typescript/typescript-b/lib/lib.es5.d.ts"),
+                canonical(tmp.path(), "node_modules/@typescript/typescript-b/lib/lib.dom.d.ts"),
+            ]
+        );
+    }
+
+    #[test]
+    fn ts_lib_paths_report_typescript_7_without_its_platform_package() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write_typescript_7(tmp.path(), &["not-installed"]);
+
+        let libs = lib_paths_from(tmp.path());
+
+        assert_eq!(libs.paths, Vec::<String>::new());
+        assert_eq!(
+            libs.diagnostic,
+            Some(Diagnostic {
+                severity: DiagnosticSeverity::Warning,
+                message: format!(
+                    "TypeScript's lib.es5.d.ts, lib.dom.d.ts not found in '{}' or any installed platform package — \
+                     native and DOM globals (Date, Element, …) will appear as unexpanded named references",
+                    canonical(tmp.path(), "node_modules/typescript")
+                ),
+                file: None,
+                line: None,
+                column: None,
+                help: Some(
+                    "TypeScript 7 ships its lib files in an optional dependency (@typescript/typescript-<os>-<arch>). \
+                     Install with optional dependencies enabled (no --no-optional / --omit=optional)."
+                        .into()
+                ),
+                code: DiagnosticCode::UnresolvableImport,
+            })
+        );
+    }
+
+    #[test]
+    fn ts_lib_paths_keep_the_files_found_and_name_only_the_missing_one() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write(tmp.path(), "node_modules/typescript/package.json", r#"{"name":"typescript","version":"5.9.3"}"#);
+        write(tmp.path(), "node_modules/typescript/lib/lib.es5.d.ts", "");
+
+        let libs = lib_paths_from(tmp.path());
+
+        assert_eq!(libs.paths, vec![canonical(tmp.path(), "node_modules/typescript/lib/lib.es5.d.ts")]);
+        assert_eq!(
+            libs.diagnostic.map(|d| d.message),
+            Some(format!(
+                "TypeScript's lib.dom.d.ts not found in '{}' or any installed platform package — native and DOM \
+                 globals (Date, Element, …) will appear as unexpanded named references",
+                canonical(tmp.path(), "node_modules/typescript")
+            ))
+        );
+    }
+
+    #[test]
+    fn ts_lib_paths_are_empty_and_silent_without_typescript() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert_eq!(lib_paths_from(tmp.path()), TsLibs::default());
     }
 }

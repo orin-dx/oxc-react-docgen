@@ -373,13 +373,16 @@ pub(crate) fn extract_with_global(
     // import statement triggers @types/react above. Always attempted, not
     // mode-gated: a native global showing up as a bare, unexpandable Named
     // reference (exactly like HTMLAttributes already does) is correct for
-    // every user in every mode. Silent no-op when `typescript` isn't reachable
-    // (e.g. a project with no node_modules at all) — this is a best-effort
-    // enhancement the user never opted into, so failure isn't worth a
-    // diagnostic; the existing per-type "cannot resolve" diagnostics still
-    // fire exactly as before in that case.
+    // every user in every mode. Silent when `typescript` isn't reachable at
+    // all (e.g. a project with no node_modules) — the per-type "cannot
+    // resolve" diagnostics still fire there. An installed `typescript` that
+    // lacks a lib file (TypeScript 7 without its platform package) is
+    // reported here, the one place the run's diagnostics are collected:
+    // those per-type diagnostics blame the type, not the install.
     if let Some(from_dir) = canonicalize_first_src_dir(&options.src_dirs) {
-        for lib_path in crate::resolver::resolve_ts_lib_paths(&from_dir) {
+        let libs = crate::resolver::resolve_ts_lib_paths(&from_dir);
+        diagnostics.extend(libs.diagnostic);
+        for lib_path in libs.paths {
             let lib_path = Utf8PathBuf::from(lib_path);
             merge_cached_dts_file(&lib_path, &cache, &mut global, &mut diagnostics);
         }

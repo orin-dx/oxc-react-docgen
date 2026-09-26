@@ -698,6 +698,82 @@ export function Button(props: { variant?: "primary" | "secondary" } & React.Butt
         );
     }
 
+    // ── TypeScript 7 lib files: cold `extract`, `initialize()` and `update_file` must agree ──────────────────────────
+    //
+    // TypeScript 7 keeps `lib.*.d.ts` in a platform package hidden behind `exports`. `extract` reports and merges
+    // them in Phase 3.6; the session reaches the same code through `extract_with_global`, but caches the lib paths
+    // for `update_file` separately, so each of the three paths gets its own assertion.
+
+    /// A `<tmp>/src` dir under a project whose `typescript` is the TS 7 layout, optionally with its platform package.
+    fn typescript_7_project(platform_package_installed: bool, component: &str) -> (tempfile::TempDir, PipelineOptions) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let write = |rel: &str, content: &str| {
+            let path = tmp.path().join(rel);
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("create dirs");
+            std::fs::write(path, content).expect("write");
+        };
+        write(
+            "node_modules/typescript/package.json",
+            r#"{"name":"typescript","version":"7.0.2","exports":{"./package.json":"./package.json"},
+                "optionalDependencies":{"@typescript/typescript-here":"7.0.2"}}"#,
+        );
+        if platform_package_installed {
+            write(
+                "node_modules/@typescript/typescript-here/package.json",
+                r#"{"name":"@typescript/typescript-here","version":"7.0.2","exports":{"./package.json":"./package.json"}}"#,
+            );
+            write("node_modules/@typescript/typescript-here/lib/lib.es5.d.ts", "");
+            write(
+                "node_modules/@typescript/typescript-here/lib/lib.dom.d.ts",
+                "interface HTMLElement { dir: string; }\ninterface HTMLDivElement extends HTMLElement {}\n",
+            );
+        }
+        write("src/Foo.tsx", component);
+
+        let src = Utf8PathBuf::from_path_buf(tmp.path().join("src")).expect("utf8 path");
+        let cache_dir = Utf8PathBuf::from_path_buf(tmp.path().join("cache")).expect("utf8 path");
+        let options = PipelineOptions { src_dirs: vec![src], cache_dir: Some(cache_dir), ..Default::default() };
+        (tmp, options)
+    }
+
+    #[test]
+    fn typescript_7_lib_files_resolve_ambient_globals_on_extract_initialize_and_update_file() {
+        let (_tmp, options) = typescript_7_project(
+            true,
+            r#"
+            interface FooProps { dir?: HTMLDivElement["dir"]; }
+            export function Foo(props: FooProps) { return null; }
+            "#,
+        );
+        let foo_path = options.src_dirs[0].join("Foo.tsx");
+
+        let cold = crate::pipeline::extract(&options);
+        let session = WatchSession::new(options);
+        let initialized = session.initialize();
+        let updated = session.update_file(&foo_path);
+
+        assert_eq!(cold.diagnostics, vec![]);
+        assert_eq!(initialized.diagnostics, vec![]);
+        assert_eq!(cold.components["Foo"].props["dir"].prop_type, crate::types::PropType::String);
+        assert_eq!(initialized.components["Foo"].props["dir"].prop_type, crate::types::PropType::String);
+        let foo = updated.updated_components.iter().find(|c| c.display_name == "Foo").expect("Foo not re-resolved");
+        assert_eq!(foo.props["dir"].prop_type, crate::types::PropType::String);
+    }
+
+    #[test]
+    fn typescript_7_without_its_platform_package_is_reported_once_by_extract_and_initialize() {
+        let (tmp, options) = typescript_7_project(false, "export function Foo(props: { a?: string }) { return null; }");
+        let src =
+            Utf8PathBuf::from_path_buf(tmp.path().join("src").canonicalize().expect("canonicalize")).expect("utf8");
+        let expected = crate::resolver::resolve_ts_lib_paths(&src).diagnostic.expect("lib files are missing");
+
+        let cold = crate::pipeline::extract(&options);
+        let initialized = WatchSession::new(options).initialize();
+
+        assert_eq!(cold.diagnostics, vec![expected.clone()]);
+        assert_eq!(initialized.diagnostics, vec![expected]);
+    }
+
     // ── SPEC-PIPELINE-001 AC-014: initialize() called twice does not re-run
     // extraction — a plugin hook counter is unchanged on the second call, and
     // the second call's diagnostics are empty regardless of the first call's.

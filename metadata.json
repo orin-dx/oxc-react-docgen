@@ -3,7 +3,7 @@
   "checkpoint_id": "01M3FHFZ43G4ZWJN0650JTKTTW",
   "strategy": "manual-commit",
   "branch": "wip/session-work",
-  "checkpoints_count": 9,
+  "checkpoints_count": 17,
   "files_touched": [
     ".changeset/child-interface-prop-overrides-parent.md",
     ".github/workflows/ci.yml",
@@ -34,20 +34,27 @@
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
       "prompt": "/0/prompt.txt"
+    },
+    {
+      "metadata": "/1/metadata.json",
+      "transcript": "/1/full.jsonl",
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "prompt": "/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 274,
-    "cache_creation_tokens": 3778173,
-    "cache_read_tokens": 91880720,
-    "output_tokens": 244997,
-    "api_call_count": 136,
+    "input_tokens": 1096,
+    "cache_creation_tokens": 6396859,
+    "cache_read_tokens": 216706064,
+    "output_tokens": 496495,
+    "api_call_count": 534,
     "subagent_tokens": {
-      "input_tokens": 180,
-      "cache_creation_tokens": 466246,
-      "cache_read_tokens": 10444647,
-      "output_tokens": 6587,
-      "api_call_count": 89
+      "input_tokens": 338,
+      "cache_creation_tokens": 773769,
+      "cache_read_tokens": 14332455,
+      "output_tokens": 11632,
+      "api_call_count": 168
     }
   }
 }

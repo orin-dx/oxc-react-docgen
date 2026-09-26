@@ -698,13 +698,10 @@ export function Button(props: { variant?: "primary" | "secondary" } & React.Butt
         );
     }
 
-    // ── TypeScript 7 lib files: cold `extract`, `initialize()` and `update_file` must agree ──────────────────────────
-    //
-    // TypeScript 7 keeps `lib.*.d.ts` in a platform package hidden behind `exports`. `extract` reports and merges
-    // them in Phase 3.6; the session reaches the same code through `extract_with_global`, but caches the lib paths
-    // for `update_file` separately, so each of the three paths gets its own assertion.
+    // ── TypeScript 7 lib files: extract, initialize() and update_file each get their own assertion ───────────────────
+    // `update_file` uses lib paths cached at `initialize()`, separately from the cold run's Phase 3.6.
 
-    /// A `<tmp>/src` dir under a project whose `typescript` is the TS 7 layout, optionally with its platform package.
+    /// A project whose `typescript` uses the TS 7 layout (`lib/` hidden behind `exports`).
     fn typescript_7_project(platform_package_installed: bool, component: &str) -> (tempfile::TempDir, PipelineOptions) {
         let tmp = tempfile::tempdir().expect("tempdir");
         let write = |rel: &str, content: &str| {

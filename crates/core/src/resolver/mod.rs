@@ -247,32 +247,20 @@ pub fn resolve_package_dts_path(from_dir: &camino::Utf8Path, package_name: &str)
     react::resolve_package_types_file(&resolver, from_dir, package_name)
 }
 
-/// Where TypeScript's own lib files were found — see [`resolve_ts_lib_paths`].
+/// Where TypeScript's lib files were found; see [`resolve_ts_lib_paths`].
 #[derive(Debug, Default, PartialEq)]
 pub struct TsLibs {
     pub paths: Vec<String>,
-    /// Set when `typescript` is installed but some lib file isn't in it. Left for the one caller that owns the run's
-    /// diagnostics to report, so the other callers that only need `paths` don't repeat it.
+    /// Set when `typescript` is installed but lacks a lib file. Only the pipeline reports it, not the other callers.
     pub diagnostic: Option<Diagnostic>,
 }
 
 const TS_LIB_FILES: [&str; 2] = ["lib.es5.d.ts", "lib.dom.d.ts"];
 
-/// Resolve TypeScript's own `lib.es5.d.ts`/`lib.dom.d.ts` — the files that
-/// declare native/DOM ambient globals (`Date`, `RegExp`, `Element`, `Node`, …).
-/// These never go through an import (they're ambient scripts, not modules),
-/// so nothing else ever has a reason to locate them the way an import
-/// statement triggers `@types/react` resolution.
-///
-/// TypeScript ≤6 keeps them in `typescript/lib`. TypeScript 7 moved them into
-/// whichever `@typescript/typescript-<platform>` optional dependency got
-/// installed, and hides that directory behind `exports`, so they are read off
-/// disk rather than resolved as specifiers. They're identical across platforms,
-/// so the first installed package (by name) that has a file serves.
-///
-/// No `typescript` reachable from `from_dir` (e.g. no real project) is a
-/// legitimate, silent degradation. `typescript` installed without a lib file
-/// is not: the result carries a diagnostic for it.
+/// Locate `lib.es5.d.ts`/`lib.dom.d.ts`, which declare the ambient globals (`Date`, `Element`, ...). TS ≤6 keeps them
+/// in `typescript/lib`; TS 7 moves them into an optional `@typescript/typescript-<platform>` package whose `exports`
+/// hide `lib/`, so they're read off disk. They're identical across platforms, so the first installed package (by name)
+/// with a file serves. No `typescript` is silent; one lacking a lib file sets `diagnostic`.
 pub fn resolve_ts_lib_paths(from_dir: &camino::Utf8Path) -> TsLibs {
     let resolver = Resolver::new(ResolveOptions::default());
     let Ok(manifest) = resolver.resolve(from_dir.as_std_path(), "typescript/package.json") else {
@@ -310,12 +298,11 @@ fn lib_file_in(package_dir: &std::path::Path, file: &str) -> Option<std::path::P
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PackageManifest {
-    /// A `BTreeMap` so the pick doesn't depend on whether `serde_json`'s `preserve_order` happens to be enabled.
+    /// Sorted by name: declaration order would depend on `serde_json`'s `preserve_order` being unified on.
     #[serde(default)]
     optional_dependencies: BTreeMap<String, serde::de::IgnoredAny>,
 }
 
-/// The directories of the TypeScript 7 platform packages that are actually installed next to `ts_dir`.
 fn installed_platform_package_dirs(resolver: &Resolver, ts_dir: &std::path::Path) -> Option<Vec<std::path::PathBuf>> {
     let manifest: PackageManifest =
         serde_json::from_str(&std::fs::read_to_string(ts_dir.join("package.json")).ok()?).ok()?;
@@ -3105,7 +3092,7 @@ mod tests {
         resolve_ts_lib_paths(&root)
     }
 
-    /// TypeScript 7 as published: `exports` exposes only `package.json`, and `optionalDependencies` lists the platforms.
+    /// TS 7 as published: `exports` exposes only `package.json`; `optionalDependencies` lists the platforms.
     fn write_typescript_7(root: &std::path::Path, platforms: &[&str]) {
         let optional = platforms.iter().map(|p| format!(r#""@typescript/typescript-{p}":"7.0.2""#)).collect::<Vec<_>>();
         write(
@@ -3119,7 +3106,6 @@ mod tests {
         );
     }
 
-    /// An installed platform package; `libs` are the files in its `lib/`.
     fn write_platform_package(root: &std::path::Path, platform: &str, libs: &[&str]) {
         let dir = format!("node_modules/@typescript/typescript-{platform}");
         write(

@@ -610,12 +610,12 @@ expression: value
             "see": "https://mui.com/system/getting-started/the-sx-prop/"
           },
           "parent": {
-            "name": "ButtonBaseProps",
+            "name": "ButtonProps",
             "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
           },
           "declarations": [
             {
-              "name": "ButtonBaseProps",
+              "name": "ButtonProps",
               "fileName": "[ROOT]/fixtures/mui/Button.d.ts"
             }
           ]
@@ -1027,12 +1027,12 @@ expression: value
           "description": "Props applied to the Input element. It will be a `FilledInput`,\n`OutlinedInput`, or `Input` component depending on the `variant` prop value.",
           "tags": {},
           "parent": {
-            "name": "TextFieldPropsBase",
+            "name": "StandardTextFieldProps",
             "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
           },
           "declarations": [
             {
-              "name": "TextFieldPropsBase",
+              "name": "StandardTextFieldProps",
               "fileName": "[ROOT]/fixtures/mui/TextField.d.ts"
             }
           ]

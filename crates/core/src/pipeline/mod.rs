@@ -912,6 +912,77 @@ mod tests {
         );
     }
 
+    // ── a redeclared prop in a child interface wins over the parent's ─────────
+
+    #[test]
+    fn child_interface_redeclaring_a_prop_wins_over_every_ancestor() {
+        let tmp = TempDir::new().unwrap();
+        write_file(
+            &tmp,
+            "Comp.tsx",
+            r#"
+interface Base {
+  /**
+   * base doc
+   * @default "base"
+   */
+  x: string;
+  y: number;
+}
+interface Mid extends Base {
+  /** mid doc */
+  x: "a" | "b" | "c";
+}
+interface Leaf extends Mid {
+  /** leaf doc */
+  x: "a" | "b";
+}
+interface Quiet extends Base {
+  x: "a" | "b";
+}
+interface Quieter extends Quiet {
+  x: "a";
+}
+export function FromMid(props: Mid) { return null; }
+export function FromLeaf(props: Leaf) { return null; }
+export function FromQuiet(props: Quiet) { return null; }
+export function FromQuieter(props: Quieter) { return null; }
+"#,
+        );
+
+        let dir = Utf8PathBuf::from_path_buf(tmp.path().to_owned()).unwrap();
+        let options = PipelineOptions {
+            src_dirs: vec![dir],
+            cache_dir: Some(Utf8PathBuf::from_path_buf(tmp.path().join("cache")).unwrap()),
+            ..Default::default()
+        };
+        let output = extract(&options);
+
+        let literals =
+            |members: &[&str]| PropType::Union(members.iter().map(|m| PropType::StringLiteral((*m).into())).collect());
+        let x_of = |component: &str| {
+            let x = &output.components[component].props["x"];
+            (x.prop_type.clone(), x.description.clone(), x.parent.as_ref().map(|p| p.name.clone()))
+        };
+
+        assert_eq!(x_of("FromMid"), (literals(&["a", "b", "c"]), "mid doc".to_owned(), Some("Mid".to_owned())));
+        assert_eq!(x_of("FromLeaf"), (literals(&["a", "b"]), "leaf doc".to_owned(), Some("Leaf".to_owned())));
+
+        // An undocumented redeclaration inherits the description, transitively, like TS's JSDoc lookup; tags and
+        // `@default` stay with the declaration that wrote them.
+        assert_eq!(x_of("FromQuiet"), (literals(&["a", "b"]), "base doc".to_owned(), Some("Quiet".to_owned())));
+        assert_eq!(
+            x_of("FromQuieter"),
+            (PropType::StringLiteral("a".into()), "base doc".to_owned(), Some("Quieter".to_owned()))
+        );
+        let quiet_x = &output.components["FromQuiet"].props["x"];
+        assert_eq!((quiet_x.default_value.as_ref(), quiet_x.tags.is_empty()), (None, true));
+
+        let y = &output.components["FromLeaf"].props["y"];
+        assert_eq!(y.prop_type, PropType::Number);
+        assert_eq!(y.parent.as_ref().map(|p| p.name.as_str()), Some("Base"));
+    }
+
     // ── literal-union alias props: bare members, never pre-quoted ────────────
 
     #[test]

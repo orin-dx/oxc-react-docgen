@@ -16,10 +16,18 @@ expression: value
           },
           "required": false,
           "defaultValue": null,
-          "description": "The element or component to render as.\nEnables polymorphic rendering (e.g. render a button as an anchor).",
+          "description": "The element or component to render as. Enables polymorphic usage.",
           "tags": {},
-          "parent": null,
-          "declarations": []
+          "parent": {
+            "name": "ButtonProps",
+            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+          },
+          "declarations": [
+            {
+              "name": "ButtonProps",
+              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            }
+          ]
         },
         "bg": {
           "name": "bg",
@@ -1057,16 +1065,16 @@ expression: value
           },
           "required": false,
           "defaultValue": null,
-          "description": "The color scheme to use, maps to a key in `theme.colors`.\nCommon values: `'blue'`, `'green'`, `'red'`, `'gray'`, `'teal'`, etc.",
+          "description": "Maps to a key in `theme.colors`. Controls the colour family applied to\nfocus rings and interactive states.",
           "tags": {},
           "parent": {
-            "name": "ThemingProps",
-            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
           },
           "declarations": [
             {
-              "name": "ThemingProps",
-              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
             }
           ]
         },
@@ -1525,16 +1533,16 @@ expression: value
           },
           "required": false,
           "defaultValue": null,
-          "description": "The size of the component as defined in the component theme.\nCommon values: `'xs'`, `'sm'`, `'md'`, `'lg'`.",
+          "description": "The size of the input. Resolves from the Input component theme.\nBuilt-in values: `'xs'`, `'sm'`, `'md'`, `'lg'`.",
           "tags": {},
           "parent": {
-            "name": "ThemingProps",
-            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
           },
           "declarations": [
             {
-              "name": "ThemingProps",
-              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
             }
           ]
         },
@@ -1640,16 +1648,16 @@ expression: value
           },
           "required": false,
           "defaultValue": null,
-          "description": "The visual variant of the component as defined in the component theme.\nCommon built-in values: `'solid'`, `'outline'`, `'ghost'`, `'link'`.",
+          "description": "The visual variant of the input as defined in the Input component theme.\nBuilt-in values: `'outline'`, `'filled'`, `'flushed'`, `'unstyled'`.",
           "tags": {},
           "parent": {
-            "name": "ThemingProps",
-            "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+            "name": "InputProps",
+            "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
           },
           "declarations": [
             {
-              "name": "ThemingProps",
-              "fileName": "[ROOT]/fixtures/chakra/Button.d.ts"
+              "name": "InputProps",
+              "fileName": "[ROOT]/fixtures/chakra/Input.d.ts"
             }
           ]
         }

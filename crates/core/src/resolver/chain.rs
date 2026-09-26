@@ -2,6 +2,7 @@
 
 use camino::Utf8Path;
 use compact_str::CompactString;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::known::{push_known_opaque_diagnostic, KnownPatternResult};
 use crate::react_types;
@@ -242,6 +243,15 @@ pub(super) fn resolve_interface_chain(
     }
 
     // ── Resolve own props ────────────────────────────────────────────────────
+    // A redeclared prop replaces the inherited one, as in TS. An undocumented redeclaration keeps the inherited
+    // description, as TS's JSDoc lookup does (`resolve_component` keeps the first duplicate, so drop them here).
+    let own_names: FxHashSet<&str> = iface.props.iter().map(|prop| prop.name.as_str()).collect();
+    let (redeclared, inherited): (Vec<_>, Vec<_>) =
+        std::mem::take(&mut chain.props).into_iter().partition(|prop| own_names.contains(prop.name.as_str()));
+    chain.props = inherited;
+    let inherited_descriptions: FxHashMap<&str, &str> =
+        redeclared.iter().map(|prop| (prop.name.as_str(), prop.description.as_str())).collect();
+
     let parent = PropParent { name: iface.name.to_string(), file_name: iface.file_path.to_string() };
 
     for raw_prop in &iface.props {
@@ -275,12 +285,17 @@ pub(super) fn resolve_interface_chain(
             (None, None) => None,
         };
 
+        let description = match inherited_descriptions.get(raw_prop.name.as_str()) {
+            Some(inherited) if raw_prop.description.is_empty() => (*inherited).to_owned(),
+            Some(_) | None => raw_prop.description.clone(),
+        };
+
         chain.props.push(ParsedProp::new(
             raw_prop.name.clone(),
             prop_type,
             raw_prop.required,
             default_value,
-            raw_prop.description.clone(),
+            description,
             raw_prop.tags.clone(),
             Some(parent.clone()),
             vec![parent.clone()],

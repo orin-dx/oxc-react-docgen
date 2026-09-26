@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.11.3-nightly.202609240627.b2779c9eb",
+  "checkpoint_id": "01M3FHPA4V9XBWRSCNFV5YC6N5",
+  "strategy": "manual-commit",
+  "branch": "ci/thin-jobs-and-coverage",
+  "checkpoints_count": 9,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    ".gitignore",
+    "justfile",
+    "packages/vite-plugin/package.json",
+    "packages/vite-plugin/vitest.config.ts",
+    "pnpm-lock.yaml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 8,
+    "cache_creation_tokens": 4213,
+    "cache_read_tokens": 3621140,
+    "output_tokens": 2049,
+    "api_call_count": 4
+  }
+}

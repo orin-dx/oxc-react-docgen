@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.11.3-nightly.202609240627.b2779c9eb",
+  "checkpoint_id": "01M3FT97ACD8DD32C1V1TEMJ31",
+  "strategy": "manual-commit",
+  "branch": "chore/ignore-tempfile-dirs",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".gitignore"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 4691,
+    "cache_read_tokens": 1755869,
+    "output_tokens": 3393,
+    "api_call_count": 5
+  }
+}

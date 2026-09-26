@@ -55,8 +55,25 @@ verify-install pm="pnpm":
 bench:
     cargo bench --workspace --exclude oxc-react-docgen-napi
 
-# Coverage report — opens HTML in browser
-coverage:
+# Rust and TypeScript line coverage; with a threshold, fails if either is below it
+coverage threshold="": (coverage-rust threshold) (coverage-ts threshold)
+
+# Rust coverage: writes lcov.info and prints the summary before enforcing the threshold
+coverage-rust threshold="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --lcov --output-path lcov.info
+    cargo llvm-cov report --summary-only
+    if [[ -n "{{ threshold }}" ]]; then
+      cargo llvm-cov report --summary-only --fail-under-lines "{{ threshold }}"
+    fi
+
+# TypeScript coverage: prints the summary and writes packages/vite-plugin/coverage/lcov.info
+coverage-ts threshold="":
+    pnpm --filter @oxc-react-docgen/vite-plugin exec vitest run --coverage {{ if threshold != "" { "--coverage.thresholds.lines=" + threshold } else { "" } }}
+
+# Rust coverage report, opened in the browser
+coverage-html:
     cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --html --open
 
 # Documentation build check (warnings, including broken intra-doc links,
@@ -116,7 +133,7 @@ pre-commit:
     cargo deny check
 
 # Everything the CI jobs run, minus the Node version matrix and verify-install
-ci: lint test deny typos zizmor doc-check machete
+ci: lint test deny typos zizmor doc-check machete (coverage "90")
 
 # Run moon compare task (accuracy vs react-docgen + react-docgen-typescript)
 compare:

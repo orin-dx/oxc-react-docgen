@@ -28,8 +28,8 @@ struct DocgenConfigSchema {
 }
 
 impl DocgenConfigSchema {
-    /// `Err` names the bad `reactVersion` value — a typo must not silently
-    /// fall back to react19 (non-negotiable #6: never fail silently).
+    /// `Err` names the bad `reactVersion` or `htmlAttributes` value — a typo must not silently fall back to a default
+    /// (non-negotiable #6: never fail silently).
     fn into_pipeline_options(self) -> Result<PipelineOptions, String> {
         let mut opts = PipelineOptions::default();
         if let Some(dirs) = self.src_dirs {
@@ -55,11 +55,8 @@ impl DocgenConfigSchema {
             opts.variant_functions = fns;
         }
         if let Some(mode) = self.html_attributes.as_deref() {
-            opts.html_attributes = match mode {
-                "full" => HtmlAttributeMode::Full,
-                "none" => HtmlAttributeMode::None,
-                _ => HtmlAttributeMode::Curated,
-            };
+            opts.html_attributes = HtmlAttributeMode::parse(mode)
+                .map_err(|bad| format!("htmlAttributes is '{bad}', expected \"curated\", \"full\" or \"none\""))?;
         }
         if let Some(path) = self.tsconfig_path {
             opts.tsconfig_path = Some(path.into());
@@ -226,11 +223,13 @@ pub fn build_options(args: BuildOptionsArgs) -> Result<PipelineOptions> {
         opts.cache_dir = Some(dir.into());
     }
     if let Some(mode) = args.html_attributes {
-        opts.html_attributes = match mode {
-            "full" => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Full,
-            "none" => oxc_react_docgen_core::pipeline::HtmlAttributeMode::None,
-            _ => oxc_react_docgen_core::pipeline::HtmlAttributeMode::Curated,
-        };
+        opts.html_attributes = HtmlAttributeMode::parse(mode).map_err(|bad| {
+            miette::miette!(
+                help = "Expected \"curated\", \"full\" or \"none\".",
+                "--html-attributes is '{}', which isn't a recognized value",
+                bad
+            )
+        })?;
     }
     if !args.extra_builtins.is_empty() {
         opts.extra_builtins = args.extra_builtins.iter().map(Into::into).collect();
@@ -286,13 +285,33 @@ mod tests {
     }
 
     #[test]
+    fn config_schema_rejects_a_typo_d_html_attributes_instead_of_defaulting() {
+        let schema: DocgenConfigSchema = serde_json::from_str(r#"{ "htmlAttributes": "all" }"#).expect("valid JSON");
+
+        let err = schema.into_pipeline_options().expect_err("all is not a recognized htmlAttributes");
+
+        assert_eq!(err, "htmlAttributes is 'all', expected \"curated\", \"full\" or \"none\"");
+    }
+
+    #[test]
     fn config_schema_defaults_are_used_when_a_field_is_absent() {
         let schema: DocgenConfigSchema = serde_json::from_str("{}").expect("empty object is valid");
         let opts = schema.into_pipeline_options().expect("no reactVersion means no validation to fail");
         let defaults = PipelineOptions::default();
 
+        // Every field the schema maps, so one that starts defaulting differently is caught.
         assert_eq!(opts.src_dirs, defaults.src_dirs);
+        assert_eq!(opts.exclude_patterns, defaults.exclude_patterns);
+        assert_eq!(opts.exclude_prefixes, defaults.exclude_prefixes);
+        assert_eq!(opts.react_version, defaults.react_version);
+        assert_eq!(opts.cross_package, defaults.cross_package);
+        assert_eq!(opts.pandacss_outdir, defaults.pandacss_outdir);
+        assert_eq!(opts.variant_functions, defaults.variant_functions);
         assert_eq!(opts.html_attributes, defaults.html_attributes);
+        assert_eq!(opts.tsconfig_path, defaults.tsconfig_path);
+        assert_eq!(opts.vanilla_extract, defaults.vanilla_extract);
+        assert_eq!(opts.cache_dir, defaults.cache_dir);
+        assert_eq!(opts.extra_builtins, defaults.extra_builtins);
     }
 
     #[test]
@@ -606,6 +625,13 @@ export default {
     }
 
     #[test]
+    fn build_options_rejects_an_unrecognized_html_attributes_flag_naming_the_value() {
+        let err = build_options(BuildOptionsArgs { html_attributes: Some("all"), ..no_flags() })
+            .expect_err("all is not a supported --html-attributes");
+        assert_eq!(err.to_string(), "--html-attributes is 'all', which isn't a recognized value");
+    }
+
+    #[test]
     fn load_config_file_stops_at_a_workspace_marker_without_reading_configs_above_it() {
         let tmp = tempfile::TempDir::new().unwrap();
         // Would fail to evaluate if it were ever loaded.
@@ -652,6 +678,21 @@ export default {
             err.to_string(),
             format!(
                 "docgen.config.ts at {}: reactVersion is 'react20', expected \"react18\" or \"react19\"",
+                path.display()
+            )
+        );
+    }
+
+    #[test]
+    fn a_config_with_an_unrecognized_html_attributes_is_an_error_naming_the_file_and_value() {
+        let (_tmp, path) = write_config("export default { htmlAttributes: 'all' };\n");
+
+        let err = try_load_config(&path).expect_err("all is not a supported htmlAttributes");
+
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "docgen.config.ts at {}: htmlAttributes is 'all', expected \"curated\", \"full\" or \"none\"",
                 path.display()
             )
         );

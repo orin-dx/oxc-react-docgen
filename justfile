@@ -34,9 +34,12 @@ build:
     moon run napi:build vite-plugin:build
     cargo build --release
 
-# Run Rust unit tests (via nextest, which doesn't run doctests — paired
+# Run all tests (Rust + TypeScript)
+test: test-rust test-ts
+
+# Run Rust tests (via nextest, which doesn't run doctests — paired
 # with `cargo test --doc` to cover those too)
-test:
+test-rust:
     cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked
     cargo test --doc --workspace --exclude oxc-react-docgen-napi
 
@@ -44,8 +47,9 @@ test:
 test-ts:
     pnpm --filter @oxc-react-docgen/vite-plugin test
 
-# Run all tests (Rust + TypeScript)
-test-all: test test-ts
+# Pack the npm packages and check napi arrives only as vite-plugin's transitive dependency (pm: npm or pnpm)
+verify-install pm="pnpm":
+    scripts/verify-install.sh {{ pm }}
 
 # Run benchmarks
 bench:
@@ -111,8 +115,8 @@ pre-commit:
     typos
     cargo deny check
 
-# Simulate full CI locally (lint → test → deny → typos → zizmor → doc-check → machete → ts tests)
-ci: lint test deny typos zizmor doc-check machete test-ts
+# Everything the CI jobs run, minus the Node version matrix and verify-install
+ci: lint test deny typos zizmor doc-check machete
 
 # Run moon compare task (accuracy vs react-docgen + react-docgen-typescript)
 compare:

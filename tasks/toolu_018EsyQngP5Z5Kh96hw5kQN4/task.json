@@ -1,0 +1,28 @@
+{
+  "tool_use_id": "toolu_018EsyQngP5Z5Kh96hw5kQN4",
+  "agent_id": "a462a08eb1facb28e",
+  "subagent_type": "smith:mutator",
+  "task_description": "Mutation-test the cli crate's tests",
+  "files": [
+    ".github/workflows/ci.yml",
+    ".gitignore",
+    "crates/cli/src/commands/extract.rs",
+    "crates/cli/src/commands/inspect.rs",
+    "crates/cli/src/commands/watch.rs",
+    "crates/cli/src/config.rs",
+    "crates/cli/src/main.rs",
+    "crates/cli/src/output.rs",
+    "crates/cli/tests/lsp_process.rs",
+    "crates/core/src/pipeline/mod.rs",
+    "crates/core/src/resolver/chain.rs",
+    "crates/core/tests/snapshots/snapshots__snapshot_chakra.snap",
+    "crates/core/tests/snapshots/snapshots__snapshot_mui.snap",
+    "justfile",
+    "packages/vite-plugin/package.json",
+    "packages/vite-plugin/vitest.config.ts",
+    "pnpm-lock.yaml",
+    "scripts/verify-install.sh"
+  ],
+  "started_at": "2026-09-25T18:49:51.053939-07:00",
+  "completed_at": "2026-09-25T18:49:51.054202-07:00"
+}

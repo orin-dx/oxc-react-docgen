@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.11.3-nightly.202609240627.b2779c9eb",
+  "checkpoint_id": "01M3FHFZ43G4ZWJN0650JTKTTW",
+  "strategy": "manual-commit",
+  "branch": "wip/session-work",
+  "checkpoints_count": 9,
+  "files_touched": [
+    ".changeset/child-interface-prop-overrides-parent.md",
+    ".github/workflows/ci.yml",
+    ".gitignore",
+    "crates/cli/src/commands/extract.rs",
+    "crates/cli/src/commands/inspect.rs",
+    "crates/cli/src/commands/watch.rs",
+    "crates/cli/src/config.rs",
+    "crates/cli/src/main.rs",
+    "crates/cli/src/output.rs",
+    "crates/cli/tests/commands.rs",
+    "crates/cli/tests/common/mod.rs",
+    "crates/cli/tests/lsp_process.rs",
+    "crates/core/src/pipeline/mod.rs",
+    "crates/core/src/resolver/chain.rs",
+    "crates/core/tests/snapshots/snapshots__snapshot_chakra.snap",
+    "crates/core/tests/snapshots/snapshots__snapshot_mui.snap",
+    "justfile",
+    "packages/vite-plugin/package.json",
+    "packages/vite-plugin/vitest.config.ts",
+    "pnpm-lock.yaml",
+    "scripts/verify-install.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 274,
+    "cache_creation_tokens": 3778173,
+    "cache_read_tokens": 91880720,
+    "output_tokens": 244997,
+    "api_call_count": 136,
+    "subagent_tokens": {
+      "input_tokens": 180,
+      "cache_creation_tokens": 466246,
+      "cache_read_tokens": 10444647,
+      "output_tokens": 6587,
+      "api_call_count": 89
+    }
+  }
+}

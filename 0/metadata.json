@@ -1,0 +1,387 @@
+{
+  "cli_version": "0.11.3-nightly.202609240627.b2779c9eb",
+  "checkpoint_id": "01M3FHFZ43G4ZWJN0650JTKTTW",
+  "session_id": "233bd878-80fe-4479-b3b8-1b505e3fbc36",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-26T19:01:28.928456Z",
+  "branch": "wip/session-work",
+  "checkpoints_count": 9,
+  "save_step_count": 9,
+  "files_touched": [
+    ".changeset/child-interface-prop-overrides-parent.md",
+    ".github/workflows/ci.yml",
+    ".gitignore",
+    "crates/cli/src/commands/extract.rs",
+    "crates/cli/src/commands/inspect.rs",
+    "crates/cli/src/commands/watch.rs",
+    "crates/cli/src/config.rs",
+    "crates/cli/src/main.rs",
+    "crates/cli/src/output.rs",
+    "crates/cli/tests/commands.rs",
+    "crates/cli/tests/common/mod.rs",
+    "crates/cli/tests/lsp_process.rs",
+    "crates/core/src/pipeline/mod.rs",
+    "crates/core/src/resolver/chain.rs",
+    "crates/core/tests/snapshots/snapshots__snapshot_chakra.snap",
+    "crates/core/tests/snapshots/snapshots__snapshot_mui.snap",
+    "justfile",
+    "packages/vite-plugin/package.json",
+    "packages/vite-plugin/vitest.config.ts",
+    "pnpm-lock.yaml",
+    "scripts/verify-install.sh"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "6ecb37b60ce5",
+  "checkpoint_transcript_start": 1607,
+  "transcript_lines_at_start": 1607,
+  "compact_transcript_start": 194,
+  "token_usage": {
+    "input_tokens": 274,
+    "cache_creation_tokens": 3778173,
+    "cache_read_tokens": 91880720,
+    "output_tokens": 244997,
+    "api_call_count": 136,
+    "subagent_tokens": {
+      "input_tokens": 180,
+      "cache_creation_tokens": 466246,
+      "cache_read_tokens": 10444647,
+      "output_tokens": 6587,
+      "api_call_count": 89
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01YG3oDJ3u2rG9m6NPRHvBjM",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "rust-style"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "d587da396c05",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1203,
+        "end": 1204,
+        "entry_ids": [
+          "975f8d08-d217-419c-950a-d513b23b4a79"
+        ],
+        "tool_use_id": "toolu_01YG3oDJ3u2rG9m6NPRHvBjM"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01YG3oDJ3u2rG9m6NPRHvBjM"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: rust-style",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_014ecxa8WByXsgrAF7rszBnh",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "snapshot"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "d587da396c05",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1493,
+        "end": 1494,
+        "entry_ids": [
+          "f9add5d0-49c3-4ea3-85bc-762cfb5be9bf"
+        ],
+        "tool_use_id": "toolu_014ecxa8WByXsgrAF7rszBnh"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_014ecxa8WByXsgrAF7rszBnh"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: snapshot",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01HM5PkSk5Yrkamvd3vR65mU",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "courier:commit"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "6ecb37b60ce5",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 3211,
+        "end": 3212,
+        "entry_ids": [
+          "e31e1a98-9cad-4726-8248-12f74284b4d0"
+        ],
+        "tool_use_id": "toolu_01HM5PkSk5Yrkamvd3vR65mU"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01HM5PkSk5Yrkamvd3vR65mU"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: courier:commit",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 19
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-26T19:01:28.77059Z",
+    "agent_lines": 3377,
+    "agent_removed": 3009,
+    "human_added": 622,
+    "human_modified": 43,
+    "human_removed": 0,
+    "total_committed": 4028,
+    "total_lines_changed": 7051,
+    "agent_percentage": 90.56871365763722,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 964,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".agents/skills/adr/SKILL.md": 33,
+        ".agents/skills/entire-search/SKILL.md": 22,
+        ".agents/skills/rust-style/SKILL.md": 63,
+        ".agents/skills/rust-types/SKILL.md": 21,
+        ".agents/skills/rustdoc/SKILL.md": 36,
+        ".agents/skills/source-command-check/SKILL.md": 20,
+        ".agents/skills/source-command-snapshot/SKILL.md": 19,
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 8,
+        ".claude/skills/entire-search/SKILL.md": 22,
+        ".codex/hooks.json": 77,
+        ".cursor/hooks.json": 40,
+        ".cursor/skills/entire-search/SKILL.md": 22,
+        ".gemini/settings.json": 141,
+        ".gemini/skills/entire-search/SKILL.md": 22,
+        ".github/hooks/entire.json": 61,
+        ".github/skills/entire-search/SKILL.md": 22,
+        ".opencode/plugins/entire.ts": 269,
+        ".opencode/skills/entire-search/SKILL.md": 22,
+        "AGENTS.md": 43
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 685,
+      "user_lines_removed": 0,
+      "agent_lines_added": 401,
+      "agent_lines_removed": 23,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 8,
+        ".claude/skills/entire-search/SKILL.md": 22,
+        ".codex/hooks.json": 77,
+        ".cursor/hooks.json": 40,
+        ".cursor/skills/entire-search/SKILL.md": 22,
+        ".gemini/settings.json": 141,
+        ".gemini/skills/entire-search/SKILL.md": 22,
+        ".github/hooks/entire.json": 61,
+        ".opencode/plugins/entire.ts": 269,
+        ".opencode/skills/entire-search/SKILL.md": 22
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 685,
+      "user_lines_removed": 0,
+      "agent_lines_added": 510,
+      "agent_lines_removed": 328,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 8,
+        ".claude/skills/entire-search/SKILL.md": 22,
+        ".codex/hooks.json": 77,
+        ".cursor/hooks.json": 40,
+        ".cursor/skills/entire-search/SKILL.md": 22,
+        ".gemini/settings.json": 141,
+        ".gemini/skills/entire-search/SKILL.md": 22,
+        ".github/hooks/entire.json": 61,
+        ".opencode/plugins/entire.ts": 269,
+        ".opencode/skills/entire-search/SKILL.md": 22
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 685,
+      "user_lines_removed": 0,
+      "agent_lines_added": 510,
+      "agent_lines_removed": 328,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 8,
+        ".claude/skills/entire-search/SKILL.md": 22,
+        ".codex/hooks.json": 77,
+        ".cursor/hooks.json": 40,
+        ".cursor/skills/entire-search/SKILL.md": 22,
+        ".gemini/settings.json": 141,
+        ".gemini/skills/entire-search/SKILL.md": 22,
+        ".github/hooks/entire.json": 61,
+        ".opencode/plugins/entire.ts": 269,
+        ".opencode/skills/entire-search/SKILL.md": 22
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 685,
+      "user_lines_removed": 0,
+      "agent_lines_added": 516,
+      "agent_lines_removed": 334,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 8,
+        ".claude/skills/entire-search/SKILL.md": 22,
+        ".codex/hooks.json": 77,
+        ".cursor/hooks.json": 40,
+        ".cursor/skills/entire-search/SKILL.md": 22,
+        ".gemini/settings.json": 141,
+        ".gemini/skills/entire-search/SKILL.md": 22,
+        ".github/hooks/entire.json": 61,
+        ".opencode/plugins/entire.ts": 269,
+        ".opencode/skills/entire-search/SKILL.md": 22
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 685,
+      "user_lines_removed": 0,
+      "agent_lines_added": 516,
+      "agent_lines_removed": 334,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 8,
+        ".claude/skills/entire-search/SKILL.md": 22,
+        ".codex/hooks.json": 77,
+        ".cursor/hooks.json": 40,
+        ".cursor/skills/entire-search/SKILL.md": 22,
+        ".gemini/settings.json": 141,
+        ".gemini/skills/entire-search/SKILL.md": 22,
+        ".github/hooks/entire.json": 61,
+        ".opencode/plugins/entire.ts": 269,
+        ".opencode/skills/entire-search/SKILL.md": 22
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 685,
+      "user_lines_removed": 0,
+      "agent_lines_added": 634,
+      "agent_lines_removed": 327,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 8,
+        ".claude/skills/entire-search/SKILL.md": 22,
+        ".codex/hooks.json": 77,
+        ".cursor/hooks.json": 40,
+        ".cursor/skills/entire-search/SKILL.md": 22,
+        ".gemini/settings.json": 141,
+        ".gemini/skills/entire-search/SKILL.md": 22,
+        ".github/hooks/entire.json": 61,
+        ".opencode/plugins/entire.ts": 269,
+        ".opencode/skills/entire-search/SKILL.md": 22
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 729,
+      "user_lines_removed": 1,
+      "agent_lines_added": 1603,
+      "agent_lines_removed": 505,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 8,
+        ".claude/skills/entire-search/SKILL.md": 22,
+        ".codex/hooks.json": 77,
+        ".cursor/hooks.json": 40,
+        ".cursor/skills/entire-search/SKILL.md": 22,
+        ".gemini/settings.json": 141,
+        ".gemini/skills/entire-search/SKILL.md": 22,
+        ".github/hooks/entire.json": 61,
+        ".opencode/plugins/entire.ts": 269,
+        ".opencode/skills/entire-search/SKILL.md": 22,
+        "crates/cli/tests/commands.rs": 44
+      },
+      "user_removed_per_file": {
+        "crates/cli/tests/commands.rs": 1
+      }
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 892,
+      "user_lines_removed": 14,
+      "agent_lines_added": 1557,
+      "agent_lines_removed": 507,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 8,
+        ".claude/skills/entire-search/SKILL.md": 22,
+        ".codex/hooks.json": 77,
+        ".cursor/hooks.json": 40,
+        ".cursor/skills/entire-search/SKILL.md": 22,
+        ".gemini/settings.json": 141,
+        ".gemini/skills/entire-search/SKILL.md": 22,
+        ".github/hooks/entire.json": 61,
+        ".opencode/plugins/entire.ts": 269,
+        ".opencode/skills/entire-search/SKILL.md": 22,
+        "crates/cli/tests/commands.rs": 207
+      },
+      "user_removed_per_file": {
+        "crates/cli/tests/commands.rs": 14
+      }
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 892,
+      "user_lines_removed": 14,
+      "agent_lines_added": 1557,
+      "agent_lines_removed": 507,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 8,
+        ".claude/skills/entire-search/SKILL.md": 22,
+        ".codex/hooks.json": 77,
+        ".cursor/hooks.json": 40,
+        ".cursor/skills/entire-search/SKILL.md": 22,
+        ".gemini/settings.json": 141,
+        ".gemini/skills/entire-search/SKILL.md": 22,
+        ".github/hooks/entire.json": 61,
+        ".opencode/plugins/entire.ts": 269,
+        ".opencode/skills/entire-search/SKILL.md": 22,
+        "crates/cli/tests/commands.rs": 207
+      },
+      "user_removed_per_file": {
+        "crates/cli/tests/commands.rs": 14
+      }
+    }
+  ]
+}

@@ -33,6 +33,14 @@ pub fn print_summary(output: &oxc_react_docgen_core::types::ExtractionOutput, qu
     if quiet {
         return;
     }
+    // A closed stderr isn't worth failing a run over.
+    let _ = write_summary(&mut std::io::stderr().lock(), output);
+}
+
+fn write_summary(
+    w: &mut impl std::io::Write,
+    output: &oxc_react_docgen_core::types::ExtractionOutput,
+) -> std::io::Result<()> {
     use owo_colors::OwoColorize;
 
     let errors = output
@@ -46,8 +54,9 @@ pub fn print_summary(output: &oxc_react_docgen_core::types::ExtractionOutput, qu
         .filter(|d| matches!(d.severity, oxc_react_docgen_core::types::DiagnosticSeverity::Warning))
         .count();
 
-    eprintln!();
-    eprintln!(
+    writeln!(w)?;
+    writeln!(
+        w,
         "  {}  {} components  ·  {} enums  ·  {}  ·  {}  ·  {}ms",
         "⚡".yellow(),
         output.stats.components_extracted.to_string().bold(),
@@ -55,15 +64,23 @@ pub fn print_summary(output: &oxc_react_docgen_core::types::ExtractionOutput, qu
         if warnings > 0 { format!("{warnings} warnings").yellow().to_string() } else { format!("{warnings} warnings") },
         if errors > 0 { format!("{errors} errors").red().to_string() } else { format!("{errors} errors") },
         output.stats.duration_ms.to_string().bold(),
-    );
-    eprintln!();
+    )?;
+    writeln!(w)
 }
 
 /// Human-readable diagnostic list. Always written to stderr — see [`print_summary`].
 pub fn print_diagnostics(diagnostics: &[oxc_react_docgen_core::types::Diagnostic]) {
+    let _ = write_diagnostics(&mut std::io::stderr().lock(), diagnostics);
+}
+
+fn write_diagnostics(
+    w: &mut impl std::io::Write,
+    diagnostics: &[oxc_react_docgen_core::types::Diagnostic],
+) -> std::io::Result<()> {
     for line in format_diagnostics(diagnostics) {
-        eprintln!("{line}");
+        writeln!(w, "{line}")?;
     }
+    Ok(())
 }
 
 /// The text between the first pair of single quotes in `message`, e.g. `Date` from
@@ -146,12 +163,220 @@ fn format_diagnostics(diagnostics: &[oxc_react_docgen_core::types::Diagnostic]) 
     lines
 }
 
+/// The `inspect` view of one component: header, description, props table, and the inherited-attributes note.
+pub fn format_component(component: &oxc_react_docgen_core::types::ComponentEntry) -> Vec<String> {
+    use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table};
+    use owo_colors::OwoColorize;
+
+    let mut lines = vec![
+        String::new(),
+        format!("  {}  {}", component.display_name.bold(), component.file_path.to_string().dimmed()),
+        format!("  {}", "─".repeat(70).dimmed()),
+    ];
+    if !component.description.is_empty() {
+        lines.push(String::new());
+        lines.push(format!("  {}", component.description));
+    }
+    lines.push(String::new());
+    lines.push(format!("  {} ({})", "Props".bold(), component.props.len()));
+    lines.push(String::new());
+
+    let mut table = Table::new();
+    table.set_content_arrangement(ContentArrangement::Dynamic);
+    table.set_header(vec![
+        Cell::new("Prop").add_attribute(Attribute::Bold),
+        Cell::new("Type").add_attribute(Attribute::Bold),
+        Cell::new("Req").add_attribute(Attribute::Bold),
+        Cell::new("Default").add_attribute(Attribute::Bold),
+        Cell::new("From").add_attribute(Attribute::Bold),
+    ]);
+    for prop in component.props.values() {
+        let req_str = if prop.required { "✓".to_string() } else { "–".to_string() };
+        let default_str = prop.default_value.as_ref().map(|d| d.value.clone()).unwrap_or_else(|| "–".into());
+        let from_str = prop.parent.as_ref().map(|p| p.name.clone()).unwrap_or_default();
+
+        table.add_row(vec![
+            Cell::new(&prop.name).fg(Color::White),
+            Cell::new(prop.prop_type.raw_string()).fg(Color::Cyan),
+            Cell::new(&req_str),
+            Cell::new(&default_str).fg(Color::DarkGrey),
+            Cell::new(&from_str).fg(Color::DarkGrey),
+        ]);
+    }
+    lines.extend(table.to_string().lines().map(|line| format!("  {line}")));
+
+    if !component.notable_inherited.is_empty() {
+        lines.push(String::new());
+        for layer in &component.inheritance {
+            let element_note = layer.html_element.as_ref().map(|e| format!(" (<{e}>)")).unwrap_or_default();
+            lines.push(format!("  {} {}{}", "↳".dimmed(), layer.type_name.dimmed(), element_note.dimmed()));
+        }
+        let notable_names: Vec<&str> = component.notable_inherited.keys().map(|s| s.as_str()).collect();
+        lines.push(format!("    Notable: {}", notable_names.join("  ").dimmed()));
+    }
+    lines.push(String::new());
+    lines
+}
+
+pub fn print_component(component: &oxc_react_docgen_core::types::ComponentEntry) {
+    for line in format_component(component) {
+        println!("{line}");
+    }
+}
+
+/// Drops SGR colour sequences so tests can assert on plain text.
+#[cfg(test)]
+pub(crate) fn strip_ansi(text: &str) -> String {
+    let mut plain = String::new();
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            chars.by_ref().find(|&c| c == 'm');
+        } else {
+            plain.push(c);
+        }
+    }
+    plain
+}
+
 #[cfg(test)]
 mod tests {
     use owo_colors::OwoColorize;
-    use oxc_react_docgen_core::types::{Diagnostic, DiagnosticCode, DiagnosticSeverity};
+    use oxc_react_docgen_core::types::{
+        ComponentEntry, DefaultValue, Diagnostic, DiagnosticCode, DiagnosticSeverity, ExtractionOutput,
+        ExtractionStats, InheritedLayer, ParsedProp, PropParent, PropType,
+    };
 
-    use super::{extract_subject, format_diagnostics, write_atomic};
+    use super::{
+        extract_subject, format_component, format_diagnostics, strip_ansi, write_atomic, write_diagnostics,
+        write_summary,
+    };
+
+    #[test]
+    fn write_atomic_rejects_a_path_with_no_file_name() {
+        let err = write_atomic("/", "{}").expect_err("the filesystem root has no file name to write");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(err.to_string(), "'/' has no file name component");
+    }
+
+    fn output_with(diagnostics: Vec<Diagnostic>) -> ExtractionOutput {
+        ExtractionOutput {
+            components: Default::default(),
+            enums: Default::default(),
+            diagnostics,
+            stats: ExtractionStats { components_extracted: 3, duration_ms: 12, ..Default::default() },
+        }
+    }
+
+    fn summary_of(output: &ExtractionOutput) -> String {
+        let mut written = Vec::new();
+        write_summary(&mut written, output).unwrap();
+        String::from_utf8(written).unwrap()
+    }
+
+    #[test]
+    fn summary_reports_the_counts_and_colors_only_the_nonzero_warning_and_error_ones() {
+        let clean = summary_of(&output_with(vec![]));
+        assert_eq!(strip_ansi(&clean), "\n  ⚡  3 components  ·  0 enums  ·  0 warnings  ·  0 errors  ·  12ms\n\n");
+        assert!(!clean.contains("\u{1b}[33m0 warnings") && !clean.contains("\u{1b}[31m0 errors"), "{clean:?}");
+
+        let diagnostics = vec![
+            diag(DiagnosticSeverity::Warning, DiagnosticCode::OpaqueType, "a", None),
+            diag(DiagnosticSeverity::Warning, DiagnosticCode::OpaqueType, "b", None),
+            diag(DiagnosticSeverity::Error, DiagnosticCode::IoError, "c", None),
+            diag(DiagnosticSeverity::Info, DiagnosticCode::OpaqueType, "d", None),
+        ];
+        let noisy = summary_of(&output_with(diagnostics));
+        assert_eq!(strip_ansi(&noisy), "\n  ⚡  3 components  ·  0 enums  ·  2 warnings  ·  1 errors  ·  12ms\n\n");
+        assert!(
+            noisy.contains(&"2 warnings".yellow().to_string()) && noisy.contains(&"1 errors".red().to_string()),
+            "{noisy:?}"
+        );
+    }
+
+    #[test]
+    fn diagnostics_are_written_one_line_each_with_a_severity_prefix() {
+        let diagnostics = vec![
+            diag(DiagnosticSeverity::Error, DiagnosticCode::UnresolvableImport, "Cannot resolve 'A'", Some("a.ts")),
+            diag(DiagnosticSeverity::Info, DiagnosticCode::OpaqueType, "Opaque 'B'", None),
+        ];
+        let mut written = Vec::new();
+        write_diagnostics(&mut written, &diagnostics).unwrap();
+        let written = String::from_utf8(written).unwrap();
+
+        assert_eq!(strip_ansi(&written), "  [error] a.ts:Cannot resolve 'A'\n  [info] Opaque 'B'\n");
+        assert!(written.contains(&"error".red().to_string()), "errors are colored red: {written:?}");
+    }
+
+    #[test]
+    fn extract_subject_of_a_message_with_one_lone_quote_is_the_whole_message() {
+        assert_eq!(extract_subject("it's broken"), "it's broken");
+    }
+
+    #[test]
+    fn format_component_renders_header_description_props_table_and_inherited_note() {
+        let prop = |name: &str, prop_type, required, default: Option<&str>, parent: Option<&str>| {
+            let default_value = default.map(|value| DefaultValue { value: value.into(), computed: false });
+            let parent = parent.map(|name| PropParent { name: name.into(), file_name: "Widget.tsx".into() });
+            ParsedProp::new(
+                name.into(),
+                prop_type,
+                required,
+                default_value,
+                String::new(),
+                Default::default(),
+                parent,
+                vec![],
+            )
+        };
+        let entry = ComponentEntry {
+            display_name: "Widget".into(),
+            file_path: "src/Widget.tsx".into(),
+            description: "A widget.".into(),
+            props: [
+                ("label", prop("label", PropType::String, true, None, Some("WidgetProps"))),
+                ("size", prop("size", PropType::Number, false, Some("3"), None)),
+            ]
+            .into_iter()
+            .map(|(name, prop)| (name.to_owned(), prop))
+            .collect(),
+            inheritance: vec![InheritedLayer {
+                type_name: "ButtonHTMLAttributes".into(),
+                file_name: "react".into(),
+                omitted: vec![],
+                html_element: Some("button".into()),
+                total_props: 0,
+            }],
+            notable_inherited: [("onClick".to_owned(), prop("onClick", PropType::Any, false, None, None))]
+                .into_iter()
+                .collect(),
+            discriminant_prop: None,
+            composes: vec![],
+            tags: Default::default(),
+            methods: vec![],
+        };
+
+        let lines: Vec<String> = format_component(&entry).iter().map(|line| strip_ansi(line)).collect();
+
+        let rule = format!("  {}", "─".repeat(70));
+        let top = ["", "  Widget  src/Widget.tsx", rule.as_str(), "", "  A widget.", "", "  Props (2)", ""];
+        assert_eq!(lines[..top.len()], top);
+        let bottom = ["", "  ↳ ButtonHTMLAttributes (<button>)", "    Notable: onClick", ""];
+        assert_eq!(lines[lines.len() - bottom.len()..], bottom);
+
+        // Border glyphs depend on the terminal, so accept either pipe; rows without text are separators.
+        let rows: Vec<Vec<&str>> = lines
+            .iter()
+            .filter(|line| line.contains(['|', '│']) && line.chars().any(char::is_alphanumeric))
+            .map(|line| {
+                let cells: Vec<&str> = line.split(['|', '│']).map(str::trim).collect();
+                cells[1..cells.len() - 1].to_vec()
+            })
+            .collect();
+        assert_eq!(rows[0], ["Prop", "Type", "Req", "Default", "From"]);
+        assert_eq!(rows[1], ["label", "string", "✓", "–", "WidgetProps"]);
+        assert_eq!(rows[2], ["size", "number", "–", "3", ""]);
+    }
 
     #[test]
     fn write_atomic_surfaces_error_when_parent_dir_is_missing() {

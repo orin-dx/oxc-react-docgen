@@ -9,6 +9,9 @@
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
 
+mod common;
+use common::strip_ansi;
+
 // Mirrors `crates/cli/src/commands/lsp.rs`'s private `MAX_LSP_MESSAGE_BYTES`.
 const MAX_LSP_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
 
@@ -99,18 +102,24 @@ fn well_formed_initialize_gets_a_response_frame_with_hover_false() {
 }
 
 #[test]
-fn verbose_mode_never_writes_tracing_output_to_stdout() {
+fn verbose_mode_writes_tracing_output_to_stderr_only() {
     // A tracing::error! firing mid-session (here, via the oversized-Content-
     // Length path) must land on stderr only — LSP reserves stdout
-    // exclusively for Content-Length-framed messages.
+    // exclusively for Content-Length-framed messages — and only when `-v` asked for it.
     let frame = format!("Content-Length: {}\r\n\r\n", MAX_LSP_MESSAGE_BYTES + 1);
-    let output = run_lsp(&["-v"], frame.as_bytes());
+
+    let verbose = run_lsp(&["-v"], frame.as_bytes());
     assert!(
-        output.stdout.is_empty(),
+        verbose.stdout.is_empty(),
         "stdout must contain no tracing output under -v, got {:?}",
-        String::from_utf8_lossy(&output.stdout)
+        String::from_utf8_lossy(&verbose.stdout)
     );
-    assert!(!output.stderr.is_empty(), "expected the tracing::error! call to have written something to stderr");
+    let stderr = strip_ansi(&String::from_utf8_lossy(&verbose.stderr));
+    assert!(stderr.contains("ERROR oxc_react_docgen::commands::lsp: LSP frame declared Content-Length"), "{stderr}");
+
+    let quiet = run_lsp(&[], frame.as_bytes());
+    let stderr = strip_ansi(&String::from_utf8_lossy(&quiet.stderr));
+    assert!(!stderr.contains("ERROR oxc_react_docgen"), "no tracing output without -v: {stderr}");
 }
 
 // ── SPEC-CLI-001c AC-005c: a client that declares a valid Content-Length
@@ -180,4 +189,41 @@ fn missing_method_field_produces_no_response_but_does_not_desync_the_stream() {
         "expected the subsequent initialize to still be answered, got {stdout:?}"
     );
     assert_eq!(stdout.matches("Content-Length:").count(), 1, "expected exactly one response frame, got {stdout:?}");
+}
+
+fn exit_notification() -> Vec<u8> {
+    framed(&serde_json::to_vec(&serde_json::json!({"jsonrpc": "2.0", "method": "exit"})).unwrap())
+}
+
+#[test]
+fn closing_stdin_without_any_frame_exits_0_with_empty_stdout() {
+    let output = run_lsp(&[], b"");
+    assert_eq!(output.status.code(), Some(0), "expected exit 0, got {:?}", output.status);
+    assert!(output.stdout.is_empty(), "expected empty stdout, got {:?}", String::from_utf8_lossy(&output.stdout));
+}
+
+#[test]
+fn shutdown_is_answered_with_a_null_result_for_the_same_id() {
+    let mut input =
+        framed(&serde_json::to_vec(&serde_json::json!({"jsonrpc": "2.0", "id": 7, "method": "shutdown"})).unwrap());
+    input.extend_from_slice(&exit_notification());
+
+    let output = run_lsp(&[], &input);
+
+    assert_eq!(output.status.code(), Some(0), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let body = stdout.split("\r\n\r\n").nth(1).expect("a response frame with a body");
+    let response: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert_eq!(response, serde_json::json!({"jsonrpc": "2.0", "id": 7, "result": null}));
+}
+
+#[test]
+fn frames_after_exit_are_never_answered() {
+    let mut input = exit_notification();
+    input.extend_from_slice(&well_formed_initialize_then_exit());
+
+    let output = run_lsp(&[], &input);
+
+    assert_eq!(output.status.code(), Some(0), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(output.stdout.is_empty(), "expected empty stdout, got {:?}", String::from_utf8_lossy(&output.stdout));
 }

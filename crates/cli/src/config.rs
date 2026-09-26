@@ -509,4 +509,151 @@ export default {
         let message = format!("{err:?}");
         assert!(message.contains("react17"), "expected the error to name the bad value, got {message}");
     }
+
+    #[test]
+    fn config_schema_maps_every_field_onto_pipeline_options() {
+        let json = r#"{
+            "srcDirs": ["a", "b"],
+            "excludePatterns": ["**/*.stories.tsx"],
+            "excludePrefixes": ["Internal"],
+            "reactVersion": "react19",
+            "crossPackage": false,
+            "pandacssOutdir": "styled-system",
+            "variantFunctions": ["cva", "tv"],
+            "htmlAttributes": "none",
+            "tsconfigPath": "tsconfig.app.json",
+            "vanillaExtract": true,
+            "cacheDir": ".cache/docgen",
+            "extraBuiltins": ["Custom"]
+        }"#;
+        let schema: DocgenConfigSchema = serde_json::from_str(json).expect("valid config JSON");
+        let opts = schema.into_pipeline_options().expect("valid reactVersion");
+
+        assert_eq!(opts.src_dirs, vec![camino::Utf8PathBuf::from("a"), camino::Utf8PathBuf::from("b")]);
+        assert_eq!(opts.exclude_patterns, vec!["**/*.stories.tsx".to_owned()]);
+        assert_eq!(opts.exclude_prefixes, vec!["Internal".to_owned()]);
+        assert!(!opts.cross_package);
+        assert_eq!(opts.pandacss_outdir, Some(camino::Utf8PathBuf::from("styled-system")));
+        assert_eq!(opts.variant_functions, vec!["cva".to_owned(), "tv".to_owned()]);
+        assert_eq!(opts.html_attributes, HtmlAttributeMode::None);
+        assert_eq!(opts.tsconfig_path, Some(camino::Utf8PathBuf::from("tsconfig.app.json")));
+        assert!(opts.vanilla_extract);
+        assert_eq!(opts.cache_dir, Some(camino::Utf8PathBuf::from(".cache/docgen")));
+        assert_eq!(opts.extra_builtins.iter().map(|s| s.to_string()).collect::<Vec<_>>(), vec!["Custom".to_owned()]);
+    }
+
+    #[test]
+    fn html_attributes_mode_names_map_onto_pipeline_options() {
+        for (name, expected) in [
+            ("full", HtmlAttributeMode::Full),
+            ("none", HtmlAttributeMode::None),
+            ("curated", HtmlAttributeMode::Curated),
+        ] {
+            let schema: DocgenConfigSchema =
+                serde_json::from_str(&format!(r#"{{ "htmlAttributes": "{name}" }}"#)).expect("valid config JSON");
+            assert_eq!(schema.into_pipeline_options().unwrap().html_attributes, expected, "htmlAttributes: {name}");
+        }
+    }
+
+    fn no_flags<'a>() -> BuildOptionsArgs<'a> {
+        BuildOptionsArgs {
+            src: &[],
+            no_cross_package: false,
+            react_version: None,
+            cache_dir: None,
+            html_attributes: None,
+            config_path: None,
+            extra_builtins: &[],
+        }
+    }
+
+    #[test]
+    fn build_options_applies_cli_flags_over_the_defaults() {
+        let src = ["app".to_owned(), "lib".to_owned()];
+        let extra_builtins = ["Custom".to_owned()];
+        let opts = build_options(BuildOptionsArgs {
+            src: &src,
+            no_cross_package: true,
+            react_version: Some("react18"),
+            cache_dir: Some("cache"),
+            html_attributes: Some("full"),
+            extra_builtins: &extra_builtins,
+            ..no_flags()
+        })
+        .unwrap();
+
+        assert_eq!(opts.src_dirs, vec![camino::Utf8PathBuf::from("app"), camino::Utf8PathBuf::from("lib")]);
+        assert!(!opts.cross_package);
+        assert!(opts.react_version.implicit_children);
+        assert_eq!(opts.cache_dir, Some(camino::Utf8PathBuf::from("cache")));
+        assert_eq!(opts.html_attributes, HtmlAttributeMode::Full);
+        assert_eq!(opts.extra_builtins.iter().map(|s| s.to_string()).collect::<Vec<_>>(), vec!["Custom".to_owned()]);
+    }
+
+    #[test]
+    fn build_options_maps_the_remaining_html_attribute_flag_values() {
+        for (flag, expected) in [("none", HtmlAttributeMode::None), ("curated", HtmlAttributeMode::Curated)] {
+            let opts = build_options(BuildOptionsArgs { html_attributes: Some(flag), ..no_flags() }).unwrap();
+            assert_eq!(opts.html_attributes, expected, "--html-attributes {flag}");
+        }
+    }
+
+    #[test]
+    fn build_options_rejects_an_unrecognized_react_version_naming_the_value() {
+        let err = build_options(BuildOptionsArgs { react_version: Some("react17"), ..no_flags() })
+            .expect_err("react17 is not a supported --react-version");
+        assert_eq!(err.to_string(), "--react-version is 'react17', which isn't a recognized value");
+    }
+
+    #[test]
+    fn load_config_file_stops_at_a_workspace_marker_without_reading_configs_above_it() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Would fail to evaluate if it were ever loaded.
+        std::fs::write(tmp.path().join("docgen.config.ts"), "throw new Error('must not be loaded');\n").unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        std::fs::write(workspace.join("pnpm-workspace.yaml"), "packages: []\n").unwrap();
+        let package = workspace.join("packages");
+        std::fs::create_dir(&package).unwrap();
+
+        assert!(load_config_file(&package).unwrap().is_none());
+    }
+
+    /// A `docgen.config.ts` with `source`, placed under apps/validate so `tsx` resolves (see the real-file test above).
+    fn write_config(source: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let validate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/validate");
+        let tmp = tempfile::TempDir::new_in(validate_dir).unwrap();
+        let path = tmp.path().join("docgen.config.ts");
+        std::fs::write(&path, source).unwrap();
+        let path = path.canonicalize().unwrap();
+        (tmp, path)
+    }
+
+    #[test]
+    fn a_config_of_the_wrong_shape_is_an_error_naming_the_file() {
+        let (_tmp, path) = write_config("export default { srcDirs: 42 };\n");
+
+        let err = try_load_config(&path).expect_err("srcDirs must be a list of strings");
+
+        assert!(
+            err.to_string()
+                .starts_with(&format!("docgen.config.ts at {} doesn't match the expected shape: ", path.display())),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_config_with_an_unrecognized_react_version_is_an_error_naming_the_file_and_value() {
+        let (_tmp, path) = write_config("export default { reactVersion: 'react20' };\n");
+
+        let err = try_load_config(&path).expect_err("react20 is not a supported reactVersion");
+
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "docgen.config.ts at {}: reactVersion is 'react20', expected \"react18\" or \"react19\"",
+                path.display()
+            )
+        );
+    }
 }

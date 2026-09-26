@@ -560,6 +560,112 @@ export function Comp(props: CompProps) { return null; }
         assert!(output.components["Bare"].props.contains_key("children"));
     }
 
+    #[test]
+    fn serialize_storybook_emits_exact_docgen_blocks() {
+        use oxc_react_docgen_core::types::{DefaultValue, ParsedProp};
+        let label = ParsedProp::new(
+            "label".to_string(),
+            PropType::ReactNode,
+            false,
+            Some(DefaultValue { value: "\"hi\"".to_string(), computed: false }),
+            "The label.".to_string(),
+            Default::default(),
+            None,
+            vec![],
+        );
+        let mut entry = component_with_props("Widget", vec![]);
+        entry.description = "A widget.".to_string();
+        entry.props.insert("label".to_string(), label);
+        let mut components = std::collections::BTreeMap::new();
+        components.insert("Widget".to_string(), entry);
+        let output = oxc_react_docgen_core::types::ExtractionOutput {
+            components,
+            enums: Default::default(),
+            diagnostics: vec![],
+            stats: Default::default(),
+        };
+
+        let parsed: serde_json::Value = serde_json::from_str(&serialize_storybook(&output)).unwrap();
+
+        assert_eq!(
+            parsed,
+            serde_json::json!({
+                "Widget": {
+                    "displayName": "Widget",
+                    "description": "A widget.",
+                    "methods": [],
+                    "props": {
+                        "label": {
+                            "name": "label",
+                            "type": { "name": "ReactNode" },
+                            "required": false,
+                            "defaultValue": { "value": "\"hi\"" },
+                            "description": "The label."
+                        }
+                    }
+                }
+            })
+        );
+    }
+
+    /// Runs `extract` end to end over one button component and returns its canonical JSON. Lives inside the crate so
+    /// `@types/react` resolves for `full` mode.
+    fn extract_button(mode: crate::HtmlAttributeModeArg) -> serde_json::Value {
+        let tmp = tempfile::TempDir::new_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+        std::fs::write(
+            tmp.path().join("Button.tsx"),
+            r#"
+import * as React from "react";
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> { label: string }
+export function Button(props: ButtonProps) { return null; }
+"#,
+        )
+        .unwrap();
+        let out = tmp.path().join("out.json");
+        let args = crate::ExtractArgs {
+            src: vec![tmp.path().to_str().unwrap().to_owned()],
+            out: Some(out.to_str().unwrap().to_owned()),
+            format: crate::OutputFormat::Canonical,
+            no_cross_package: false,
+            react_version: None,
+            cache_dir: Some(tmp.path().join("cache").to_str().unwrap().to_owned()),
+            html_attributes: Some(mode),
+            extra_builtins: vec![],
+            json: false,
+        };
+
+        assert_eq!(cmd_extract(args, false, None).unwrap(), 0);
+
+        let written: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(out).unwrap()).unwrap();
+        written["components"]["Button"].clone()
+    }
+
+    fn keys(component: &serde_json::Value, field: &str) -> Vec<String> {
+        component[field].as_object().unwrap().keys().cloned().collect()
+    }
+
+    #[test]
+    fn html_attributes_none_extracts_own_props_only() {
+        let button = extract_button(crate::HtmlAttributeModeArg::None);
+        assert_eq!(keys(&button, "props"), vec!["label"]);
+        assert!(keys(&button, "notableInherited").is_empty());
+    }
+
+    #[test]
+    fn html_attributes_curated_keeps_own_props_and_lists_notable_inherited_ones() {
+        let button = extract_button(crate::HtmlAttributeModeArg::Curated);
+        assert_eq!(keys(&button, "props"), vec!["label"]);
+        assert!(keys(&button, "notableInherited").contains(&"onClick".to_owned()));
+    }
+
+    #[test]
+    fn html_attributes_full_merges_the_real_button_attributes_into_props() {
+        let button = extract_button(crate::HtmlAttributeModeArg::Full);
+        let props = keys(&button, "props");
+        assert!(["label", "onClick", "disabled"].iter().all(|name| props.contains(&name.to_string())), "{props:?}");
+        assert!(keys(&button, "notableInherited").is_empty());
+    }
+
     // ── SPEC-SERIALIZATION-001 AC-10: end-to-end — a props interface
     // extending a string-literal-union type alias routes through
     // ResolvedChain::give_up (resolver/alias.rs), producing a composes value

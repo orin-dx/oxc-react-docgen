@@ -5,7 +5,11 @@
   "branch": "fix/child-interface-prop-override",
   "checkpoints_count": 9,
   "files_touched": [
-    ".changeset/child-interface-prop-overrides-parent.md"
+    ".changeset/child-interface-prop-overrides-parent.md",
+    "crates/core/src/pipeline/mod.rs",
+    "crates/core/src/resolver/chain.rs",
+    "crates/core/tests/snapshots/snapshots__snapshot_chakra.snap",
+    "crates/core/tests/snapshots/snapshots__snapshot_mui.snap"
   ],
   "sessions": [
     {
@@ -17,10 +21,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 10,
-    "cache_creation_tokens": 8202,
-    "cache_read_tokens": 4466612,
-    "output_tokens": 3532,
-    "api_call_count": 5
+    "input_tokens": 6,
+    "cache_creation_tokens": 2066,
+    "cache_read_tokens": 2706383,
+    "output_tokens": 2171,
+    "api_call_count": 3
   }
 }

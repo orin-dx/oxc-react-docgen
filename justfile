@@ -34,9 +34,12 @@ build:
     moon run napi:build vite-plugin:build
     cargo build --release
 
-# Run Rust unit tests (via nextest, which doesn't run doctests — paired
+# Run all tests (Rust + TypeScript)
+test: test-rust test-ts
+
+# Run Rust tests (via nextest, which doesn't run doctests — paired
 # with `cargo test --doc` to cover those too)
-test:
+test-rust:
     cargo nextest run --workspace --exclude oxc-react-docgen-napi --locked
     cargo test --doc --workspace --exclude oxc-react-docgen-napi
 
@@ -44,15 +47,33 @@ test:
 test-ts:
     pnpm --filter @oxc-react-docgen/vite-plugin test
 
-# Run all tests (Rust + TypeScript)
-test-all: test test-ts
+# Pack the npm packages and check napi arrives only as vite-plugin's transitive dependency (pm: npm or pnpm)
+verify-install pm="pnpm":
+    scripts/verify-install.sh {{ pm }}
 
 # Run benchmarks
 bench:
     cargo bench --workspace --exclude oxc-react-docgen-napi
 
-# Coverage report — opens HTML in browser
-coverage:
+# Rust and TypeScript line coverage; with a threshold, fails if either is below it
+coverage threshold="": (coverage-rust threshold) (coverage-ts threshold)
+
+# Rust coverage: writes lcov.info and prints the summary before enforcing the threshold
+coverage-rust threshold="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --lcov --output-path lcov.info
+    cargo llvm-cov report --summary-only
+    if [[ -n "{{ threshold }}" ]]; then
+      cargo llvm-cov report --summary-only --fail-under-lines "{{ threshold }}"
+    fi
+
+# TypeScript coverage: prints the summary and writes packages/vite-plugin/coverage/lcov.info
+coverage-ts threshold="":
+    pnpm --filter @oxc-react-docgen/vite-plugin exec vitest run --coverage {{ if threshold != "" { "--coverage.thresholds.lines=" + threshold } else { "" } }}
+
+# Rust coverage report, opened in the browser
+coverage-html:
     cargo llvm-cov nextest --workspace --exclude oxc-react-docgen-napi --locked --html --open
 
 # Documentation build check (warnings, including broken intra-doc links,
@@ -111,8 +132,8 @@ pre-commit:
     typos
     cargo deny check
 
-# Simulate full CI locally (lint → test → deny → typos → zizmor → doc-check → machete → ts tests)
-ci: lint test deny typos zizmor doc-check machete test-ts
+# Everything the CI jobs run, minus the Node version matrix and verify-install
+ci: lint test deny typos zizmor doc-check machete (coverage "90")
 
 # Run moon compare task (accuracy vs react-docgen + react-docgen-typescript)
 compare:

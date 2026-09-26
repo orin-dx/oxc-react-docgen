@@ -36,6 +36,7 @@ pnpm-debug.log*
 
 # Test coverage
 coverage/
+lcov.info
 .nyc_output/
 
 # Environment

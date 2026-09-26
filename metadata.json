@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.11.3-nightly.202609240627.b2779c9eb",
+  "checkpoint_id": "01M3FSYR5FP12SHQ5GCMNTS7GH",
+  "strategy": "manual-commit",
+  "branch": "fix/html-attributes-typo",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".changeset/html-attributes-typo-is-an-error.md",
+    "crates/binding/src/lib.rs",
+    "crates/cli/src/config.rs",
+    "crates/core/src/pipeline/mod.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 22,
+    "cache_creation_tokens": 20888,
+    "cache_read_tokens": 3390435,
+    "output_tokens": 13395,
+    "api_call_count": 11
+  }
+}
